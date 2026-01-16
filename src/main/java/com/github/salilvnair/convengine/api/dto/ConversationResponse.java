@@ -10,6 +10,11 @@ public class ConversationResponse {
     private String state;
     private ApiPayload payload;
     private String context;
+    private boolean success;
+    private String errorCode;
+    private boolean recoverable;
+    private String message;
+
 
     public record ApiPayload(String type, Object value) {}
 }

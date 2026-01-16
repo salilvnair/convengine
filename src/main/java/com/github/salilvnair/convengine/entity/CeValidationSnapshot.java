@@ -1,0 +1,43 @@
+package com.github.salilvnair.convengine.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+@Entity
+@Table(name = "ce_validation_snapshot")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class CeValidationSnapshot {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "snapshot_id")
+    private Long snapshotId;
+
+    @Column(name = "conversation_id", nullable = false)
+    private UUID conversationId;
+
+    @Column(name = "intent_code")
+    private String intentCode;
+
+    @Column(name = "state_code")
+    private String stateCode;
+
+    @Column(name = "schema_id")
+    private Long schemaId;
+
+    @Column(name = "validation_tables", columnDefinition = "jsonb")
+    private String validationTables;
+
+    @Column(name = "validation_decision", columnDefinition = "text")
+    private String validationDecision;
+
+    @Column(name = "created_at")
+    private OffsetDateTime createdAt;
+}
