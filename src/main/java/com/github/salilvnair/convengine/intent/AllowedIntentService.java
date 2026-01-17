@@ -4,8 +4,7 @@ import com.github.salilvnair.convengine.repo.IntentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.List;
 
 @RequiredArgsConstructor
 @Component
@@ -13,16 +12,38 @@ public class AllowedIntentService {
 
     private final IntentRepository intentRepository;
 
-    public Set<String> allowedIntentCodes() {
+    /**
+     * Canonical source of truth for allowed intents.
+     * Ordered by priority ASC (lower number = higher priority)
+     */
+    public List<AllowedIntent> allowedIntents() {
         return intentRepository.findByEnabledTrueOrderByPriorityAsc()
                 .stream()
-                .map(i -> i.getIntentCode() == null ? null : i.getIntentCode().trim())
-                .filter(s -> s != null && !s.isBlank())
-                .collect(Collectors.toSet());
+                .filter(i ->
+                        i.getIntentCode() != null &&
+                                !i.getIntentCode().isBlank()
+                )
+                .map(i ->
+                        new AllowedIntent(
+                                i.getIntentCode().trim(),
+                                i.getDescription(),
+                                i.getLlmHint(),
+                                i.getPriority()
+                        )
+                )
+                .toList();
     }
 
+    /**
+     * Hard gate check (used AFTER agent resolution)
+     */
     public boolean isAllowed(String intentCode) {
         if (intentCode == null || intentCode.isBlank()) return false;
-        return allowedIntentCodes().contains(intentCode.trim());
+
+        return allowedIntents()
+                .stream()
+                .anyMatch(i ->
+                        i.code().equalsIgnoreCase(intentCode.trim())
+                );
     }
 }

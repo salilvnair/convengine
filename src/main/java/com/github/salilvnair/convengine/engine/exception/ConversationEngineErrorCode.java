@@ -10,6 +10,11 @@ public enum ConversationEngineErrorCode {
             true
     ),
 
+    RESPONSE_MAPPING_NOT_FOUND(
+            "No suitable response found for the given state and intent",
+            false
+    ),
+
     UNRESOLVED_PROMPT_VARIABLE(
             "Prompt contains unresolved variables",
             false

@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface AuditRepository extends JpaRepository<CeAudit, Long> {
 
     List<CeAudit> findByConversationIdOrderByCreatedAtAsc(UUID conversationId);
+    List<CeAudit> findByConversationIdOrderByCreatedAtDesc(UUID conversationId);
 }

@@ -23,6 +23,9 @@ public class CeIntent {
     @Column(name = "display_name")
     private String displayName;
 
+    @Column(name = "llm_hint")
+    private String llmHint;
+
     @Column(name = "priority")
     private Integer priority;
 

@@ -26,8 +26,7 @@ public class IntentResolutionStep implements EngineStep {
         audit.audit("INTENT_RESOLVE_START", session.getConversationId(),
                 "{\"previousIntent\":\"" + JsonUtil.escape(previousIntent) + "\"}");
 
-        CompositeIntentResolver.IntentResolutionResult result =
-                intentResolver.resolveWithTrace(session);
+        CompositeIntentResolver.IntentResolutionResult result = intentResolver.resolveWithTrace(session);
 
         if (result == null || result.resolvedIntent() == null) {
             audit.audit("INTENT_RESOLVE_NO_CHANGE", session.getConversationId(), "{}");

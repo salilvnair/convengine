@@ -135,7 +135,7 @@ public class ValidationStep implements EngineStep {
 
         // Apply ce_rule on decision text unless already READY
         if (!"READY".equalsIgnoreCase(session.getConversation().getStateCode())) {
-            StepResult ruleResult = rulesStep.applyRules(session, decisionText);
+            StepResult ruleResult = rulesStep.execute(session);
             if (ruleResult instanceof StepResult.Stop stop) {
                 return stop;
             }

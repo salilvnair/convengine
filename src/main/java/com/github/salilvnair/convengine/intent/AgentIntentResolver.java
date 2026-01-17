@@ -8,6 +8,7 @@ import com.github.salilvnair.convengine.entity.CeOutputSchema;
 import com.github.salilvnair.convengine.entity.CePromptTemplate;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
+import com.github.salilvnair.convengine.model.JsonPayload;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
 import com.github.salilvnair.convengine.repo.OutputSchemaRepository;
@@ -15,8 +16,7 @@ import com.github.salilvnair.convengine.repo.PromptTemplateRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-
-import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 
 @RequiredArgsConstructor
@@ -37,13 +37,8 @@ public class AgentIntentResolver implements IntentResolver {
     @Override
     public String resolve(EngineSession session) {
 
-        // 🔒 Only classify at IDLE
-        if (!"IDLE".equalsIgnoreCase(session.getState())) {
-            return null;
-        }
-
         UUID conversationId = session.getConversationId();
-        Set<String> allowedIntents = allowedIntentService.allowedIntentCodes();
+        List<AllowedIntent> allowedIntents = allowedIntentService.allowedIntents();
 
         if (allowedIntents.isEmpty()) {
             audit.audit(
@@ -55,7 +50,7 @@ public class AgentIntentResolver implements IntentResolver {
         }
 
         // -------------------------------------------------
-        // Load prompt template (INTENT_AGENT)
+        // Load INTENT_AGENT prompt template
         // -------------------------------------------------
         CePromptTemplate template =
                 promptTemplateRepo
@@ -67,18 +62,30 @@ public class AgentIntentResolver implements IntentResolver {
                                         "Missing ce_prompt_template for purpose=INTENT_AGENT"
                                 )
                         );
-        PromptTemplateContext promptTemplateContext = PromptTemplateContext
-                                                        .builder()
-                                                        .context(session.getContextJson())
-                                                        .userInput(session.getUserText())
-                                                        .schemaJson(session.getResolvedSchema() != null ? session.getResolvedSchema().getJsonSchema() : null)
-                                                        .allowedIntents(allowedIntents)
-                                                        .build();
+
+        String pendingClarification =
+                session.hasPendingClarification()
+                        ? session.getPendingClarificationQuestion()
+                        : null;
+
+        PromptTemplateContext promptTemplateContext =
+                PromptTemplateContext.builder()
+                        .context(session.getContextJson())
+                        .userInput(session.getUserText())
+                        .schemaJson(
+                                session.getResolvedSchema() != null
+                                        ? session.getResolvedSchema().getJsonSchema()
+                                        : null
+                        )
+                        .allowedIntents(allowedIntents)
+                        .pendingClarification(pendingClarification)
+                        .build();
+
         String systemPrompt = renderer.render(template.getSystemPrompt(), promptTemplateContext);
         String userPrompt = renderer.render(template.getUserPrompt(), promptTemplateContext);
 
         // -------------------------------------------------
-        // Decide STRICT vs NON-STRICT JSON (CRITICAL)
+        // Resolve output schema (STRICT vs NON-STRICT)
         // -------------------------------------------------
         CeOutputSchema schemaEntity =
                 outputSchemaRepo
@@ -89,17 +96,28 @@ public class AgentIntentResolver implements IntentResolver {
                         .orElse(null);
 
         boolean strictJson = (schemaEntity != null);
+
         String jsonSchema =
                 strictJson
                         ? schemaEntity.getJsonSchema()
                         : """
                           {
-                            "type":"object",
-                            "required":["intent","confidence"],
-                            "properties":{
-                              "intent":{"type":"string"},
-                              "confidence":{"type":"number"}
-                            }
+                            "type": "object",
+                            "required": [
+                              "intent",
+                              "confidence",
+                              "needsClarification",
+                              "clarificationResolved",
+                              "clarificationQuestion"
+                            ],
+                            "properties": {
+                              "intent": { "type": ["string", "null"] },
+                              "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+                              "needsClarification": { "type": "boolean" },
+                              "clarificationResolved": { "type": "boolean" },
+                              "clarificationQuestion": { "type": ["string", "null"] }
+                            },
+                            "additionalProperties": false
                           }
                           """;
 
@@ -134,7 +152,8 @@ public class AgentIntentResolver implements IntentResolver {
                         jsonSchema,
                         session.getContextJson()
                 );
-
+        session.setPayload(new JsonPayload(output));
+        session.getConversation().setLastAssistantJson(output);
         audit.audit(
                 "INTENT_AGENT_LLM_OUTPUT",
                 conversationId,
@@ -142,10 +161,10 @@ public class AgentIntentResolver implements IntentResolver {
         );
 
         // -------------------------------------------------
-        // Parse + validate
+        // Parse result
         // -------------------------------------------------
         IntentAgentResult result = parse(output);
-        if (result == null || result.intent() == null) {
+        if (result == null) {
             audit.audit(
                     "INTENT_AGENT_REJECTED",
                     conversationId,
@@ -154,10 +173,84 @@ public class AgentIntentResolver implements IntentResolver {
             return null;
         }
 
-        String intent = result.intent().trim();
+        // -------------------------------------------------
+        // Guard: clarificationResolved without pending clarification
+        // -------------------------------------------------
+        if (result.clarificationResolved() && !session.hasPendingClarification()) {
+            audit.audit(
+                    "INTENT_AGENT_REJECTED",
+                    conversationId,
+                    "{\"reason\":\"clarificationResolved=true but no pending clarification\"}"
+            );
+            return null;
+        }
+
+        // -------------------------------------------------
+        // PATH A — agent asks clarification
+        // -------------------------------------------------
+        if (result.needsClarification()) {
+            String question = safe(result.clarificationQuestion());
+            if (question.isBlank()) {
+                audit.audit(
+                        "INTENT_AGENT_REJECTED",
+                        conversationId,
+                        "{\"reason\":\"needsClarification=true but clarificationQuestion empty\"}"
+                );
+                return null;
+            }
+
+            session.setPendingClarificationQuestion(question);
+
+            audit.audit(
+                    "INTENT_AGENT_NEEDS_CLARIFICATION",
+                    conversationId,
+                    "{\"question\":\"" + JsonUtil.escape(question) + "\"}"
+            );
+
+            return null;
+        }
+
+        // -------------------------------------------------
+        // PATH B — clarification resolved
+        // -------------------------------------------------
+        if (session.hasPendingClarification() && result.clarificationResolved()) {
+
+            String resolvedIntent = safe(result.intent());
+            if (resolvedIntent.isBlank()) {
+                audit.audit(
+                        "INTENT_AGENT_REJECTED",
+                        conversationId,
+                        "{\"reason\":\"clarificationResolved=true but intent missing\"}"
+                );
+                return null;
+            }
+
+            session.clearClarification();
+
+            audit.audit(
+                    "INTENT_AGENT_CLARIFICATION_RESOLVED",
+                    conversationId,
+                    "{\"intent\":\"" + JsonUtil.escape(resolvedIntent) + "\"}"
+            );
+
+            return resolvedIntent;
+        }
+
+        // -------------------------------------------------
+        // PATH C — normal intent resolution
+        // -------------------------------------------------
+        String intent = safe(result.intent());
         double confidence = result.confidence();
 
-        // Hard gate #1 — allowed intents
+        if (intent.isBlank()) {
+            audit.audit(
+                    "INTENT_AGENT_REJECTED",
+                    conversationId,
+                    "{\"reason\":\"intent blank\"}"
+            );
+            return null;
+        }
+
         if (!allowedIntentService.isAllowed(intent)) {
             audit.audit(
                     "INTENT_AGENT_REJECTED",
@@ -168,7 +261,6 @@ public class AgentIntentResolver implements IntentResolver {
             return null;
         }
 
-        // Hard gate #2 — confidence
         if (confidence < 0.55) {
             audit.audit(
                     "INTENT_AGENT_REJECTED",
@@ -191,22 +283,27 @@ public class AgentIntentResolver implements IntentResolver {
     }
 
     // -------------------------------------------------
-    // JSON parse helper
+    // JSON parsing
     // -------------------------------------------------
     private IntentAgentResult parse(String json) {
         try {
             JsonNode node = mapper.readTree(json);
-            String intent =
-                    node.path("intent").isTextual()
-                            ? node.path("intent").asText()
-                            : null;
-            double confidence =
-                    node.path("confidence").isNumber()
-                            ? node.path("confidence").asDouble()
-                            : 0.0;
-            return new IntentAgentResult(intent, confidence);
+
+            return new IntentAgentResult(
+                    node.path("intent").isTextual() ? node.path("intent").asText() : null,
+                    node.path("confidence").asDouble(0.0),
+                    node.path("needsClarification").asBoolean(false),
+                    node.path("clarificationQuestion").isTextual()
+                            ? node.path("clarificationQuestion").asText()
+                            : null,
+                    node.path("clarificationResolved").asBoolean(false)
+            );
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private String safe(String s) {
+        return s == null ? "" : s.trim();
     }
 }

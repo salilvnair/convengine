@@ -1,5 +1,8 @@
 package com.github.salilvnair.convengine.engine.steps;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
@@ -26,6 +29,7 @@ public class PersistConversationStep implements EngineStep {
 
     private final ConversationRepository conversationRepo;
     private final AuditService audit;
+    private final ObjectMapper mapper;
 
     @Override
     public StepResult execute(EngineSession session) {
