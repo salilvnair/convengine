@@ -19,6 +19,7 @@ import com.github.salilvnair.convengine.entity.CeMcpTool;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +43,16 @@ public class McpToolStep implements EngineStep {
     public StepResult execute(EngineSession session) {
 
         List<CeMcpTool> tools = registry.listEnabledTools();
+
+        if (CollectionUtils.isEmpty(tools)) {
+            audit.audit(
+                    "MCP_NO_TOOLS_AVAILABLE",
+                    session.getConversationId(),
+                    "{}"
+            );
+            return new StepResult.Continue();
+        }
+
         clearMcpContext(session);
         List<McpObservation> observations = readObservationsFromContext(session);
 
