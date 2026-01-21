@@ -5,6 +5,7 @@ import com.github.salilvnair.convengine.container.annotation.ContainerDataTransf
 import com.github.salilvnair.convengine.container.transformer.ContainerDataTransformerHandler;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
+import com.github.salilvnair.convengine.engine.session.EngineSession;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationContext;
@@ -45,17 +46,17 @@ public class ContainerDataTransformerService {
 
     public Map<String, Object> transformIfApplicable(
             ContainerComponentResponse response,
-            String state,
-            String intent
+            EngineSession session,
+            Map<String, Object> inputParams
     ) {
         ContainerDataTransformerHandler handler =
-                registry.get(new Key(intent, state));
+                registry.get(new Key(session.getIntent(), session.getState()));
 
         if (handler == null) {
             return null;
         }
 
-        return handler.transform(response);
+        return handler.transform(response, session, inputParams);
     }
 
     // ---- key ----

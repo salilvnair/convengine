@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.intent;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
@@ -121,15 +122,19 @@ public class AgentIntentResolver implements IntentResolver {
                           }
                           """;
 
+        ObjectNode payload = JsonUtil.object()
+                .put("templateId", template.getTemplateId())
+                .put("strict", strictJson)
+                .put("system_prompt", systemPrompt)
+                .put("user_prompt", userPrompt)
+                .set("schema", JsonUtil.parseOrNull(jsonSchema));
+
         audit.audit(
                 "INTENT_AGENT_LLM_INPUT",
                 conversationId,
-                "{\"templateId\":\"" + template.getTemplateId() +
-                        "\",\"strict\":" + strictJson +
-                        ",\"system_prompt\":\"" + JsonUtil.escape(systemPrompt) +
-                        "\",\"user_prompt\":\"" + JsonUtil.escape(userPrompt) +
-                        "\",\"schema\":\"" + JsonUtil.escape(jsonSchema) + "\"}"
+                JsonUtil.toJson(payload)
         );
+
 
         // -------------------------------------------------
         // Invoke LLM

@@ -102,7 +102,7 @@ public class AddContainerDataStep implements EngineStep {
                 ContainerComponentResponse resp = ccfCoreService.execute(req);
                 resp = interceptorExecutor.afterExecute(resp, session);
                 // find classes with @ContainerDataTransformer(state, intent) to transform resp if needed
-                Map<String, Object> transformedData = transformerService.transformIfApplicable(resp, session.getState(), session.getIntent());
+                Map<String, Object> transformedData = transformerService.transformIfApplicable(resp, session, inputParams);
                 JsonNode responseNode = transformedData == null ? mapper.valueToTree(resp) : mapper.valueToTree(transformedData);
                 containerRoot.set(cfg.getInputParamName(), responseNode);
                 Map<String, Object> jsonMap = Map.of(

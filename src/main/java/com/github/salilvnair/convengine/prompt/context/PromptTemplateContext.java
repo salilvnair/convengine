@@ -37,4 +37,11 @@ public class PromptTemplateContext {
     @PromptVar({"conversation_history"})
     private String conversationHistory;
 
+    @PromptVar({"mcp_tools"})
+    private String mcpTools;
+
+    @PromptVar({"mcp_observations"})
+    private String mcpObservations;
+
+
 }

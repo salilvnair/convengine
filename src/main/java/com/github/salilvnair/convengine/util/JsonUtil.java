@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.util;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.experimental.UtilityClass;
 
@@ -12,6 +13,23 @@ import java.util.Iterator;
 public final class JsonUtil {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Create empty JSON object */
+    public static ObjectNode object() {
+        return MAPPER.createObjectNode();
+    }
+
+    /** Parse JSON string safely (used for schema, MCP output, etc.) */
+    public static JsonNode parseOrNull(String json) {
+        if (json == null || json.isBlank()) {
+            return NullNode.getInstance();
+        }
+        try {
+            return MAPPER.readTree(json);
+        } catch (Exception e) {
+            return NullNode.getInstance();
+        }
+    }
 
     /**
      * Convert any object into JSON string.

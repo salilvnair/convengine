@@ -16,6 +16,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @RequiredArgsConstructor
 @Component
 public class RulesStep implements EngineStep {
@@ -46,19 +49,21 @@ public class RulesStep implements EngineStep {
             RuleTypeResolver typeResolver = typeFactory.get(rule.getRuleType());
 
             if (typeResolver == null || !typeResolver.resolve(session, rule)) {
-                String pl = "{\"ruleId\":" + rule.getRuleId() +
-                        ",\"intent\":\"" + session.getIntent()+
-                        "\",\"type\":\"" + rule.getRuleType() +
-                        "\",\"pattern\":\"" + rule.getMatchPattern() +
-                        "\",\"action\":\"" + rule.getAction()+
-                        "\",\"actionValue\":\"" + rule.getActionValue() +
-                        "\"}";
-                log.info("Rule not applied: {}", pl);
+
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("ruleId", rule.getRuleId());
+                payload.put("intent", session.getIntent());
+                payload.put("type", rule.getRuleType());
+                payload.put("pattern", rule.getMatchPattern());
+                payload.put("action", rule.getAction());
+                payload.put("actionValue", JsonUtil.parseOrNull(rule.getActionValue()));
+                log.info("Rule not applied: {}", payload);
                 audit.audit(
                         typeResolver == null  ? "RULE_ACTION_MISSING" : "RULE_NOT_APPLIED",
                         session.getConversationId(),
-                        pl
+                        JsonUtil.toJson(payload)
                 );
+
                 continue;
             }
 
@@ -67,17 +72,18 @@ public class RulesStep implements EngineStep {
             if (actionResolver != null) {
                 actionResolver.resolve(session, rule);
             }
-            String pl = "{\"ruleId\":" + rule.getRuleId() +
-                    ",\"type\":\"" + rule.getRuleType() +
-                    "\",\"pattern\":\"" + rule.getMatchPattern() +
-                    "\",\"action\":\"" + rule.getAction()+
-                    "\",\"actionValue\":\"" + rule.getActionValue() +
-                    "\"}";
-            log.info("Rule applied: {}", pl);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("ruleId", rule.getRuleId());
+            payload.put("intent", session.getIntent());
+            payload.put("type", rule.getRuleType());
+            payload.put("pattern", rule.getMatchPattern());
+            payload.put("action", rule.getAction());
+            payload.put("actionValue", JsonUtil.parseOrNull(rule.getActionValue()));
+            log.info("Rule applied: {}", payload);
             audit.audit(
                     "RULE_APPLIED",
                     session.getConversationId(),
-                    pl
+                    JsonUtil.toJson(payload)
             );
         }
 

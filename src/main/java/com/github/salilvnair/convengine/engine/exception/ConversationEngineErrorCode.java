@@ -10,6 +10,11 @@ public enum ConversationEngineErrorCode {
             true
     ),
 
+    AUDIT_SAVE_FAILED(
+            "Failed to save audit record",
+            false
+    ),
+
     RESPONSE_MAPPING_NOT_FOUND(
             "No suitable response found for the given state and intent",
             false
