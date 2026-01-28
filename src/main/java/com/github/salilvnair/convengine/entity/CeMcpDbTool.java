@@ -3,8 +3,12 @@ package com.github.salilvnair.convengine.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -27,8 +31,13 @@ public class CeMcpDbTool {
     @Column(name = "sql_template", nullable = false)
     private String sqlTemplate;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "param_schema", nullable = false, columnDefinition = "jsonb")
     private String paramSchema;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "allowed_identifiers", columnDefinition = "jsonb")
+    private Map<String, Set<String>> allowedIdentifiers;
 
     @Column(name = "safe_mode", nullable = false)
     private boolean safeMode = true;

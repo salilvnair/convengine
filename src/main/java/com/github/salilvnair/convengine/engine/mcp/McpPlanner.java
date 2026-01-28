@@ -42,13 +42,12 @@ public class McpPlanner {
 
         String obsJson = JsonUtil.toJson(observations);
 
-        PromptTemplateContext ctx =
-                PromptTemplateContext.builder()
-                        .context(session.getContextJson())
-                        .userInput(session.getUserText())
-                        .mcpTools(toolsJson)
-                        .mcpObservations(obsJson)
-                        .build();
+        PromptTemplateContext ctx = PromptTemplateContext.builder()
+                                    .context(session.getContextJson())
+                                    .userInput(session.getUserText())
+                                    .mcpTools(toolsJson)
+                                    .mcpObservations(obsJson)
+                                    .build();
 
         String systemPrompt = renderer.render(template.getSystemPrompt(), ctx);
         String userPrompt = renderer.render(template.getUserPrompt(), ctx);

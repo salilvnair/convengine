@@ -5,7 +5,6 @@ import com.github.salilvnair.convengine.entity.CeMcpDbTool;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +20,7 @@ public class McpDbExecutor {
         Map<String, Object> safeArgs = (args == null) ? Map.of() : args;
 
         // expand identifiers (${table}, ${column})
-        String sql = McpSqlTemplate.expandIdentifiers(tool.getSqlTemplate(), safeArgs);
+        String sql = McpSqlTemplate.expandIdentifiers(tool, safeArgs);
 
         // bind params (:value, :limit)
         Map<String, Object> params = new HashMap<>(safeArgs);

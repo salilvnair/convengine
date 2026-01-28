@@ -19,8 +19,7 @@ public class ContainerDataTransformerService {
 
     private final ApplicationContext ctx;
 
-    private final Map<Key, ContainerDataTransformerHandler> registry =
-            new HashMap<>();
+    private final Map<Key, ContainerDataTransformerHandler> registry = new HashMap<>();
 
     @PostConstruct
     void init() {

@@ -20,7 +20,6 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -144,7 +143,7 @@ public class McpToolStep implements EngineStep {
     private void writeObservationsToContext(EngineSession session, List<McpObservation> observations) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = (ObjectNode) root.with("mcp");
+            ObjectNode mcp = root.withObject("mcp");
 
             ArrayNode arr = mapper.createArrayNode();
             for (McpObservation o : observations) {
@@ -162,7 +161,7 @@ public class McpToolStep implements EngineStep {
     private void writeFinalAnswerToContext(EngineSession session, String answer) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = (ObjectNode) root.with("mcp");
+            ObjectNode mcp = root.withObject("mcp");
             mcp.put("finalAnswer", answer == null ? "" : answer);
             session.setContextJson(mapper.writeValueAsString(root));
         } catch (Exception ignored) {}
