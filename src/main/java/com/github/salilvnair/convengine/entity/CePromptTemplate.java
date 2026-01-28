@@ -16,12 +16,15 @@ public class CePromptTemplate {
     private Long templateId;
     @Column(name = "intent_code")
     private String intentCode;
+    @Column(name = "purpose")
     private String purpose;
     @Column(name = "system_prompt")
     private String systemPrompt;
     @Column(name = "user_prompt")
     private String userPrompt;
+    @Column(name = "temperature")
     private Double temperature;
+    @Column(name = "enabled")
     private Boolean enabled;
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

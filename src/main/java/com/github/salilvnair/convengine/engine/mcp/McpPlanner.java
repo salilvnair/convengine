@@ -7,6 +7,7 @@ import com.github.salilvnair.convengine.engine.mcp.model.McpObservation;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
 import com.github.salilvnair.convengine.entity.CePromptTemplate;
+import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
@@ -72,6 +73,12 @@ public class McpPlanner {
                 "{\"system_prompt\":\"" + JsonUtil.escape(systemPrompt) +
                         "\",\"user_prompt\":\"" + JsonUtil.escape(userPrompt) +
                         "\",\"schema\":\"" + JsonUtil.escape(schema) + "\"}"
+        );
+
+        LlmInvocationContext.set(
+                session.getConversationId(),
+                session.getIntent(),
+                session.getState()
         );
 
         String out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());

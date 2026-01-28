@@ -9,13 +9,20 @@ import lombok.Data;
 public class CeRule {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "rule_id")
     private Long ruleId;
-
+    @Column(name = "intent_code")
     private String intentCode;
+    @Column(name = "rule_type")
     private String ruleType;
+    @Column(name = "match_pattern")
     private String matchPattern;
+    @Column(name = "action")
     private String action;
+    @Column(name = "action_value")
     private String actionValue;
+    @Column(name = "priority")
     private int priority;
+    @Column(name = "enabled")
     private boolean enabled;
 }

@@ -19,9 +19,10 @@ public class CeAudit {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "audit_id")
     private Long auditId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, name = "conversation_id")
     private UUID conversationId;
 
     /**
@@ -43,10 +44,10 @@ public class CeAudit {
      * Arbitrary JSON payload describing
      * what happened at this stage.
      */
-    @Column(columnDefinition = "jsonb", nullable = false)
+    @Column(columnDefinition = "jsonb", nullable = false, name = "payload_json")
     @JdbcTypeCode(SqlTypes.JSON)
     private String payloadJson;
 
-    @Column(nullable = false)
+    @Column(nullable = false, name = "created_at")
     private OffsetDateTime createdAt;
 }

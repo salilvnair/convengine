@@ -6,9 +6,12 @@ import org.hibernate.boot.model.naming.Identifier;
 import org.hibernate.boot.model.naming.PhysicalNamingStrategy;
 import org.hibernate.boot.model.naming.PhysicalNamingStrategySnakeCaseImpl;
 import org.hibernate.engine.jdbc.env.spi.JdbcEnvironment;
+import org.springframework.stereotype.Component;
+
 import java.util.Map;
 
 @RequiredArgsConstructor
+@Component
 public class ConversationEngineCorePhysicalNamingStrategy extends PhysicalNamingStrategySnakeCaseImpl implements PhysicalNamingStrategy {
 
     private final ConvEngineEntityConfig config;
@@ -19,11 +22,11 @@ public class ConversationEngineCorePhysicalNamingStrategy extends PhysicalNaming
             return null;
         }
         String text = identifier.getText();
-        if(text.startsWith("CE_")) {
-            String entityNameKey = text.substring(4);
+        if(text.toUpperCase().startsWith("CE_")) {
+            String entityNameKey = text.substring(3);
             Map<String, String> tables = config.getTables();
-            if(tables.containsKey(entityNameKey)) {
-                String dynamicTableName = tables.get(entityNameKey);
+            if(tables.containsKey(entityNameKey.toUpperCase())) {
+                String dynamicTableName = tables.get(entityNameKey.toUpperCase());
                 return Identifier.toIdentifier(dynamicTableName, identifier.isQuoted());
             }
         }

@@ -24,20 +24,29 @@ public class CeConversation {
     @Column(name = "conversation_id")
     private UUID conversationId;
 
+    @Column(name = "status")
     private String status;
+
+    @Column(name = "intent_code")
     private String intentCode;
+
+    @Column(name = "state_code")
     private String stateCode;
 
-    @Column(columnDefinition = "jsonb")
+    @Column(columnDefinition = "jsonb", name = "context_json")
     @JdbcTypeCode(SqlTypes.JSON)
     private String contextJson;
 
+    @Column(name = "last_user_text")
     private String lastUserText;
 
-    @Column(columnDefinition = "jsonb")
+    @Column(columnDefinition = "jsonb", name = "last_assistant_json")
     @JdbcTypeCode(SqlTypes.JSON)
     private String lastAssistantJson;
 
+    @Column(name = "created_at")
     private OffsetDateTime createdAt;
+
+    @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 }
