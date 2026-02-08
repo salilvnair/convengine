@@ -36,6 +36,7 @@ public class IntentResolutionStep implements EngineStep {
         if (!result.resolvedIntent().equals(previousIntent)) {
             session.setIntent(result.resolvedIntent());
             session.getConversation().setIntentCode(result.resolvedIntent());
+            session.getConversation().setStateCode(session.getState());
 
             audit.audit(
                     "INTENT_RESOLVED_BY_" + result.source().name(),

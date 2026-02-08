@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.salilvnair</groupId>
     <artifactId>convengine</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.3</version>
     <name>ConversationEngine Framework</name>
     <description>ConvEngine is a deterministic, database-configured conversational engine designed for enterprise workflows.</description>
     <url>https://github.com/salilvnair/convengine</url>
@@ -49,7 +49,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <version.common-lang3>3.20.0</version.common-lang3>
         <version.gson>2.10.1</version.gson>
-        <version.ccf-core>1.0.1</version.ccf-core>
+        <version.ccf-core>1.0.2</version.ccf-core>
         <version.json-path>2.9.0</version.json-path>
         <version.spring-boot>4.0.1</version.spring-boot>
     </properties>
@@ -180,6 +180,12 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <gpgArguments>
+                        <arg>--pinentry-mode</arg>
+                        <arg>loopback</arg>
+                    </gpgArguments>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

@@ -28,7 +28,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Component
 @RequiresConversationPersisted
-@MustRunAfter(IntentResolutionStep.class)
+@MustRunAfter(FallbackIntentStateStep.class)
 public class AddContainerDataStep implements EngineStep {
 
     private final ContainerConfigRepository containerConfigRepo;

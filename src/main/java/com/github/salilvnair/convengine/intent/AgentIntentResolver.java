@@ -178,6 +178,9 @@ public class AgentIntentResolver implements IntentResolver {
             return null;
         }
 
+        session.setIntent(result.intent());
+        session.setState(result.state());
+
         // -------------------------------------------------
         // Guard: clarificationResolved without pending clarification
         // -------------------------------------------------
@@ -201,7 +204,7 @@ public class AgentIntentResolver implements IntentResolver {
                         conversationId,
                         "{\"reason\":\"needsClarification=true but clarificationQuestion empty\"}"
                 );
-                return null;
+                return result.intent();
             }
 
             session.setPendingClarificationQuestion(question);
@@ -212,8 +215,9 @@ public class AgentIntentResolver implements IntentResolver {
                     "{\"question\":\"" + JsonUtil.escape(question) + "\"}"
             );
 
-            return null;
+            return result.intent();
         }
+
 
         // -------------------------------------------------
         // PATH B — clarification resolved
@@ -227,7 +231,7 @@ public class AgentIntentResolver implements IntentResolver {
                         conversationId,
                         "{\"reason\":\"clarificationResolved=true but intent missing\"}"
                 );
-                return null;
+                return result.intent();
             }
 
             session.clearClarification();
@@ -241,6 +245,7 @@ public class AgentIntentResolver implements IntentResolver {
             return resolvedIntent;
         }
 
+
         // -------------------------------------------------
         // PATH C — normal intent resolution
         // -------------------------------------------------
@@ -253,7 +258,7 @@ public class AgentIntentResolver implements IntentResolver {
                     conversationId,
                     "{\"reason\":\"intent blank\"}"
             );
-            return null;
+            return result.intent();
         }
 
         if (!allowedIntentService.isAllowed(intent)) {
@@ -296,6 +301,7 @@ public class AgentIntentResolver implements IntentResolver {
 
             return new IntentAgentResult(
                     node.path("intent").isTextual() ? node.path("intent").asText() : null,
+                    node.path("state").isTextual() ? node.path("state").asText() : null,
                     node.path("confidence").asDouble(0.0),
                     node.path("needsClarification").asBoolean(false),
                     node.path("clarificationQuestion").isTextual()
