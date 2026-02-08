@@ -18,6 +18,8 @@ public class CePromptTemplate {
     private String intentCode;
     @Column(name = "purpose")
     private String purpose;
+    @Column(name = "state_code")
+    private String stateCode;
     @Column(name = "system_prompt")
     private String systemPrompt;
     @Column(name = "user_prompt")

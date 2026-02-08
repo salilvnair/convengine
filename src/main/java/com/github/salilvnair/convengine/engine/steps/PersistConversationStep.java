@@ -1,8 +1,5 @@
 package com.github.salilvnair.convengine.engine.steps;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
@@ -19,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RequiredArgsConstructor
 @Component
@@ -29,7 +28,6 @@ public class PersistConversationStep implements EngineStep {
 
     private final ConversationRepository conversationRepo;
     private final AuditService audit;
-    private final ObjectMapper mapper;
 
     @Override
     public StepResult execute(EngineSession session) {
@@ -43,6 +41,7 @@ public class PersistConversationStep implements EngineStep {
         }
 
         // --- persist conversation ---
+        sanitizeConversationForPostgres(session);
         session.getConversation().setStatus("RUNNING");
         session.getConversation().setUpdatedAt(OffsetDateTime.now());
         conversationRepo.save(session.getConversation());
@@ -57,10 +56,36 @@ public class PersistConversationStep implements EngineStep {
 
         session.setFinalResult(result);
 
-        audit.audit("ENGINE_RETURN", session.getConversationId(),
-                "{\"intent\":\"" + JsonUtil.escape(session.getIntent()) +
-                        "\",\"state\":\"" + JsonUtil.escape(session.getState()) + "\"}");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("intent", session.getIntent());
+        payload.put("state", session.getState());
+        payload.put("final_result", result);
+        audit.audit("ENGINE_RETURN", session.getConversationId(), payload);
 
         return new StepResult.Continue();
+    }
+
+    private void sanitizeConversationForPostgres(EngineSession session) {
+        if (session.getState() == null || session.getState().isBlank()) {
+            session.setState("UNKNOWN");
+        }
+        session.getConversation().setStateCode(session.getState());
+
+        String contextJson = session.getConversation().getContextJson();
+        if (contextJson == null || contextJson.isBlank() || JsonUtil.parseOrNull(contextJson).isNull()) {
+            session.getConversation().setContextJson("{}");
+            session.setContextJson("{}");
+        }
+
+        String assistantJson = session.getConversation().getLastAssistantJson();
+        if (assistantJson == null || assistantJson.isBlank()) {
+            return;
+        }
+        if (JsonUtil.parseOrNull(assistantJson).isNull()) {
+            Map<String, Object> wrapped = new LinkedHashMap<>();
+            wrapped.put("type", "TEXT");
+            wrapped.put("value", assistantJson);
+            session.getConversation().setLastAssistantJson(JsonUtil.toJson(wrapped));
+        }
     }
 }

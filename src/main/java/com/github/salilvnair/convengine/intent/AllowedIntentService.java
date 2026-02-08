@@ -5,12 +5,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
 
 @RequiredArgsConstructor
 @Component
 public class AllowedIntentService {
 
     private final IntentRepository intentRepository;
+    private static final Set<String> EXCLUDED_INTENTS = Set.of("UNKNOWN");
 
     /**
      * Canonical source of truth for allowed intents.
@@ -21,7 +23,8 @@ public class AllowedIntentService {
                 .stream()
                 .filter(i ->
                         i.getIntentCode() != null &&
-                                !i.getIntentCode().isBlank()
+                                !i.getIntentCode().isBlank() &&
+                                !EXCLUDED_INTENTS.contains(i.getIntentCode().trim().toUpperCase())
                 )
                 .map(i ->
                         new AllowedIntent(
@@ -39,6 +42,7 @@ public class AllowedIntentService {
      */
     public boolean isAllowed(String intentCode) {
         if (intentCode == null || intentCode.isBlank()) return false;
+        if (EXCLUDED_INTENTS.contains(intentCode.trim().toUpperCase())) return false;
 
         return allowedIntents()
                 .stream()

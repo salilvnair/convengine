@@ -16,7 +16,9 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @RequiredArgsConstructor
 @Component
@@ -67,13 +69,11 @@ public class McpPlanner {
         }
         """;
 
-        audit.audit(
-                "MCP_PLAN_LLM_INPUT",
-                session.getConversationId(),
-                "{\"system_prompt\":\"" + JsonUtil.escape(systemPrompt) +
-                        "\",\"user_prompt\":\"" + JsonUtil.escape(userPrompt) +
-                        "\",\"schema\":\"" + JsonUtil.escape(schema) + "\"}"
-        );
+        Map<String, Object> inputPayload = new LinkedHashMap<>();
+        inputPayload.put("system_prompt", systemPrompt);
+        inputPayload.put("user_prompt", userPrompt);
+        inputPayload.put("schema", schema);
+        audit.audit("MCP_PLAN_LLM_INPUT", session.getConversationId(), inputPayload);
 
         LlmInvocationContext.set(
                 session.getConversationId(),
@@ -83,11 +83,9 @@ public class McpPlanner {
 
         String out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
 
-        audit.audit(
-                "MCP_PLAN_LLM_OUTPUT",
-                session.getConversationId(),
-                "{\"json\":\"" + JsonUtil.escape(out) + "\"}"
-        );
+        Map<String, Object> outputPayload = new LinkedHashMap<>();
+        outputPayload.put("json", out);
+        audit.audit("MCP_PLAN_LLM_OUTPUT", session.getConversationId(), outputPayload);
 
         try {
             return mapper.readValue(out, McpPlan.class);

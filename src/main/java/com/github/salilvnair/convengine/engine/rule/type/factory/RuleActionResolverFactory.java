@@ -18,6 +18,9 @@ public class RuleActionResolverFactory {
     }
 
     public RuleActionResolver get(String action) {
+        if (action == null) {
+            return null;
+        }
         return resolvers.get(action.toUpperCase());
     }
 }

@@ -4,10 +4,13 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeIntentClassifier;
 import com.github.salilvnair.convengine.repo.IntentClassifierRepository;
-import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -20,20 +23,42 @@ public class ClassifierIntentResolver implements IntentResolver {
 
     @Override
     public String resolve(EngineSession session) {
-        String state = session.getState();
-        if (!"IDLE".equalsIgnoreCase(state)) return null;
         String userText = session.getUserText();
         UUID conversationId = session.getConversationId();
+        Set<String> matchedIntents = new LinkedHashSet<>();
+        Map<String, Object> matchedByRule = new LinkedHashMap<>();
 
         for (CeIntentClassifier ic : intentClassifierRepo.findByEnabledTrueOrderByPriorityAsc()) {
             if (matches(ic.getRuleType(), ic.getPattern(), userText)) {
                 String intent = ic.getIntentCode();
-                audit.audit("INTENT_CLASSIFICATION_MATCHED", conversationId,
-                        "{\"classifierId\":" + ic.getClassifierId() +
-                                ",\"intent\":\"" + JsonUtil.escape(intent) + "\"}");
-                return intent;
+                matchedIntents.add(intent);
+                matchedByRule.put(String.valueOf(ic.getClassifierId()), intent);
             }
         }
+
+        if (matchedIntents.size() > 1) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("userText", userText);
+            payload.put("matchedIntents", matchedIntents);
+            payload.put("matchedByRule", matchedByRule);
+            audit.audit("INTENT_CLASSIFIER_COLLISION", conversationId, payload);
+            return null;
+        }
+
+        if (matchedIntents.size() == 1) {
+            String intent = matchedIntents.iterator().next();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("intent", intent);
+            payload.put("matchedByRule", matchedByRule);
+            audit.audit("INTENT_CLASSIFICATION_MATCHED", conversationId, payload);
+            return intent;
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("userText", userText);
+        payload.put("intent", session.getIntent());
+        payload.put("state", session.getState());
+        audit.audit("INTENT_CLASSIFIER_NO_MATCH", conversationId, payload);
         return null;
     }
 

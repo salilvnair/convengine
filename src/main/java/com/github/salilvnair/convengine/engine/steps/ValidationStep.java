@@ -57,7 +57,7 @@ public class ValidationStep implements EngineStep {
 
         if (session.getResolvedSchema() == null) {
             audit.audit("VALIDATION_SKIPPED_NO_SCHEMA", session.getConversationId(),
-                    "{\"reason\":\"no schema resolved\"}");
+                    mapOf("reason", "no schema resolved"));
             return new StepResult.Continue();
         }
 
@@ -68,7 +68,7 @@ public class ValidationStep implements EngineStep {
 
         if (!shouldValidate) {
             audit.audit("VALIDATION_SKIPPED_NO_SCHEMA_INPUT", session.getConversationId(),
-                    "{\"reason\":\"no schema fields present\"}");
+                    mapOf("reason", "no schema fields present"));
             return new StepResult.Continue();
         }
 
@@ -76,7 +76,7 @@ public class ValidationStep implements EngineStep {
 
         if (validationTables == null) {
             audit.audit("VALIDATION_SKIPPED_NO_TABLES", session.getConversationId(),
-                    "{\"reason\":\"no container configs or no inputs\"}");
+                    mapOf("reason", "no container configs or no inputs"));
             return new StepResult.Continue();
         }
 
@@ -85,14 +85,17 @@ public class ValidationStep implements EngineStep {
         session.setValidationTablesJson(validationTables);
 
         audit.audit("VALIDATION_TABLES_BUILT", session.getConversationId(),
-                "{\"bytes\":" + validationTables.length() + "}");
+                mapOf("bytes", validationTables.length()));
 
         // sanitize context used for decision so previous validation_decision doesn't poison next
         String validationContext = removeTopLevelField(session.getContextJson(), "validation_decision");
         audit.audit("VALIDATION_CONTEXT_SANITIZED", session.getConversationId(),
-                "{\"removed\":\"validation_decision\"}");
+                mapOf("removed", "validation_decision"));
 
         CePromptTemplate template = resolvePromptTemplate(PURPOSE_CONTAINER_DATA_VALIDATION, session.getIntent());
+        session.putInputParam("session", session.sessionDict());
+        session.putInputParam("context", session.contextDict());
+        session.putInputParam("extracted_data", session.extractedDataDict());
 
         PromptTemplateContext promptTemplateContext = PromptTemplateContext
                                                         .builder()
@@ -101,14 +104,16 @@ public class ValidationStep implements EngineStep {
                                                         .schemaJson(session.getResolvedSchema() != null ? session.getResolvedSchema().getJsonSchema() : null)
                                                         .containerDataJson(session.getContainerDataJson())
                                                         .validationJson(session.getValidationTablesJson())
+                                                        .extra(session.getInputParams())
                                                         .build();
         String systemPrompt = renderer.render(template.getSystemPrompt(), promptTemplateContext);
         String userPrompt = renderer.render(template.getUserPrompt(), promptTemplateContext);
 
-        audit.audit("VALIDATION_DECISION_LLM_INPUT", session.getConversationId(),
-                "{\"system_prompt\":\"" + JsonUtil.escape(systemPrompt) +
-                        "\",\"user_prompt\":\"" + JsonUtil.escape(userPrompt) +
-                        "\",\"validation_tables\":\"" + JsonUtil.escape(validationTables) + "\"}");
+        Map<String, Object> llmInputPayload = new LinkedHashMap<>();
+        llmInputPayload.put("system_prompt", systemPrompt);
+        llmInputPayload.put("user_prompt", userPrompt);
+        llmInputPayload.put("validation_tables", validationTables);
+        audit.audit("VALIDATION_DECISION_LLM_INPUT", session.getConversationId(), llmInputPayload);
 
         LlmInvocationContext.set(session.getConversationId(), session.getIntent(), session.getState());
 
@@ -116,7 +121,7 @@ public class ValidationStep implements EngineStep {
         session.setValidationDecision(decisionText);
 
         audit.audit("VALIDATION_DECISION_LLM_OUTPUT", session.getConversationId(),
-                "{\"decision\":\"" + JsonUtil.escape(decisionText) + "\"}");
+                mapOf("decision", decisionText));
 
         // Save snapshot for replay (history)
         saveSnapshot(session, validationTables, decisionText);
@@ -127,10 +132,11 @@ public class ValidationStep implements EngineStep {
             String mergeJson = "{\"validation_decision\":\"" + JsonUtil.escape(decisionText) + "\"}";
             session.setContextJson(JsonUtil.merge(session.getContextJson(), mergeJson));
             session.getConversation().setContextJson(session.getContextJson());
-            audit.audit("VALIDATION_DECISION_MERGED", session.getConversationId(), mergeJson);
+            audit.audit("VALIDATION_DECISION_MERGED", session.getConversationId(),
+                    mapOf("validation_decision", decisionText));
         } catch (Exception e) {
             audit.audit("VALIDATION_DECISION_MERGE_FAILED", session.getConversationId(),
-                    "{\"error\":\"" + JsonUtil.escape(e.getMessage()) + "\"}");
+                    mapOf("error", e.getMessage()));
         }
 
         // Apply ce_rule on decision text unless already READY
@@ -159,10 +165,10 @@ public class ValidationStep implements EngineStep {
             validationSnapshotRepo.save(snap);
 
             audit.audit("VALIDATION_SNAPSHOT_SAVED", session.getConversationId(),
-                    "{\"bytes\":" + validationTablesJson.length() + "}");
+                    mapOf("bytes", validationTablesJson.length()));
         } catch (Exception e) {
             audit.audit("VALIDATION_SNAPSHOT_SAVE_FAILED", session.getConversationId(),
-                    "{\"error\":\"" + JsonUtil.escape(e.getMessage()) + "\"}");
+                    mapOf("error", e.getMessage()));
         }
     }
 
@@ -185,7 +191,7 @@ public class ValidationStep implements EngineStep {
 
             if (value == null) {
                 audit.audit("VALIDATION_SKIPPED_MISSING_INPUT", session.getConversationId(),
-                        "{\"input_param_name\":\"" + JsonUtil.escape(key) + "\"}");
+                        mapOf("input_param_name", key));
                 continue;
             }
 
@@ -194,6 +200,9 @@ public class ValidationStep implements EngineStep {
 
                 Map<String, Object> inputParams = new HashMap<>();
                 inputParams.put(key, value);
+                if (session.getInputParams() != null) {
+                    inputParams.putAll(session.getInputParams());
+                }
                 if (session.getEngineContext().getInputParams() != null) {
                     inputParams.putAll(session.getEngineContext().getInputParams());
                 }
@@ -210,12 +219,13 @@ public class ValidationStep implements EngineStep {
                 request.setPageInfo(List.of(pageInfoRequest));
                 request.setRequestTypes(List.of(RequestType.CONTAINER));
 
-                audit.audit("VALIDATION_CCF_REQUEST", session.getConversationId(),
-                        "{\"pageId\":" + cfg.getPageId() +
-                                ",\"sectionId\":" + cfg.getSectionId() +
-                                ",\"containerId\":" + cfg.getContainerId() +
-                                ",\"input_param_name\":\"" + JsonUtil.escape(key) +
-                                "\",\"value\":\"" + JsonUtil.escape(String.valueOf(value)) + "\"}");
+                Map<String, Object> ccfRequestPayload = new LinkedHashMap<>();
+                ccfRequestPayload.put("pageId", cfg.getPageId());
+                ccfRequestPayload.put("sectionId", cfg.getSectionId());
+                ccfRequestPayload.put("containerId", cfg.getContainerId());
+                ccfRequestPayload.put("input_param_name", key);
+                ccfRequestPayload.put("value", String.valueOf(value));
+                audit.audit("VALIDATION_CCF_REQUEST", session.getConversationId(), ccfRequestPayload);
 
                 interceptorExecutor.beforeExecute(request, session);
                 ContainerComponentResponse resp = ccfCoreService.execute(request);
@@ -225,11 +235,11 @@ public class ValidationStep implements EngineStep {
                 root.set(key, respNode);
 
                 audit.audit("VALIDATION_CCF_RESPONSE", session.getConversationId(),
-                        "{\"input_param_name\":\"" + JsonUtil.escape(key) + "\",\"ccf\":\"" + JsonUtil.escape(respNode.toString()) + "\"}");
+                        mapOf("input_param_name", key, "ccf", respNode.toString()));
 
             } catch (Exception e) {
                 audit.audit("VALIDATION_CCF_FAILED", session.getConversationId(),
-                        "{\"input_param_name\":\"" + JsonUtil.escape(key) + "\",\"error\":\"" + JsonUtil.escape(e.getMessage()) + "\"}");
+                        mapOf("input_param_name", key, "error", e.getMessage()));
             }
         }
 
@@ -263,5 +273,13 @@ public class ValidationStep implements EngineStep {
         } catch (Exception e) {
             return json;
         }
+    }
+
+    private Map<String, Object> mapOf(Object... kvPairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < kvPairs.length; i += 2) {
+            map.put(String.valueOf(kvPairs[i]), kvPairs[i + 1]);
+        }
+        return map;
     }
 }

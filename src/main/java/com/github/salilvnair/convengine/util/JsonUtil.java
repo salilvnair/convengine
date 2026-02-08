@@ -80,7 +80,7 @@ public final class JsonUtil {
                             ? MAPPER.createObjectNode()
                             : MAPPER.readTree(sourceJson);
 
-            JsonNode merged = deepMerge(targetNode, sourceNode);
+            JsonNode merged = deepMerge(targetNode, sourceNode, false);
             return MAPPER.writeValueAsString(merged);
 
         } catch (Exception e) {
@@ -88,7 +88,7 @@ public final class JsonUtil {
         }
     }
 
-    private static JsonNode deepMerge(JsonNode target, JsonNode source) {
+    private static JsonNode deepMerge(JsonNode target, JsonNode source, boolean overwriteWithNull) {
 
         if (source == null || source.isNull()) {
             return target;
@@ -108,9 +108,12 @@ public final class JsonUtil {
 
                     targetObject.set(
                             fieldName,
-                            deepMerge(targetValue, sourceValue)
+                            deepMerge(targetValue, sourceValue, overwriteWithNull)
                     );
                 } else {
+                    if (!overwriteWithNull && sourceValue != null && sourceValue.isNull() && targetObject.has(fieldName)) {
+                        return;
+                    }
                     targetObject.set(fieldName, sourceValue);
                 }
             });

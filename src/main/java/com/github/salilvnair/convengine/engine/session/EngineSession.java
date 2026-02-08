@@ -10,6 +10,7 @@ import com.github.salilvnair.convengine.engine.model.StepTiming;
 import com.github.salilvnair.convengine.entity.CeConversation;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
 import com.github.salilvnair.convengine.model.OutputPayload;
+import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -33,6 +34,11 @@ public class EngineSession {
 
     private CeOutputSchema resolvedSchema;
     private boolean schemaComplete;
+    private boolean schemaHasAnyValue;
+    private String lastLlmOutput;
+    private String lastLlmStage;
+    private List<String> missingRequiredFields = new ArrayList<>();
+    private Map<String, Object> missingFieldOptions = new LinkedHashMap<>();
 
     private String validationTablesJson;
     private String validationDecision;
@@ -66,12 +72,16 @@ public class EngineSession {
 
     private final ObjectMapper mapper;
     private final List<StepTiming> stepTimings = new ArrayList<>();
+    private Map<String, Object> inputParams = new LinkedHashMap<>();
 
     public EngineSession(EngineContext engineContext, ObjectMapper mapper) {
         this.engineContext = engineContext;
         this.mapper = mapper;
         this.conversationId = UUID.fromString(engineContext.getConversationId());
         this.userText = engineContext.getUserText();
+        if (engineContext.getInputParams() != null) {
+            this.inputParams.putAll(engineContext.getInputParams());
+        }
     }
 
     // -------------------------------------------------
@@ -79,11 +89,17 @@ public class EngineSession {
     // -------------------------------------------------
 
     public void syncFromConversation() {
+        syncFromConversation(false);
+    }
+
+    public void syncFromConversation(boolean preserveContext) {
         if (conversation == null) return;
 
         this.intent = conversation.getIntentCode();
         this.state = conversation.getStateCode();
-        this.contextJson = conversation.getContextJson();
+        if (!preserveContext) {
+            this.contextJson = conversation.getContextJson();
+        }
 
         restoreClarificationFromContext();
     }
@@ -173,6 +189,79 @@ public class EngineSession {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    public Map<String, Object> contextDict() {
+        try {
+            if (contextJson == null || contextJson.isBlank()) {
+                return new LinkedHashMap<>();
+            }
+            JsonNode root = mapper.readTree(contextJson);
+            if (!root.isObject()) {
+                return new LinkedHashMap<>();
+            }
+            return mapper.convertValue(root, Map.class);
+        } catch (Exception e) {
+            return new LinkedHashMap<>();
+        }
+    }
+
+    public Map<String, Object> extractedDataDict() {
+        Map<String, Object> context = contextDict();
+        if (resolvedSchema == null || resolvedSchema.getJsonSchema() == null) {
+            return context;
+        }
+        try {
+            JsonNode schemaNode = mapper.readTree(resolvedSchema.getJsonSchema());
+            JsonNode props = schemaNode.path("properties");
+            if (!props.isObject()) {
+                return context;
+            }
+            Map<String, Object> extracted = new LinkedHashMap<>();
+            props.fieldNames().forEachRemaining(field -> {
+                if (context.containsKey(field)) {
+                    extracted.put(field, context.get(field));
+                }
+            });
+            return extracted;
+        } catch (Exception e) {
+            return context;
+        }
+    }
+
+    public Map<String, Object> sessionDict() {
+        Map<String, Object> sessionMap = new LinkedHashMap<>();
+        sessionMap.put("conversationId", String.valueOf(conversationId));
+        sessionMap.put("intent", intent);
+        sessionMap.put("state", state);
+        sessionMap.put("schemaComplete", schemaComplete);
+        sessionMap.put("hasAnySchemaValue", schemaHasAnyValue);
+        sessionMap.put("missingRequiredFields", missingRequiredFields);
+        sessionMap.put("missingFieldOptions", missingFieldOptions);
+        sessionMap.put("userText", userText);
+        sessionMap.put("pendingClarificationQuestion", pendingClarificationQuestion);
+        sessionMap.put("lastLlmStage", lastLlmStage);
+        sessionMap.put("context", contextDict());
+        sessionMap.put("extractedData", extractedDataDict());
+        return sessionMap;
+    }
+
+    public void putInputParam(String key, Object value) {
+        if (key == null || key.isBlank()) {
+            return;
+        }
+        inputParams.put(key, value);
+    }
+
+    public String inputParamAsString(String key) {
+        Object value = inputParams.get(key);
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof String s) {
+            return s;
+        }
+        return JsonUtil.toJson(value);
     }
 
 }

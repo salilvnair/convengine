@@ -17,6 +17,9 @@ public class RuleTypeResolverFactory {
     }
 
     public RuleTypeResolver get(String type) {
+        if (type == null) {
+            return null;
+        }
         return resolvers.get(type.toUpperCase());
     }
 }

@@ -4,5 +4,9 @@ public enum RuleAction {
     SET_INTENT,
     RESOLVE_INTENT,
     SET_STATE,
+    SET_JSON,
+    GET_CONTEXT,
+    GET_EXTRACTED_DATA,
+    GET_SESSION,
     SHORT_CIRCUIT
 }

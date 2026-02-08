@@ -57,15 +57,14 @@ public class AddContainerDataStep implements EngineStep {
         }
 
         if (configs.isEmpty()) {
-            Map<String, String> reasonMap = Map.of(
-                    "reason", "no container configs for intent/state",
-                    "intent", session.getIntent(),
-                    "state", session.getState()
-            );
+            Map<String, Object> reasonMap = new HashMap<>();
+            reasonMap.put("reason", "no container configs for intent/state");
+            reasonMap.put("intent", session.getIntent());
+            reasonMap.put("state", session.getState());
             audit.audit(
                     "CONTAINER_DATA_SKIPPED",
                     session.getConversationId(),
-                    mapper.writeValueAsString(reasonMap)
+                    reasonMap
             );
             return new StepResult.Continue();
         }
@@ -82,6 +81,9 @@ public class AddContainerDataStep implements EngineStep {
                     value = session.getUserText();
                 }
                 inputParams.put(key, value);
+                if (session.getInputParams() != null) {
+                    inputParams.putAll(session.getInputParams());
+                }
                 if (session.getEngineContext().getInputParams() != null) {
                     inputParams.putAll(session.getEngineContext().getInputParams());
                 }
@@ -117,18 +119,17 @@ public class AddContainerDataStep implements EngineStep {
                 audit.audit(
                         "CONTAINER_DATA_EXECUTED",
                         session.getConversationId(),
-                        mapper.writeValueAsString(jsonMap)
+                        jsonMap
                 );
 
             } catch (Exception e) {
-                Map<String, Object> errorJsonMap = Map.of(
-                        "containerId", cfg.getContainerId(),
-                        "error", e.getMessage()
-                );
+                Map<String, Object> errorJsonMap = new HashMap<>();
+                errorJsonMap.put("containerId", cfg.getContainerId());
+                errorJsonMap.put("error", e.getMessage());
                 audit.audit(
                         "CONTAINER_DATA_FAILED",
                         session.getConversationId(),
-                        mapper.writeValueAsString(errorJsonMap)
+                        errorJsonMap
                 );
             }
         }

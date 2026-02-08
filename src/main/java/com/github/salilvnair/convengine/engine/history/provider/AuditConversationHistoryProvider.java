@@ -18,7 +18,7 @@ import java.util.UUID;
 public class AuditConversationHistoryProvider implements ConversationHistoryProvider {
 
     private static final String USER_STAGE = "USER_INPUT";
-    private static final List<String> BOT_STAGES = List.of("RESOLVE_RESPONSE_LLM_OUTPUT", "INTENT_AGENT_LLM_OUTPUT");
+    private static final List<String> BOT_STAGES = List.of("ASSISTANT_OUTPUT", "RESOLVE_RESPONSE_LLM_OUTPUT", "INTENT_AGENT_LLM_OUTPUT");
 
     private final AuditRepository auditRepo;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -65,6 +65,8 @@ public class AuditConversationHistoryProvider implements ConversationHistoryProv
             if (node.has("text")) return node.get("text").asText();
             if (node.has("value")) return node.get("value").asText();
             if (node.has("json")) return node.get("json").asText();
+            if (node.has("output")) return node.get("output").asText();
+            if (node.has("question")) return node.get("question").asText();
 
             return payload;
         } catch (Exception e) {

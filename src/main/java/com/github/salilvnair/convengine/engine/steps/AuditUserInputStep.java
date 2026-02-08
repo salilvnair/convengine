@@ -5,9 +5,11 @@ import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
-import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RequiredArgsConstructor
 @Component
@@ -18,8 +20,9 @@ public class AuditUserInputStep implements EngineStep {
 
     @Override
     public StepResult execute(EngineSession session) {
-        audit.audit("USER_INPUT", session.getConversationId(),
-                "{\"text\":\"" + JsonUtil.escape(session.getUserText()) + "\"}");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("text", session.getUserText());
+        audit.audit("USER_INPUT", session.getConversationId(), payload);
         return new StepResult.Continue();
     }
 }

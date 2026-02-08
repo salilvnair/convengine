@@ -14,6 +14,9 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @Component
 @RequiredArgsConstructor
 public class TextOutputFormatResolver implements OutputFormatResolver {
@@ -33,6 +36,10 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
             CeResponse response,
             CePromptTemplate template
     ) {
+        session.putInputParam("session", session.sessionDict());
+        session.putInputParam("context", session.contextDict());
+        session.putInputParam("extracted_data", session.extractedDataDict());
+
         String historyJson = JsonUtil.toJson(session.conversionHistory());
 
         PromptTemplateContext ctx =
@@ -45,6 +52,7 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
                         .containerDataJson(session.getContainerDataJson())
                         .validationJson(session.getValidationTablesJson())
                         .conversationHistory(historyJson)
+                        .extra(session.getInputParams())
                         .build();
 
         String systemPrompt = renderer.render(template.getSystemPrompt(), ctx);
@@ -56,26 +64,24 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
                 session.getState()
         );
 
-        audit.audit(
-                "RESOLVE_RESPONSE_LLM_INPUT",
-                session.getConversationId(),
-                "{\"system_prompt\":\"" + JsonUtil.escape(systemPrompt) +
-                        "\",\"user_prompt\":\"" + JsonUtil.escape(userPrompt) +
-                        "\",\"derivation_hint\":\"" + JsonUtil.escape(safe(response.getDerivationHint())) +
-                        "\",\"context\":\"" + JsonUtil.escape(session.getContextJson()) + "\"}"
-        );
+        Map<String, Object> inputPayload = new LinkedHashMap<>();
+        inputPayload.put("system_prompt", systemPrompt);
+        inputPayload.put("user_prompt", userPrompt);
+        inputPayload.put("derivation_hint", safe(response.getDerivationHint()));
+        inputPayload.put("context", session.getContextJson());
+        audit.audit("RESOLVE_RESPONSE_LLM_INPUT", session.getConversationId(), inputPayload);
 
         String text =
                 llm.generateText(
                         systemPrompt + "\n\n" + userPrompt + "\n\n" +
                                 safe(response.getDerivationHint()),
-                        session.getContextJson()
+                        JsonUtil.toJson(session.contextDict())
                 );
-        audit.audit(
-                "RESOLVE_RESPONSE_LLM_OUTPUT",
-                session.getConversationId(),
-                "{\"text\":\"" + JsonUtil.escape(text) + "\"}"
-        );
+        session.setLastLlmOutput(text);
+        session.setLastLlmStage("RESPONSE_TEXT");
+        Map<String, Object> outputPayload = new LinkedHashMap<>();
+        outputPayload.put("output", text);
+        audit.audit("RESOLVE_RESPONSE_LLM_OUTPUT", session.getConversationId(), outputPayload);
 
         session.setPayload(new TextPayload(text));
         session.getConversation().setLastAssistantJson(

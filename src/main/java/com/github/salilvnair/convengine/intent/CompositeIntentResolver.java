@@ -15,6 +15,16 @@ public class CompositeIntentResolver implements IntentResolver {
     public IntentResolutionResult resolveWithTrace(EngineSession session) {
 
         String classifierIntent = classifier.resolve(session);
+        String agentIntent = agent.resolve(session);
+
+        if (agentIntent != null && !agentIntent.isBlank()) {
+            return new IntentResolutionResult(
+                    agentIntent,
+                    IntentResolutionResult.Source.AGENT,
+                    classifierIntent,
+                    agentIntent
+            );
+        }
 
         if (classifierIntent != null && !classifierIntent.isBlank()) {
             return new IntentResolutionResult(
@@ -22,17 +32,6 @@ public class CompositeIntentResolver implements IntentResolver {
                     IntentResolutionResult.Source.CLASSIFIER,
                     classifierIntent,
                     null
-            );
-        }
-
-        String agentIntent = agent.resolve(session);
-
-        if (agentIntent != null && !agentIntent.isBlank()) {
-            return new IntentResolutionResult(
-                    agentIntent,
-                    IntentResolutionResult.Source.AGENT,
-                    null,
-                    agentIntent
             );
         }
 

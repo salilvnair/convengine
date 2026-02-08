@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 @RequiredArgsConstructor
@@ -32,11 +34,11 @@ public class PolicyEnforcementStep implements EngineStep {
 
         for (CePolicy policy : policyRepo.findByEnabledTrueOrderByPriorityAsc()) {
             if (matches(policy.getRuleType(), policy.getPattern(), userText)) {
-
-                audit.audit("POLICY_BLOCK", session.getConversationId(),
-                        "{\"policyId\":" + policy.getPolicyId() +
-                                ",\"ruleType\":\"" + JsonUtil.escape(policy.getRuleType()) +
-                                "\",\"pattern\":\"" + JsonUtil.escape(policy.getPattern()) + "\"}");
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("policyId", policy.getPolicyId());
+                payload.put("ruleType", policy.getRuleType());
+                payload.put("pattern", policy.getPattern());
+                audit.audit("POLICY_BLOCK", session.getConversationId(), payload);
 
                 session.getConversation().setStatus("BLOCKED");
                 session.getConversation().setLastAssistantJson(jsonText(policy.getResponseText()));

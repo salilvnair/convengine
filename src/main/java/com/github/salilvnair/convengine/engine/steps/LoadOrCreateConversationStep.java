@@ -35,7 +35,7 @@ public class LoadOrCreateConversationStep implements EngineStep {
         CeConversation c = CeConversation.builder()
                 .conversationId(id)
                 .status("RUNNING")
-                .stateCode("IDLE")
+                .stateCode("UNKNOWN")
                 .contextJson("{}")
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())

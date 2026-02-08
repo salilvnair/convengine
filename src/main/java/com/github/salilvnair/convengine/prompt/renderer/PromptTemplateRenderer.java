@@ -4,6 +4,7 @@ import com.github.salilvnair.convengine.engine.exception.ConversationEngineError
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.prompt.annotation.PromptVar;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
+import com.github.salilvnair.convengine.util.JsonUtil;
 
 import java.lang.reflect.Field;
 import java.util.HashMap;
@@ -38,6 +39,12 @@ public class PromptTemplateRenderer {
             return vars;
         }
 
+        if (ctx.getExtra() != null) {
+            for (Map.Entry<String, Object> entry : ctx.getExtra().entrySet()) {
+                vars.put(entry.getKey(), toSafeString(entry.getValue()));
+            }
+        }
+
         for (Field field : ctx.getClass().getDeclaredFields()) {
 
             PromptVar ann = field.getAnnotation(PromptVar.class);
@@ -47,7 +54,7 @@ public class PromptTemplateRenderer {
 
             try {
                 Object value = field.get(ctx);
-                String safeValue = value == null ? "" : value.toString();
+                String safeValue = toSafeString(value);
 
                 for (String alias : ann.value()) {
                     vars.put(alias, safeValue);
@@ -62,5 +69,15 @@ public class PromptTemplateRenderer {
         }
 
         return vars;
+    }
+
+    private String toSafeString(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof String s) {
+            return s;
+        }
+        return JsonUtil.toJson(value);
     }
 }

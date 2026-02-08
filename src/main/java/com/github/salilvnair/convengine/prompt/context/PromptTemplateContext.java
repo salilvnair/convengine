@@ -5,7 +5,7 @@ import com.github.salilvnair.convengine.prompt.annotation.PromptVar;
 import lombok.*;
 
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -43,5 +43,6 @@ public class PromptTemplateContext {
     @PromptVar({"mcp_observations"})
     private String mcpObservations;
 
+    private Map<String, Object> extra;
 
 }

@@ -15,7 +15,9 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -66,12 +68,14 @@ public class ConversationController {
             return res;
         }
         catch (ConversationEngineException ex) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("errorCode", ex.getErrorCode());
+            payload.put("message", ex.getMessage());
+            payload.put("recoverable", ex.isRecoverable());
             audit.audit(
                     "ENGINE_KNOWN_FAILURE",
                     conversationId,
-                    "{\"errorCode\":\"" + ex.getErrorCode() +
-                            "\",\"message\":\"" + JsonUtil.escape(ex.getMessage()) +
-                            "\",\"recoverable\":" + ex.isRecoverable() + "}"
+                    JsonUtil.toJson(payload)
             );
             ConversationResponse error = new ConversationResponse();
             error.setConversationId(conversationId.toString());
@@ -93,12 +97,14 @@ public class ConversationController {
             return error;
         }
         catch (Exception ex) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("exception", String.valueOf(ex));
+            payload.put("message", ex.getMessage());
+            payload.put("recoverable", false);
             audit.audit(
                     "ENGINE_UNKNOWN_FAILURE",
                     conversationId,
-                    "{\"exception\":\"" + ex +
-                            "\",\"message\":\"" + JsonUtil.escape(ex.getMessage()) +
-                            "\",\"recoverable\":" + false+ "}"
+                    JsonUtil.toJson(payload)
             );
             ConversationResponse error = new ConversationResponse();
             error.setConversationId(conversationId.toString());

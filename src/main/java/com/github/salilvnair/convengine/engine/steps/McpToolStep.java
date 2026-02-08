@@ -16,7 +16,6 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConve
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpDbTool;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
-import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -40,15 +39,22 @@ public class McpToolStep implements EngineStep {
 
     @Override
     public StepResult execute(EngineSession session) {
+        if (session.hasPendingClarification()) {
+            audit.audit(
+                    "MCP_SKIPPED_PENDING_CLARIFICATION",
+                    session.getConversationId(),
+                    mapOf(
+                            "intent", session.getIntent(),
+                            "state", session.getState()
+                    )
+            );
+            return new StepResult.Continue();
+        }
 
         List<CeMcpTool> tools = registry.listEnabledTools();
 
         if (CollectionUtils.isEmpty(tools)) {
-            audit.audit(
-                    "MCP_NO_TOOLS_AVAILABLE",
-                    session.getConversationId(),
-                    "{}"
-            );
+            audit.audit("MCP_NO_TOOLS_AVAILABLE", session.getConversationId(), Map.of());
             return new StepResult.Continue();
         }
 
@@ -65,7 +71,7 @@ public class McpToolStep implements EngineStep {
                 audit.audit(
                         "MCP_FINAL_ANSWER",
                         session.getConversationId(),
-                        "{\"answer\":\"" + JsonUtil.escape(plan.answer()) + "\"}"
+                        mapOf("answer", plan.answer())
                 );
                 break;
             }
@@ -81,8 +87,7 @@ public class McpToolStep implements EngineStep {
             audit.audit(
                     "MCP_TOOL_CALL",
                     session.getConversationId(),
-                    "{\"tool_code\":\"" + JsonUtil.escape(toolCode) +
-                            "\",\"args\":\"" + JsonUtil.escape(JsonUtil.toJson(args)) + "\"}"
+                    mapOf("tool_code", toolCode, "args", args)
             );
 
             // Only DB tools in this version
@@ -97,16 +102,14 @@ public class McpToolStep implements EngineStep {
                 audit.audit(
                         "MCP_TOOL_RESULT",
                         session.getConversationId(),
-                        "{\"tool_code\":\"" + JsonUtil.escape(toolCode) +
-                                "\",\"rows\":\"" + JsonUtil.escape(rowsJson) + "\"}"
+                        mapOf("tool_code", toolCode, "rows", rowsJson)
                 );
 
             } catch (Exception e) {
                 audit.audit(
                         "MCP_TOOL_ERROR",
                         session.getConversationId(),
-                        "{\"tool_code\":\"" + JsonUtil.escape(toolCode) +
-                                "\",\"error\":\"" + JsonUtil.escape(String.valueOf(e.getMessage())) + "\"}"
+                        mapOf("tool_code", toolCode, "error", String.valueOf(e.getMessage()))
                 );
                 writeFinalAnswerToContext(session, "Tool execution failed safely. Can you narrow the request?");
                 break;
@@ -190,9 +193,17 @@ public class McpToolStep implements EngineStep {
             audit.audit(
                     "MCP_CONTEXT_CLEARED",
                     session.getConversationId(),
-                    "{}"
+                    Map.of()
             );
         } catch (Exception ignored) {}
+    }
+
+    private Map<String, Object> mapOf(Object... kvPairs) {
+        Map<String, Object> map = new java.util.LinkedHashMap<>();
+        for (int i = 0; i + 1 < kvPairs.length; i += 2) {
+            map.put(String.valueOf(kvPairs[i]), kvPairs[i + 1]);
+        }
+        return map;
     }
 
 }
