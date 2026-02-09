@@ -38,7 +38,7 @@ public class CeResponse {
     private String jsonSchema;
 
     @Column(name = "priority")
-    private int priority;
+    private Integer priority;
 
     @Column(name = "enabled")
     private boolean enabled;

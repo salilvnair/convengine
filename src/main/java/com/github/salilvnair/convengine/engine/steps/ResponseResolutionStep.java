@@ -93,52 +93,19 @@ public class ResponseResolutionStep implements EngineStep {
         return new StepResult.Continue();
     }
 
-    private int score(CeResponse response, EngineSession session) {
-        int intentScore = matches(response.getIntentCode(), session.getIntent()) ? 2 : 1;
-        int stateScore = matches(response.getStateCode(), session.getState())
-                ? 2
-                : (matches(response.getStateCode(), "ANY") ? 1 : 0);
-        int priority = response.getPriority();
-        return (intentScore * 10) + (stateScore * 5) - priority;
-    }
-
     private Optional<CeResponse> resolveResponse(EngineSession session) {
-        // 1) Strict: exact intent + exact/ANY state
-        Optional<CeResponse> strictExactIntent = responseRepo.findAll().stream()
+        List<CeResponse> candidates = responseRepo.findAll().stream()
                 .filter(CeResponse::isEnabled)
-                .filter(r -> matches(r.getIntentCode(), session.getIntent()))
+                .filter(r -> matches(r.getIntentCode(), session.getIntent()) || r.getIntentCode() == null)
                 .filter(r -> matches(r.getStateCode(), session.getState()) || matches(r.getStateCode(), "ANY"))
-                .sorted((a, b) -> Integer.compare(score(b, session), score(a, session)))
-                .findFirst();
-        if (strictExactIntent.isPresent()) {
-            return strictExactIntent;
+                .toList();
+
+        if (candidates.isEmpty()) {
+            return Optional.empty();
         }
 
-        // 2) Relaxed: exact intent + best state fallback (agnostic; no hardcoded states)
-        Optional<CeResponse> relaxedExactIntent = responseRepo.findAll().stream()
-                .filter(CeResponse::isEnabled)
-                .filter(r -> matches(r.getIntentCode(), session.getIntent()))
-                .sorted((a, b) -> Integer.compare(scoreWithStateFallback(b, session), scoreWithStateFallback(a, session)))
-                .findFirst();
-        if (relaxedExactIntent.isPresent()) {
-            return relaxedExactIntent;
-        }
-
-        // 3) Generic fallback: null intent + exact/ANY state
-        return responseRepo.findAll().stream()
-                .filter(CeResponse::isEnabled)
-                .filter(r -> r.getIntentCode() == null)
-                .filter(r -> matches(r.getStateCode(), session.getState()) || matches(r.getStateCode(), "ANY"))
-                .sorted((a, b) -> Integer.compare(score(b, session), score(a, session)))
-                .findFirst();
-    }
-
-    private int scoreWithStateFallback(CeResponse response, EngineSession session) {
-        int stateScore = matches(response.getStateCode(), session.getState())
-                ? 2
-                : (matches(response.getStateCode(), "ANY") ? 1 : 0);
-        int priority = response.getPriority();
-        return (stateScore * 5) - priority;
+        candidates.sort((a, b) -> Integer.compare(responseScore(b, session), responseScore(a, session)));
+        return Optional.ofNullable(candidates.get(0));
     }
 
     private boolean matches(String left, String right) {
@@ -148,7 +115,12 @@ public class ResponseResolutionStep implements EngineStep {
         return left.equalsIgnoreCase(right);
     }
 
-    private boolean matchesOrNull(String left, String right) {
-        return left == null || matches(left, right);
+    private int responseScore(CeResponse response, EngineSession session) {
+        int exactState = matches(response.getStateCode(), session.getState()) ? 1 : 0;
+        int exactIntent = matches(response.getIntentCode(), session.getIntent()) ? 1 : 0;
+        int anyState = matches(response.getStateCode(), "ANY") ? 1 : 0;
+        int anyIntent = response.getIntentCode() == null ? 1 : 0;
+        int priority = response.getPriority() == null ? 999999 : response.getPriority();
+        return (exactState * 1000) + (exactIntent * 100) + (anyState * 10) + anyIntent - priority;
     }
 }

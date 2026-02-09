@@ -16,6 +16,7 @@ import com.github.salilvnair.convengine.model.JsonPayload;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
 import com.github.salilvnair.convengine.repo.PromptTemplateRepository;
+import com.github.salilvnair.convengine.repo.OutputSchemaRepository;
 import com.github.salilvnair.convengine.repo.RuleRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class AgentIntentResolver implements IntentResolver {
     private final LlmClient llm;
     private final AuditService audit;
     private final PromptTemplateRenderer renderer;
+    private final OutputSchemaRepository outputSchemaRepo;
     private final RuleRepository ruleRepo;
     private final RuleTypeResolverFactory ruleTypeFactory;
     private final RuleActionResolverFactory actionFactory;
@@ -153,6 +155,18 @@ public class AgentIntentResolver implements IntentResolver {
         }
 
         if (needsClarification) {
+            if (isSchemaDrivenIntent(intent)) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("intent", intent);
+                payload.put("state", state);
+                payload.put("question", clarificationQuestion);
+                audit.audit("INTENT_AGENT_CLARIFICATION_SUPPRESSED_SCHEMA_FLOW", conversationId, payload);
+                needsClarification = false;
+                clarificationQuestion = null;
+            }
+        }
+
+        if (needsClarification) {
             if (clarificationQuestion == null || clarificationQuestion.isBlank()) {
                 audit.audit("INTENT_AGENT_REJECTED", conversationId,
                         Map.of("reason", "needsClarification without question"));
@@ -235,7 +249,24 @@ public class AgentIntentResolver implements IntentResolver {
                 }
 
                 RuleTypeResolver typeResolver = ruleTypeFactory.get(rule.getRuleType());
-                if (typeResolver == null || !typeResolver.resolve(session, rule)) {
+                if (typeResolver == null) {
+                    continue;
+                }
+                boolean matched;
+                try {
+                    matched = typeResolver.resolve(session, rule);
+                } catch (Exception e) {
+                    if ("JSON_PATH".equalsIgnoreCase(rule.getRuleType())) {
+                        Map<String, Object> payload = new LinkedHashMap<>();
+                        payload.put("ruleId", rule.getRuleId());
+                        payload.put("pattern", rule.getMatchPattern());
+                        payload.put("error", e.getMessage());
+                        payload.put("scope", "post_intent");
+                        audit.audit("RULE_INVALID_JSONPATH", session.getConversationId(), payload);
+                    }
+                    continue;
+                }
+                if (!matched) {
                     continue;
                 }
 
@@ -268,6 +299,20 @@ public class AgentIntentResolver implements IntentResolver {
             if (!passChanged) {
                 break;
             }
+        }
+    }
+
+    private boolean isSchemaDrivenIntent(String intent) {
+        if (intent == null || intent.isBlank()) {
+            return false;
+        }
+        try {
+            return outputSchemaRepo.findAll().stream()
+                    .anyMatch(s -> Boolean.TRUE.equals(s.getEnabled())
+                            && s.getIntentCode() != null
+                            && s.getIntentCode().equalsIgnoreCase(intent));
+        } catch (Exception e) {
+            return false;
         }
     }
 
