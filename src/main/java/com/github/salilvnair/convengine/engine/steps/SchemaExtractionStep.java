@@ -58,6 +58,10 @@ public class SchemaExtractionStep implements EngineStep {
             session.setSchemaHasAnyValue(false);
             session.setMissingRequiredFields(new ArrayList<>());
             session.setMissingFieldOptions(new LinkedHashMap<>());
+            ensureSchemaPromptVars(session);
+            session.putInputParam("context", session.contextDict());
+            session.putInputParam("extracted_data", session.extractedDataDict());
+            session.putInputParam("session", session.sessionDict());
         }
 
         session.syncFromConversation();
@@ -83,13 +87,13 @@ public class SchemaExtractionStep implements EngineStep {
         ensureSchemaPromptVars(session);
 
         PromptTemplateContext promptTemplateContext = PromptTemplateContext
-                                                        .builder()
-                                                        .context(safeJson(session.getContextJson()))
-                                                        .userInput(session.getUserText())
-                                                        .schemaJson(schema.getJsonSchema())
-                                                        .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
-                                                        .extra(session.getInputParams())
-                                                        .build();
+                .builder()
+                .context(safeJson(session.getContextJson()))
+                .userInput(session.getUserText())
+                .schemaJson(schema.getJsonSchema())
+                .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
+                .extra(session.getInputParams())
+                .build();
         String systemPrompt = renderer.render(template.getSystemPrompt(), promptTemplateContext);
         String userPrompt = renderer.render(template.getUserPrompt(), promptTemplateContext);
 
