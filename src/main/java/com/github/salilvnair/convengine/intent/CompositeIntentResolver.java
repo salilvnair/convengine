@@ -9,13 +9,13 @@ import org.springframework.stereotype.Component;
 public class CompositeIntentResolver implements IntentResolver {
 
     private final ClassifierIntentResolver classifier;
-    private final AgentIntentResolver agent;
+    private final AgentIntentResolver agentIntentResolver;
 
 
     public IntentResolutionResult resolveWithTrace(EngineSession session) {
 
         String classifierIntent = classifier.resolve(session);
-        String agentIntent = agent.resolve(session);
+        String agentIntent = agentIntentResolver.resolve(session);
 
         if (agentIntent != null && !agentIntent.isBlank()) {
             return new IntentResolutionResult(

@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.rule.type.provider;
 
 import com.github.salilvnair.convengine.engine.rule.action.core.RuleActionResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
+import com.github.salilvnair.convengine.engine.type.RuleAction;
 import com.github.salilvnair.convengine.entity.CeRule;
 import com.github.salilvnair.convengine.audit.AuditService;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ public class SetStateActionResolver implements RuleActionResolver {
 
     @Override
     public String action() {
-        return "SET_STATE";
+        return RuleAction.SET_STATE.name();
     }
 
     @Override
@@ -26,10 +27,11 @@ public class SetStateActionResolver implements RuleActionResolver {
         session.setState(rule.getActionValue());
         session.getConversation().setStateCode(rule.getActionValue());
         Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("ruleId", rule.getRuleId());
         payload.put("fromState", previousState);
         payload.put("toState", rule.getActionValue());
         payload.put("intent", session.getIntent());
         payload.put("context", session.contextDict());
-        audit.audit("SET_STATE", session.getConversationId(), payload);
+        audit.audit(RuleAction.SET_STATE.name(), session.getConversationId(), payload);
     }
 }

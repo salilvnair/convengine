@@ -10,6 +10,8 @@ import com.github.salilvnair.convengine.entity.CeResponse;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.model.JsonPayload;
+import com.github.salilvnair.convengine.model.PromptTemplate;
+import com.github.salilvnair.convengine.model.ResponseTemplate;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
 import com.github.salilvnair.convengine.util.JsonUtil;
@@ -38,8 +40,8 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
     @Override
     public void resolve(
             EngineSession session,
-            CeResponse response,
-            CePromptTemplate template
+            ResponseTemplate response,
+            PromptTemplate template
     ) {
         ensurePromptInputs(session);
         session.putInputParam("session", session.sessionDict());

@@ -6,6 +6,7 @@ import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
+import com.github.salilvnair.convengine.engine.type.OutputType;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
 import com.github.salilvnair.convengine.entity.CePromptTemplate;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
@@ -28,8 +29,6 @@ import java.util.Map;
 @RequiresConversationPersisted
 public class SchemaExtractionStep implements EngineStep {
 
-    private static final String PURPOSE_SCHEMA_EXTRACTION = "SCHEMA_EXTRACTION";
-
     private final OutputSchemaRepository outputSchemaRepo;
     private final PromptTemplateRepository promptTemplateRepo;
     private final PromptTemplateRenderer renderer;
@@ -46,8 +45,7 @@ public class SchemaExtractionStep implements EngineStep {
                 .filter(s -> Boolean.TRUE.equals(s.getEnabled()))
                 .filter(s -> equalsIgnoreCase(s.getIntentCode(), intent))
                 .filter(s -> equalsIgnoreCase(s.getStateCode(), state) || equalsIgnoreCase(s.getStateCode(), "ANY"))
-                .sorted((a, b) -> Integer.compare(priorityOf(a), priorityOf(b)))
-                .findFirst()
+                .min((a, b) -> Integer.compare(priorityOf(a), priorityOf(b)))
                 .orElse(null);
 
         if (schema != null) {
@@ -74,7 +72,7 @@ public class SchemaExtractionStep implements EngineStep {
         startPayload.put("schemaId", schema.getSchemaId());
         audit.audit("SCHEMA_EXTRACTION_START", session.getConversationId(), startPayload);
 
-        CePromptTemplate template = resolvePromptTemplate(PURPOSE_SCHEMA_EXTRACTION, session.getIntent());
+        CePromptTemplate template = resolvePromptTemplate(OutputType.SCHEMA_EXTRACTED_DATA.name(), session.getIntent());
 
         Map<String, Object> schemaFieldDetails = schemaFieldDetails(schema.getJsonSchema());
         List<String> missingBefore = missingRequiredFields(schema.getJsonSchema(), safeJson(session.getContextJson()));
@@ -151,11 +149,9 @@ public class SchemaExtractionStep implements EngineStep {
         audit.audit("SCHEMA_STATUS", session.getConversationId(), statusPayload);
     }
 
-    private CePromptTemplate resolvePromptTemplate(String purpose, String intentCode) {
-        return promptTemplateRepo.findFirstByEnabledTrueAndPurposeAndIntentCodeOrderByCreatedAtDesc(purpose, intentCode)
-                .orElseGet(() -> promptTemplateRepo
-                        .findFirstByEnabledTrueAndPurposeAndIntentCodeIsNullOrderByCreatedAtDesc(purpose)
-                        .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for purpose=" + purpose)));
+    private CePromptTemplate resolvePromptTemplate(String responseType, String intentCode) {
+        return promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(responseType, intentCode)
+                .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType=" + responseType));
     }
 
     private List<String> missingRequiredFields(String schemaJson, String contextJson) {

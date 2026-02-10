@@ -22,8 +22,7 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 @Component
 @RequiresConversationPersisted
 @MustRunAfter({
-        SchemaExtractionStep.class,
-        ValidationStep.class
+        SchemaExtractionStep.class
 })
 public class AutoAdvanceStep implements EngineStep {
 

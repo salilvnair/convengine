@@ -7,13 +7,8 @@ import java.util.Optional;
 
 public interface PromptTemplateRepository extends JpaRepository<CePromptTemplate, Long> {
     Optional<CePromptTemplate>
-    findFirstByEnabledTrueAndPurposeAndIntentCodeOrderByCreatedAtDesc(
+    findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(
             String purpose,
             String intentCode
-    );
-
-    Optional<CePromptTemplate>
-    findFirstByEnabledTrueAndPurposeAndIntentCodeIsNullOrderByCreatedAtDesc(
-            String purpose
     );
 }

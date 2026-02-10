@@ -115,7 +115,6 @@ public class AddContainerDataStep implements EngineStep {
                         "requestInput", inputParams,
                         "response", responseNode
                 );
-                // ✅ FULL RESPONSE AUDIT (SAFE JSON)
                 audit.audit(
                         "CONTAINER_DATA_EXECUTED",
                         session.getConversationId(),

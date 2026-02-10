@@ -1,5 +1,6 @@
 package com.github.salilvnair.convengine.engine.session;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -51,6 +52,9 @@ public class EngineSession {
     private String pendingClarificationQuestion;
     private String pendingClarificationReason;
 
+    private List<String> pendingClarificationQuestionHistory;
+    private List<String> pendingClarificationReasonsHistory;
+
     // clarification state
     private boolean awaitingClarification;
     private int clarificationTurn;
@@ -70,9 +74,21 @@ public class EngineSession {
         this.pendingClarificationReason = null;
     }
 
+    public void addClarificationHistory() {
+        if (pendingClarificationQuestionHistory == null) {
+            pendingClarificationQuestionHistory = new ArrayList<>();
+        }
+        if (pendingClarificationReasonsHistory == null) {
+            pendingClarificationReasonsHistory = new ArrayList<>();
+        }
+        pendingClarificationQuestionHistory.add(pendingClarificationQuestion);
+        pendingClarificationReasonsHistory.add(pendingClarificationReason);
+    }
+
     private final ObjectMapper mapper;
     private final List<StepTiming> stepTimings = new ArrayList<>();
     private Map<String, Object> inputParams = new LinkedHashMap<>();
+    private Map<String, Object> safeInputParamsForOutput = new LinkedHashMap<>();
 
     public EngineSession(EngineContext engineContext, ObjectMapper mapper) {
         this.engineContext = engineContext;
@@ -80,8 +96,15 @@ public class EngineSession {
         this.conversationId = UUID.fromString(engineContext.getConversationId());
         this.userText = engineContext.getUserText();
         if (engineContext.getInputParams() != null) {
-            this.inputParams.putAll(engineContext.getInputParams());
+            initializeInputParams(engineContext.getInputParams());
         }
+    }
+
+    private void initializeInputParams(Map<String, Object> inputParams) {
+        inputParams.forEach((s,v)->{
+            this.inputParams.put(s, v);
+            this.safeInputParamsForOutput.put(s, jsonSafe(v));
+        });
     }
 
     // -------------------------------------------------
@@ -200,7 +223,8 @@ public class EngineSession {
             if (!root.isObject()) {
                 return new LinkedHashMap<>();
             }
-            return mapper.convertValue(root, Map.class);
+            return mapper.convertValue(root, new TypeReference<>() {
+            });
         } catch (Exception e) {
             return new LinkedHashMap<>();
         }
@@ -251,6 +275,61 @@ public class EngineSession {
             return;
         }
         inputParams.put(key, value);
+        safeInputParamsForOutput.put(key, jsonSafe(value));
+    }
+
+    public Map<String, Object> auditInputParams() {
+        Map<String, Object> out = new LinkedHashMap<>();
+
+        for (Map.Entry<String, Object> e : safeInputParamsForOutput.entrySet()) {
+            Object v = e.getValue();
+
+            // Avoid dumping huge nested objects
+            if (v instanceof Map<?, ?> map && map.size() > 20) {
+                out.put(e.getKey(), Map.of(
+                        "_type", "map",
+                        "_size", map.size()
+                ));
+                continue;
+            }
+
+            if (v instanceof List<?> list && list.size() > 20) {
+                out.put(e.getKey(), Map.of(
+                        "_type", "list",
+                        "_size", list.size()
+                ));
+                continue;
+            }
+
+            if("session".equals(e.getKey())) {
+                continue;
+            }
+
+            out.put(e.getKey(), v);
+        }
+
+        return out;
+    }
+
+    private Object jsonSafe(Object value) {
+        if (value == null) return null;
+        if (value instanceof String
+                || value instanceof Number
+                || value instanceof Boolean) {
+            return value;
+        }
+        if (value instanceof Map || value instanceof List) {
+            return value;
+        }
+        // JsonNode → Map
+        if (value instanceof JsonNode node) {
+            return mapper.convertValue(
+                    node,
+                    new TypeReference<Map<String, Object>>() {}
+            );
+        }
+        // fallback → string
+        return String.valueOf(value);
     }
 
     public String inputParamAsString(String key) {

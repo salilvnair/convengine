@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.rule.action.core.RuleActionResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
+import com.github.salilvnair.convengine.engine.type.RuleAction;
 import com.github.salilvnair.convengine.entity.CeRule;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +20,7 @@ public class SetJsonActionResolver implements RuleActionResolver {
 
     @Override
     public String action() {
-        return "SET_JSON";
+        return RuleAction.SET_JSON.name();
     }
 
     @Override
@@ -33,12 +34,14 @@ public class SetJsonActionResolver implements RuleActionResolver {
         session.putInputParam(key, value);
 
         Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("ruleId", rule.getRuleId());
         payload.put("key", key);
         payload.put("path", path);
         payload.put("intent", session.getIntent());
         payload.put("state", session.getState());
         payload.put("value", value);
-        audit.audit("SET_JSON", session.getConversationId(), payload);
+        payload.put("sessionInputParams", session.auditInputParams());
+        audit.audit(RuleAction.SET_JSON.name(), session.getConversationId(), payload);
     }
 
     private String[] parseTarget(String actionValue) {

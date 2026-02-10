@@ -5,6 +5,8 @@ import com.github.salilvnair.convengine.engine.response.type.core.ResponseTypeRe
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeResponse;
 import com.github.salilvnair.convengine.model.JsonPayload;
+import com.github.salilvnair.convengine.model.PromptTemplate;
+import com.github.salilvnair.convengine.model.ResponseTemplate;
 import com.github.salilvnair.convengine.model.TextPayload;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +27,7 @@ public class ExactTextResponseTypeResolver implements ResponseTypeResolver {
     }
 
     @Override
-    public void resolve(EngineSession session, CeResponse response) {
+    public void resolve(EngineSession session, PromptTemplate template, ResponseTemplate response) {
 
         String text = response.getExactText() == null ? "" : response.getExactText();
 
