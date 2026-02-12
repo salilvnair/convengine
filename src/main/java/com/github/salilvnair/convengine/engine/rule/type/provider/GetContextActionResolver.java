@@ -32,7 +32,7 @@ public class GetContextActionResolver implements RuleActionResolver {
         payload.put("intent", session.getIntent());
         payload.put("state", session.getState());
         payload.put("context", session.contextDict());
-        payload.put("sessionInputParams", session.auditInputParams());
+        payload.put("sessionInputParams", session.safeInputParams());
         audit.audit(RuleAction.GET_CONTEXT.name(), session.getConversationId(), payload);
     }
 }

@@ -173,6 +173,11 @@ public enum ConversationEngineErrorCode {
             false
     ),
 
+    INVALID_RESPONSE_TRANSFORMER(
+            "ResponseDataTransformer bean is invalid",
+            false
+    ),
+
     RESPONSE_RESOLUTION_FAILED(
             "Failed to resolve response",
             false

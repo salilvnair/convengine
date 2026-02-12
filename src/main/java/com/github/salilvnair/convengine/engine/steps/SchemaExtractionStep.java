@@ -58,7 +58,7 @@ public class SchemaExtractionStep implements EngineStep {
             session.setMissingFieldOptions(new LinkedHashMap<>());
             ensureSchemaPromptVars(session);
             session.putInputParam("context", session.contextDict());
-            session.putInputParam("extracted_data", session.extractedDataDict());
+            session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
             session.putInputParam("session", session.sessionDict());
         }
 
@@ -145,7 +145,7 @@ public class SchemaExtractionStep implements EngineStep {
         statusPayload.put("intent", session.getIntent());
         statusPayload.put("state", session.getState());
         statusPayload.put("context", session.contextDict());
-        statusPayload.put("extractedData", session.extractedDataDict());
+        statusPayload.put("extractedData", session.schemaExtractedDataDict());
         audit.audit("SCHEMA_STATUS", session.getConversationId(), statusPayload);
     }
 

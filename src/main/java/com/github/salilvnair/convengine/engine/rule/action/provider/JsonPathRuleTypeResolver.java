@@ -9,15 +9,16 @@ import com.github.salilvnair.convengine.entity.CeRule;
 import com.github.salilvnair.convengine.model.JsonPayload;
 import com.github.salilvnair.convengine.model.TextPayload;
 import com.github.salilvnair.convengine.util.JsonUtil;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Component
+@RequiredArgsConstructor
 public class JsonPathRuleTypeResolver implements RuleTypeResolver {
-    private final ObjectMapper mapper = new ObjectMapper();
-
+    private final RuleConditionEvaluator ruleConditionEvaluator;
     @Override
     public String type() {
         return "JSON_PATH";
@@ -29,45 +30,13 @@ public class JsonPathRuleTypeResolver implements RuleTypeResolver {
             if (rule.getMatchPattern() == null || rule.getMatchPattern().isBlank()) {
                 return false;
             }
-            JsonNode node = buildRuleFacts(session);
-            return RuleConditionEvaluator.evaluate(
+            JsonNode node = session.eject();
+            return ruleConditionEvaluator.evaluate(
                     node,
                     rule.getMatchPattern()
             );
         } catch (Exception e) {
             return false;
-        }
-    }
-
-    private JsonNode buildRuleFacts(EngineSession session) {
-        try {
-            Map<String, Object> facts = new LinkedHashMap<>(session.contextDict());
-            facts.put("intent", session.getIntent());
-            facts.put("state", session.getState());
-            facts.put("schemaComplete", session.isSchemaComplete());
-            facts.put("hasAnySchemaValue", session.isSchemaHasAnyValue());
-            facts.put("missingRequiredFields", session.getMissingRequiredFields());
-            facts.put("missingFieldOptions", session.getMissingFieldOptions());
-            facts.put("userText", session.getUserText());
-            facts.put("lastLlmOutput", session.getLastLlmOutput());
-            facts.put("lastLlmStage", session.getLastLlmStage());
-            facts.put("extractedData", session.extractedDataDict());
-
-            if (session.getPayload() != null) {
-                Object payload = switch (session.getPayload()) {
-                    case JsonPayload(String json) -> JsonUtil.parseOrNull(json);
-                    case TextPayload(String text) -> Map.of("text", text);
-                    case null, default -> null;
-                };
-                if (payload != null) {
-                    facts.put("payload", payload);
-                }
-            }
-
-            return mapper.valueToTree(facts);
-        }
-        catch (Exception e) {
-            return null;
         }
     }
 }

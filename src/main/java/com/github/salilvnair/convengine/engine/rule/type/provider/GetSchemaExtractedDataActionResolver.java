@@ -24,15 +24,15 @@ public class GetSchemaExtractedDataActionResolver implements RuleActionResolver 
     @Override
     public void resolve(EngineSession session, CeRule rule) {
         String key = (rule.getActionValue() == null || rule.getActionValue().isBlank())
-                ? "extracted_data"
+                ? "schema_extracted_data"
                 : rule.getActionValue();
-        session.putInputParam(key, session.extractedDataDict());
+        session.putInputParam(key, session.schemaExtractedDataDict());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("key", key);
         payload.put("intent", session.getIntent());
         payload.put("state", session.getState());
-        payload.put("extractedData", session.extractedDataDict());
-        payload.put("sessionInputParams", session.auditInputParams());
+        payload.put("extractedData", session.schemaExtractedDataDict());
+        payload.put("sessionInputParams", session.safeInputParams());
         audit.audit(RuleAction.GET_SCHEMA_EXTRACTED_DATA.name(), session.getConversationId(), payload);
     }
 }

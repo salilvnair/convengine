@@ -3,8 +3,6 @@ package com.github.salilvnair.convengine.engine.response.format.provider;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.response.format.core.OutputFormatResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
-import com.github.salilvnair.convengine.entity.CePromptTemplate;
-import com.github.salilvnair.convengine.entity.CeResponse;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.model.PromptTemplate;
@@ -43,7 +41,7 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
         ensurePromptInputs(session);
         session.putInputParam("session", session.sessionDict());
         session.putInputParam("context", session.contextDict());
-        session.putInputParam("extracted_data", session.extractedDataDict());
+        session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
 
         String historyJson = JsonUtil.toJson(session.conversionHistory());
 
@@ -104,8 +102,8 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
         session.putInputParam("schema_description", valueOrDefaultString(session.getInputParams().get("schema_description")));
         session.putInputParam("schema_field_details", valueOrDefaultMap(session.getInputParams().get("schema_field_details")));
         session.putInputParam("schema_id", session.getInputParams().getOrDefault("schema_id", null));
+        session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
         session.putInputParam("context", session.contextDict());
-        session.putInputParam("extracted_data", session.extractedDataDict());
         session.putInputParam("session", session.sessionDict());
     }
 

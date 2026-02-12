@@ -10,7 +10,9 @@ import com.github.salilvnair.convengine.engine.model.EngineResult;
 import com.github.salilvnair.convengine.engine.model.StepTiming;
 import com.github.salilvnair.convengine.entity.CeConversation;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
+import com.github.salilvnair.convengine.model.JsonPayload;
 import com.github.salilvnair.convengine.model.OutputPayload;
+import com.github.salilvnair.convengine.model.TextPayload;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.Getter;
 import lombok.Setter;
@@ -46,6 +48,8 @@ public class EngineSession {
 
     private OutputPayload payload;
     private String containerDataJson;
+    private boolean hasContainerData;
+    private JsonNode containerData;
     private EngineResult finalResult;
 
     // ✅ NEW — clarification memory
@@ -230,7 +234,7 @@ public class EngineSession {
         }
     }
 
-    public Map<String, Object> extractedDataDict() {
+    public Map<String, Object> schemaExtractedDataDict() {
         Map<String, Object> context = contextDict();
         if (resolvedSchema == null || resolvedSchema.getJsonSchema() == null) {
             return context;
@@ -259,6 +263,8 @@ public class EngineSession {
         sessionMap.put("intent", intent);
         sessionMap.put("state", state);
         sessionMap.put("schemaComplete", schemaComplete);
+        sessionMap.put("hasContainerData", hasContainerData);
+        sessionMap.put("containerData", containerDataDict());
         sessionMap.put("hasAnySchemaValue", schemaHasAnyValue);
         sessionMap.put("missingRequiredFields", missingRequiredFields);
         sessionMap.put("missingFieldOptions", missingFieldOptions);
@@ -266,8 +272,37 @@ public class EngineSession {
         sessionMap.put("pendingClarificationQuestion", pendingClarificationQuestion);
         sessionMap.put("lastLlmStage", lastLlmStage);
         sessionMap.put("context", contextDict());
-        sessionMap.put("extractedData", extractedDataDict());
+        sessionMap.put("schemaExtractedData", schemaExtractedDataDict());
+        sessionMap.put("lastLlmOutput", extractLastLlmOutputForSession());
         return sessionMap;
+    }
+
+    private Object containerDataDict() {
+        try {
+            if (!containerData.isObject()) {
+                return new LinkedHashMap<>();
+            }
+            return mapper.convertValue(containerData, new TypeReference<>() {});
+        }
+        catch (Exception e) {
+            return new LinkedHashMap<>();
+        }
+    }
+
+    private Map<String, Object> extractLastLlmOutputForSession() {
+        try {
+            if (lastLlmOutput == null || lastLlmOutput.isBlank()) {
+                return new LinkedHashMap<>();
+            }
+            JsonNode root = mapper.readTree(lastLlmOutput);
+            if (!root.isObject()) {
+                return new LinkedHashMap<>();
+            }
+            return mapper.convertValue(root, new TypeReference<>() {});
+        }
+        catch (Exception e) {
+            return new LinkedHashMap<>();
+        }
     }
 
     public void putInputParam(String key, Object value) {
@@ -278,7 +313,7 @@ public class EngineSession {
         safeInputParamsForOutput.put(key, jsonSafe(value));
     }
 
-    public Map<String, Object> auditInputParams() {
+    public Map<String, Object> safeInputParams() {
         Map<String, Object> out = new LinkedHashMap<>();
 
         for (Map.Entry<String, Object> e : safeInputParamsForOutput.entrySet()) {
@@ -341,6 +376,28 @@ public class EngineSession {
             return s;
         }
         return JsonUtil.toJson(value);
+    }
+
+    public JsonNode eject() {
+        try {
+            Map<String, Object> facts = new LinkedHashMap<>(contextDict());
+            facts.putAll(sessionDict());
+            facts.put("inputParams", safeInputParams());
+            if (getPayload() != null) {
+                Object payload = switch (getPayload()) {
+                    case JsonPayload(String json) -> JsonUtil.parseOrNull(json);
+                    case TextPayload(String text) -> Map.of("text", text);
+                    case null -> null;
+                };
+                if (payload != null) {
+                    facts.put("payload", payload);
+                }
+            }
+            return new ObjectMapper().valueToTree(facts);
+        }
+        catch (Exception e) {
+            return null;
+        }
     }
 
 }

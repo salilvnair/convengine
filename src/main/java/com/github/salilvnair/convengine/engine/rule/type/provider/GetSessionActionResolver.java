@@ -30,7 +30,7 @@ public class GetSessionActionResolver implements RuleActionResolver {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("key", key);
         payload.put("session", session.sessionDict());
-        payload.put("sessionInputParams", session.auditInputParams());
+        payload.put("sessionInputParams", session.safeInputParams());
         audit.audit(RuleAction.GET_SESSION.name(), session.getConversationId(), payload);
     }
 }

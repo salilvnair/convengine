@@ -9,6 +9,7 @@ import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.response.service.ResponseTransformerService;
 import com.github.salilvnair.convengine.engine.response.type.factory.ResponseTypeResolverFactory;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.ResponseType;
@@ -16,10 +17,7 @@ import com.github.salilvnair.convengine.entity.CePromptTemplate;
 import com.github.salilvnair.convengine.entity.CeResponse;
 import com.github.salilvnair.convengine.intent.AgentIntentResolver;
 import com.github.salilvnair.convengine.intent.AgentIntentCollisionResolver;
-import com.github.salilvnair.convengine.model.JsonPayload;
-import com.github.salilvnair.convengine.model.PromptTemplate;
-import com.github.salilvnair.convengine.model.ResponseTemplate;
-import com.github.salilvnair.convengine.model.TextPayload;
+import com.github.salilvnair.convengine.model.*;
 import com.github.salilvnair.convengine.repo.PromptTemplateRepository;
 import com.github.salilvnair.convengine.repo.ResponseRepository;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +38,7 @@ public class ResponseResolutionStep implements EngineStep {
     private final AuditService audit;
     private final ConversationHistoryProvider historyProvider;
     private final AgentIntentCollisionResolver agentIntentCollisionResolver;
+    private final ResponseTransformerService responseTransformerService;
 
     @Override
     public StepResult execute(EngineSession session) {
@@ -111,6 +110,10 @@ public class ResponseResolutionStep implements EngineStep {
                 .get(resp.getResponseType())
                 .resolve(session, PromptTemplate.initFrom(template), ResponseTemplate.initFrom(resp));
 
+
+        OutputPayload transformedOutput = responseTransformerService.transformIfApplicable(session.getPayload(), session, session.getInputParams());
+        session.setPayload(transformedOutput);
+
         Object payloadValue = switch (session.getPayload()) {
             case TextPayload(String text) -> text;
             case JsonPayload(String json) -> json;
@@ -125,7 +128,7 @@ public class ResponseResolutionStep implements EngineStep {
         outputPayload.put("intent", session.getIntent());
         outputPayload.put("state", session.getState());
         outputPayload.put("context", session.contextDict());
-        outputPayload.put("extractedData", session.extractedDataDict());
+        outputPayload.put("extractedData", session.schemaExtractedDataDict());
         audit.audit("ASSISTANT_OUTPUT", session.getConversationId(), outputPayload);
 
         return new StepResult.Continue();

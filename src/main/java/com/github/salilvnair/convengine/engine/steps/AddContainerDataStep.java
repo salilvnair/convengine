@@ -106,6 +106,7 @@ public class AddContainerDataStep implements EngineStep {
                 // find classes with @ContainerDataTransformer(state, intent) to transform resp if needed
                 Map<String, Object> transformedData = transformerService.transformIfApplicable(resp, session, inputParams);
                 JsonNode responseNode = transformedData == null ? mapper.valueToTree(resp) : mapper.valueToTree(transformedData);
+                session.setContainerData(responseNode);
                 containerRoot.set(cfg.getInputParamName(), responseNode);
                 Map<String, Object> jsonMap = Map.of(
                         "containerId", cfg.getContainerId(),
@@ -137,6 +138,7 @@ public class AddContainerDataStep implements EngineStep {
 
             // attach to session
             session.setContainerDataJson(containerRoot.toString());
+            session.setHasContainerData(true);
 
             // merge into conversation context
             try {
