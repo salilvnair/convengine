@@ -9,6 +9,7 @@ import com.github.salilvnair.convengine.engine.rule.action.factory.RuleTypeResol
 import com.github.salilvnair.convengine.engine.rule.type.core.RuleTypeResolver;
 import com.github.salilvnair.convengine.engine.rule.type.factory.RuleActionResolverFactory;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
+import com.github.salilvnair.convengine.engine.steps.RulesStep;
 import com.github.salilvnair.convengine.entity.CeRule;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
@@ -40,8 +41,6 @@ public class AgentIntentResolver implements IntentResolver {
     private String SYSTEM_PROMPT;
     private String USER_PROMPT;
     private final CeConfigResolver configResolver;
-
-    private final PromptTemplateRepository promptTemplateRepo;
     private final AllowedIntentService allowedIntentService;
     private final LlmClient llm;
     private final AuditService audit;
@@ -50,7 +49,7 @@ public class AgentIntentResolver implements IntentResolver {
     private final RuleRepository ruleRepo;
     private final RuleTypeResolverFactory ruleTypeFactory;
     private final RuleActionResolverFactory actionFactory;
-
+    private final RulesStep rulesStep;
     private final ObjectMapper mapper = new ObjectMapper();
 
 
@@ -295,66 +294,7 @@ public class AgentIntentResolver implements IntentResolver {
         if (session.getIntent() == null || session.getIntent().isBlank()) {
             return;
         }
-
-        List<CeRule> allRules = ruleRepo.findByEnabledTrueOrderByPriorityAsc();
-        int maxPasses = 5;
-        for (int pass = 0; pass < maxPasses; pass++) {
-            boolean passChanged = false;
-
-            for (CeRule rule : allRules) {
-                if (rule.getIntentCode() != null &&
-                        !rule.getIntentCode().equalsIgnoreCase(session.getIntent())) {
-                    continue;
-                }
-
-                RuleTypeResolver typeResolver = ruleTypeFactory.get(rule.getRuleType());
-                if (typeResolver == null) {
-                    continue;
-                }
-                boolean matched;
-                try {
-                    matched = typeResolver.resolve(session, rule);
-                } catch (Exception e) {
-                    if ("JSON_PATH".equalsIgnoreCase(rule.getRuleType())) {
-                        Map<String, Object> payload = new LinkedHashMap<>();
-                        payload.put("ruleId", rule.getRuleId());
-                        payload.put("pattern", rule.getMatchPattern());
-                        payload.put("error", e.getMessage());
-                        payload.put("scope", "post_intent");
-                        audit.audit("RULE_INVALID_JSONPATH", session.getConversationId(), payload);
-                    }
-                    continue;
-                }
-                if (!matched) {
-                    continue;
-                }
-
-                Map<String, Object> matchedPayload = new LinkedHashMap<>();
-                matchedPayload.put("ruleId", rule.getRuleId());
-                matchedPayload.put("action", rule.getAction());
-                matchedPayload.put("ruleType", rule.getRuleType());
-                matchedPayload.put("intent", session.getIntent());
-                matchedPayload.put("state", session.getState());
-                audit.audit("POST_INTENT_RULE_MATCHED", session.getConversationId(), matchedPayload);
-
-                String previousIntent = session.getIntent();
-                String previousState = session.getState();
-
-                RuleActionResolver actionResolver = actionFactory.get(rule.getAction());
-                if (actionResolver != null) {
-                    actionResolver.resolve(session, rule);
-                }
-
-                if (!Objects.equals(previousIntent, session.getIntent()) ||
-                        !Objects.equals(previousState, session.getState())) {
-                    passChanged = true;
-                }
-            }
-
-            if (!passChanged) {
-                break;
-            }
-        }
+        rulesStep.applyRules(session, "AgentIntentResolver PostIntent");
     }
 
     private boolean isSchemaDrivenIntent(String intent) {

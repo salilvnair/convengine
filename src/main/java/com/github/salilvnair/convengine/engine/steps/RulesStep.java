@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -36,14 +37,20 @@ public class RulesStep implements EngineStep {
 
     @Override
     public StepResult execute(EngineSession session) {
+        applyRules(session, "RulesStep");
+        session.syncToConversation();
+        return new StepResult.Continue();
+    }
+
+    public void applyRules(EngineSession session, String stage) {
         boolean anyMatched = false;
         int maxPasses = 5;
-
+        List<CeRule> allRules = ruleRepo.findByEnabledTrueOrderByPriorityAsc();
         for (int pass = 0; pass < maxPasses; pass++) {
             boolean passChanged = false;
             String passIntent = session.getIntent();
 
-            for (CeRule rule : ruleRepo.findByEnabledTrueOrderByPriorityAsc()) {
+            for (CeRule rule : allRules) {
 
                 if (rule.getIntentCode() != null &&
                         !rule.getIntentCode().equalsIgnoreCase(passIntent)) {
@@ -65,7 +72,7 @@ public class RulesStep implements EngineStep {
                 matchedPayload.put("context", session.contextDict());
                 matchedPayload.put("extractedData", session.schemaExtractedDataDict());
                 audit.audit(
-                        "RULE_MATCHED",
+                        "RULE_MATCHED (" + stage + ")",
                         session.getConversationId(),
                         matchedPayload
                 );
@@ -91,7 +98,7 @@ public class RulesStep implements EngineStep {
                 payload.put("action", rule.getAction());
                 payload.put("actionValue", JsonUtil.parseOrNull(rule.getActionValue()));
                 log.info("Rule applied: {}", payload);
-                audit.audit("RULE_APPLIED", session.getConversationId(), payload);
+                audit.audit("RULE_APPLIED ("+stage+")" , session.getConversationId(), payload);
             }
 
             if (!passChanged) {
@@ -103,10 +110,7 @@ public class RulesStep implements EngineStep {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("intent", session.getIntent());
             payload.put("state", session.getState());
-            audit.audit("RULE_NO_MATCH", session.getConversationId(), payload);
+            audit.audit("RULE_NO_MATCH ("+stage+")", session.getConversationId(), payload);
         }
-
-        session.syncToConversation();
-        return new StepResult.Continue();
     }
 }
