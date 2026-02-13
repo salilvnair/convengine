@@ -19,10 +19,7 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @RequiredArgsConstructor
 @Component
@@ -72,7 +69,7 @@ public class SchemaExtractionStep implements EngineStep {
         startPayload.put("schemaId", schema.getSchemaId());
         audit.audit("SCHEMA_EXTRACTION_START", session.getConversationId(), startPayload);
 
-        CePromptTemplate template = resolvePromptTemplate(OutputType.SCHEMA_EXTRACTED_DATA.name(), session.getIntent());
+        CePromptTemplate template = resolvePromptTemplate(OutputType.SCHEMA_JSON.name(), session);
 
         Map<String, Object> schemaFieldDetails = schemaFieldDetails(schema.getJsonSchema());
         session.putInputParam("schema_field_details", schemaFieldDetails);
@@ -145,9 +142,12 @@ public class SchemaExtractionStep implements EngineStep {
         audit.audit("SCHEMA_STATUS", session.getConversationId(), statusPayload);
     }
 
-    private CePromptTemplate resolvePromptTemplate(String responseType, String intentCode) {
-        return promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(responseType, intentCode)
-                .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType=" + responseType));
+    private CePromptTemplate resolvePromptTemplate(String responseType, EngineSession session) {
+        String intentCode = session.getIntent();
+        String stateCode = session.getState();
+        return promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeAndStateCodeOrderByCreatedAtDesc(responseType, intentCode, stateCode)
+                .or(() -> promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(responseType, intentCode))
+                .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType=" + responseType + " and intent=" + intentCode));
     }
 
     private List<String> missingRequiredFields(String schemaJson, String contextJson) {
