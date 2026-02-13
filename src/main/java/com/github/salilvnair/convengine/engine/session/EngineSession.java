@@ -16,11 +16,13 @@ import com.github.salilvnair.convengine.model.TextPayload;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 
 @Getter
 @Setter
+@Slf4j
 public class EngineSession {
 
     private final EngineContext engineContext;
@@ -52,7 +54,6 @@ public class EngineSession {
     private JsonNode containerData;
     private EngineResult finalResult;
 
-    // ✅ NEW — clarification memory
     private String pendingClarificationQuestion;
     private String pendingClarificationReason;
 
@@ -63,6 +64,11 @@ public class EngineSession {
     private boolean awaitingClarification;
     private int clarificationTurn;
     private String lastClarificationQuestion;
+
+    private final ObjectMapper mapper;
+    private final List<StepTiming> stepTimings = new ArrayList<>();
+    private Map<String, Object> inputParams = new LinkedHashMap<>();
+    private Map<String, Object> safeInputParamsForOutput = new LinkedHashMap<>();
 
 
     public boolean hasPendingClarification() {
@@ -89,11 +95,6 @@ public class EngineSession {
         pendingClarificationReasonsHistory.add(pendingClarificationReason);
     }
 
-    private final ObjectMapper mapper;
-    private final List<StepTiming> stepTimings = new ArrayList<>();
-    private Map<String, Object> inputParams = new LinkedHashMap<>();
-    private Map<String, Object> safeInputParamsForOutput = new LinkedHashMap<>();
-
     public EngineSession(EngineContext engineContext, ObjectMapper mapper) {
         this.engineContext = engineContext;
         this.mapper = mapper;
@@ -117,6 +118,22 @@ public class EngineSession {
 
     public void syncFromConversation() {
         syncFromConversation(false);
+        syncInputParamsFromConversation();
+    }
+
+    public void syncInputParamsFromConversation() {
+        if (conversation == null) return;
+        String inputParamsJson = conversation.getInputParamsJson();
+        if (inputParamsJson == null || inputParamsJson.isBlank()) return;
+        try {
+            JsonNode root = mapper.readTree(inputParamsJson);
+            if (!root.isObject()) return;
+            Map<String, Object> params = mapper.convertValue(root, new TypeReference<>() {});
+            initializeInputParams(params);
+        }
+        catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
     }
 
     public void syncFromConversation(boolean preserveContext) {
@@ -318,28 +335,9 @@ public class EngineSession {
 
         for (Map.Entry<String, Object> e : safeInputParamsForOutput.entrySet()) {
             Object v = e.getValue();
-
-            // Avoid dumping huge nested objects
-            if (v instanceof Map<?, ?> map && map.size() > 20) {
-                out.put(e.getKey(), Map.of(
-                        "_type", "map",
-                        "_size", map.size()
-                ));
+            if("session".equalsIgnoreCase(e.getKey())) {
                 continue;
             }
-
-            if (v instanceof List<?> list && list.size() > 20) {
-                out.put(e.getKey(), Map.of(
-                        "_type", "list",
-                        "_size", list.size()
-                ));
-                continue;
-            }
-
-            if("session".equals(e.getKey())) {
-                continue;
-            }
-
             out.put(e.getKey(), v);
         }
 
@@ -387,7 +385,6 @@ public class EngineSession {
                 Object payload = switch (getPayload()) {
                     case JsonPayload(String json) -> JsonUtil.parseOrNull(json);
                     case TextPayload(String text) -> Map.of("text", text);
-                    case null -> null;
                 };
                 if (payload != null) {
                     facts.put("payload", payload);
@@ -398,6 +395,55 @@ public class EngineSession {
         catch (Exception e) {
             return null;
         }
+    }
+
+    public String ejectInputParamsJson() {
+        try {
+            return mapper.writeValueAsString(safeInputParams());
+        }
+        catch (Exception e) {
+            return "{}";
+        }
+    }
+
+    public void addPromptTemplateVars() {
+        putInputParam("missing_fields", valueOrDefaultList(getInputParams().get("missing_fields")));
+        putInputParam("missing_field_options", valueOrDefaultMap(getInputParams().get("missing_field_options")));
+        putInputParam("schema_description", valueOrDefaultString(getInputParams().get("schema_description")));
+        putInputParam("schema_field_details", valueOrDefaultMap(getInputParams().get("schema_field_details")));
+        putInputParam("schema_id", getInputParams().getOrDefault("schema_id", null));
+        putInputParam("schema_extracted_data", schemaExtractedDataDict());
+        putInputParam("context", contextDict());
+        putInputParam("session", sessionDict());
+    }
+
+
+    @SuppressWarnings("unchecked")
+    public static List<String> valueOrDefaultList(Object value) {
+        if (value instanceof List<?> list) {
+            List<String> out = new ArrayList<>();
+            for (Object item : list) {
+                if (item != null) out.add(String.valueOf(item));
+            }
+            return out;
+        }
+        return new ArrayList<>();
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> valueOrDefaultMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            map.forEach((k, v) -> out.put(String.valueOf(k), v));
+            return out;
+        }
+        return new LinkedHashMap<>();
+    }
+
+
+
+    public static String valueOrDefaultString(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
 }

@@ -8,5 +8,5 @@ public enum RuleAction {
     GET_CONTEXT,
     GET_SCHEMA_EXTRACTED_DATA,
     GET_SESSION,
-    SHORT_CIRCUIT
+    SET_TASK
 }

@@ -17,8 +17,8 @@ public final class EnginePipeline {
     public EngineResult execute(EngineSession session) {
         for (EngineStep step : steps) {
             StepResult r = step.execute(session);
-            if (r instanceof StepResult.Stop stop) {
-                return stop.result();
+            if (r instanceof StepResult.Stop(EngineResult result)) {
+                return result;
             }
         }
         // ResponseResolutionStep must have set finalResult

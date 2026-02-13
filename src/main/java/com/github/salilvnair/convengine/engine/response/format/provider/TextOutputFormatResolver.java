@@ -38,10 +38,7 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
             ResponseTemplate response,
             PromptTemplate template
     ) {
-        ensurePromptInputs(session);
-        session.putInputParam("session", session.sessionDict());
-        session.putInputParam("context", session.contextDict());
-        session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
+        session.addPromptTemplateVars();
 
         String historyJson = JsonUtil.toJson(session.conversionHistory());
 
@@ -71,7 +68,7 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
         inputPayload.put("system_prompt", systemPrompt);
         inputPayload.put("user_prompt", userPrompt);
         inputPayload.put("derivation_hint", safe(response.getDerivationHint()));
-        inputPayload.put("context", session.getContextJson());
+        inputPayload.put("session", session.eject());
         audit.audit("RESOLVE_RESPONSE_LLM_INPUT", session.getConversationId(), inputPayload);
 
         String text =
@@ -94,42 +91,5 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
 
     private String safe(String s) {
         return s == null ? "" : s;
-    }
-
-    private void ensurePromptInputs(EngineSession session) {
-        session.putInputParam("missing_fields", valueOrDefaultList(session.getInputParams().get("missing_fields")));
-        session.putInputParam("missing_field_options", valueOrDefaultMap(session.getInputParams().get("missing_field_options")));
-        session.putInputParam("schema_description", valueOrDefaultString(session.getInputParams().get("schema_description")));
-        session.putInputParam("schema_field_details", valueOrDefaultMap(session.getInputParams().get("schema_field_details")));
-        session.putInputParam("schema_id", session.getInputParams().getOrDefault("schema_id", null));
-        session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
-        session.putInputParam("context", session.contextDict());
-        session.putInputParam("session", session.sessionDict());
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> valueOrDefaultList(Object value) {
-        if (value instanceof List<?> list) {
-            List<String> out = new ArrayList<>();
-            for (Object item : list) {
-                if (item != null) out.add(String.valueOf(item));
-            }
-            return out;
-        }
-        return new ArrayList<>();
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> valueOrDefaultMap(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            map.forEach((k, v) -> out.put(String.valueOf(k), v));
-            return out;
-        }
-        return new LinkedHashMap<>();
-    }
-
-    private String valueOrDefaultString(Object value) {
-        return value == null ? "" : String.valueOf(value);
     }
 }

@@ -44,6 +44,7 @@ public class PersistConversationStep implements EngineStep {
         sanitizeConversationForPostgres(session);
         session.getConversation().setStatus("RUNNING");
         session.getConversation().setUpdatedAt(OffsetDateTime.now());
+        session.getConversation().setInputParamsJson(session.ejectInputParamsJson());
         conversationRepo.save(session.getConversation());
 
         // --- build FINAL EngineResult ---
@@ -75,6 +76,11 @@ public class PersistConversationStep implements EngineStep {
         if (contextJson == null || contextJson.isBlank() || JsonUtil.parseOrNull(contextJson).isNull()) {
             session.getConversation().setContextJson("{}");
             session.setContextJson("{}");
+        }
+
+        String sessionJson = session.getConversation().getInputParamsJson();
+        if (sessionJson == null || sessionJson.isBlank() || JsonUtil.parseOrNull(sessionJson).isNull()) {
+            session.getConversation().setInputParamsJson("{}");
         }
 
         String assistantJson = session.getConversation().getLastAssistantJson();

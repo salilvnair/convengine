@@ -37,6 +37,10 @@ public class CeConversation {
     @JdbcTypeCode(SqlTypes.JSON)
     private String contextJson;
 
+    @Column(columnDefinition = "jsonb", name = "input_params_json")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String inputParamsJson;
+
     @Column(name = "last_user_text")
     private String lastUserText;
 

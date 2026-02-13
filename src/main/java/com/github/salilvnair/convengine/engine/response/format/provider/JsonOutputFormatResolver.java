@@ -16,9 +16,7 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 @Component
@@ -41,13 +39,9 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
             ResponseTemplate response,
             PromptTemplate template
     ) {
-        ensurePromptInputs(session);
-        session.putInputParam("session", session.sessionDict());
-        session.putInputParam("context", session.contextDict());
-        session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
+        session.addPromptTemplateVars();
 
         String historyJson = JsonUtil.toJson(session.conversionHistory());
-
         PromptTemplateContext ctx =
                 PromptTemplateContext.builder()
                         .context(session.getContextJson())
@@ -75,7 +69,7 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
         inputPayload.put("user_prompt", userPrompt);
         inputPayload.put("derivation_hint", safe(response.getDerivationHint()));
         inputPayload.put("schema", response.getJsonSchema());
-        inputPayload.put("context", session.getContextJson());
+        inputPayload.put("session", session.eject());
         audit.audit("RESOLVE_RESPONSE_LLM_INPUT", session.getConversationId(), inputPayload);
 
         String json =
@@ -116,42 +110,5 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
 
     private String safe(String s) {
         return s == null ? "" : s;
-    }
-
-    private void ensurePromptInputs(EngineSession session) {
-        session.putInputParam("missing_fields", valueOrDefaultList(session.getInputParams().get("missing_fields")));
-        session.putInputParam("missing_field_options", valueOrDefaultMap(session.getInputParams().get("missing_field_options")));
-        session.putInputParam("schema_description", valueOrDefaultString(session.getInputParams().get("schema_description")));
-        session.putInputParam("schema_field_details", valueOrDefaultMap(session.getInputParams().get("schema_field_details")));
-        session.putInputParam("schema_id", session.getInputParams().getOrDefault("schema_id", null));
-        session.putInputParam("context", session.contextDict());
-        session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
-        session.putInputParam("session", session.sessionDict());
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> valueOrDefaultList(Object value) {
-        if (value instanceof List<?> list) {
-            List<String> out = new ArrayList<>();
-            for (Object item : list) {
-                if (item != null) out.add(String.valueOf(item));
-            }
-            return out;
-        }
-        return new ArrayList<>();
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> valueOrDefaultMap(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            map.forEach((k, v) -> out.put(String.valueOf(k), v));
-            return out;
-        }
-        return new LinkedHashMap<>();
-    }
-
-    private String valueOrDefaultString(Object value) {
-        return value == null ? "" : String.valueOf(value);
     }
 }

@@ -21,13 +21,11 @@ public class PersistConversationBootstrapStep implements EngineStep {
 
     @Override
     public StepResult execute(EngineSession session) {
-
         if (session.getConversation().getCreatedAt() == null) {
             session.getConversation().setCreatedAt(OffsetDateTime.now());
             session.getConversation().setUpdatedAt(OffsetDateTime.now());
             conversationRepo.save(session.getConversation());
         }
-
         return new StepResult.Continue();
     }
 }
