@@ -103,6 +103,13 @@ public class AgentIntentResolver implements IntentResolver {
 
     @Override
     public String resolve(EngineSession session) {
+        session.putInputParam("agentResolver", true);
+        String intent = _resolve(session);
+        session.putInputParam("agentResolver", false);
+        return intent;
+    }
+
+    private String _resolve(EngineSession session) {
         UUID conversationId = session.getConversationId();
         List<AllowedIntent> allowedIntents = allowedIntentService.allowedIntents();
 
@@ -228,8 +235,6 @@ public class AgentIntentResolver implements IntentResolver {
                 session.setState(state);
             }
 
-            applyPostIntentRules(session);
-
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("intent", session.getIntent());
             payload.put("state", session.getState());
@@ -267,8 +272,6 @@ public class AgentIntentResolver implements IntentResolver {
             session.setState(state);
         }
 
-        applyPostIntentRules(session);
-
         Map<String, Object> accepted = new LinkedHashMap<>();
         accepted.put("intent", session.getIntent());
         accepted.put("state", session.getState());
@@ -279,6 +282,8 @@ public class AgentIntentResolver implements IntentResolver {
         return session.getIntent();
     }
 
+
+    @Deprecated(forRemoval = true)
     private void applyPostIntentRules(EngineSession session) {
         if (session.getIntent() == null || session.getIntent().isBlank()) {
             return;

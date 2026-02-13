@@ -75,23 +75,19 @@ public class SchemaExtractionStep implements EngineStep {
         CePromptTemplate template = resolvePromptTemplate(OutputType.SCHEMA_EXTRACTED_DATA.name(), session.getIntent());
 
         Map<String, Object> schemaFieldDetails = schemaFieldDetails(schema.getJsonSchema());
-        List<String> missingBefore = missingRequiredFields(schema.getJsonSchema(), safeJson(session.getContextJson()));
-        Map<String, Object> missingOptionsBefore = missingFieldOptions(missingBefore, schemaFieldDetails);
-        session.putInputParam("missing_fields", missingBefore);
         session.putInputParam("schema_field_details", schemaFieldDetails);
-        session.putInputParam("missing_field_options", missingOptionsBefore);
         session.putInputParam("schema_description", schema.getDescription() == null ? "" : schema.getDescription());
         session.putInputParam("schema_id", schema.getSchemaId());
         ensureSchemaPromptVars(session);
 
         PromptTemplateContext promptTemplateContext = PromptTemplateContext
-                .builder()
-                .context(safeJson(session.getContextJson()))
-                .userInput(session.getUserText())
-                .schemaJson(schema.getJsonSchema())
-                .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
-                .extra(session.getInputParams())
-                .build();
+                                                        .builder()
+                                                        .context(safeJson(session.getContextJson()))
+                                                        .userInput(session.getUserText())
+                                                        .schemaJson(schema.getJsonSchema())
+                                                        .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
+                                                        .extra(session.getInputParams())
+                                                        .build();
         String systemPrompt = renderer.render(template.getSystemPrompt(), promptTemplateContext);
         String userPrompt = renderer.render(template.getUserPrompt(), promptTemplateContext);
 
