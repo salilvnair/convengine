@@ -48,6 +48,7 @@ public class SchemaExtractionStep implements EngineStep {
         if (schema != null) {
             runExtraction(session, schema);
         } else {
+            session.unlockIntent();
             session.setResolvedSchema(null);
             session.setSchemaComplete(false);
             session.setSchemaHasAnyValue(false);
@@ -55,11 +56,11 @@ public class SchemaExtractionStep implements EngineStep {
             session.setMissingFieldOptions(new LinkedHashMap<>());
             ensureSchemaPromptVars(session);
             session.putInputParam("context", session.contextDict());
-            session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
+            session.putInputParam("schema_json", session.schemaJson());
             session.putInputParam("session", session.sessionDict());
         }
 
-        session.syncFromConversation();
+        session.syncFromConversation(true);
         return new StepResult.Continue();
     }
 
@@ -83,7 +84,7 @@ public class SchemaExtractionStep implements EngineStep {
                                                         .userInput(session.getUserText())
                                                         .schemaJson(schema.getJsonSchema())
                                                         .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
-                                                        .extra(session.getInputParams())
+                                                        .extra(session.promptTemplateVars())
                                                         .build();
         String systemPrompt = renderer.render(template.getSystemPrompt(), promptTemplateContext);
         String userPrompt = renderer.render(template.getUserPrompt(), promptTemplateContext);
@@ -122,6 +123,11 @@ public class SchemaExtractionStep implements EngineStep {
         session.setMissingRequiredFields(missingFields);
         session.setMissingFieldOptions(missingFieldOptions);
         session.setResolvedSchema(schema);
+        if (complete) {
+            session.unlockIntent();
+        } else {
+            session.lockIntent("SCHEMA_INCOMPLETE");
+        }
         session.putInputParam("missing_fields", missingFields);
         session.putInputParam("schema_field_details", schemaFieldDetails);
         session.putInputParam("missing_field_options", missingFieldOptions);
@@ -137,8 +143,10 @@ public class SchemaExtractionStep implements EngineStep {
         statusPayload.put("schemaId", schema.getSchemaId());
         statusPayload.put("intent", session.getIntent());
         statusPayload.put("state", session.getState());
+        statusPayload.put("intentLocked", session.isIntentLocked());
+        statusPayload.put("intentLockReason", session.getIntentLockReason());
         statusPayload.put("context", session.contextDict());
-        statusPayload.put("extractedData", session.schemaExtractedDataDict());
+        statusPayload.put("schemaJson", session.schemaJson());
         audit.audit("SCHEMA_STATUS", session.getConversationId(), statusPayload);
     }
 
@@ -245,9 +253,17 @@ public class SchemaExtractionStep implements EngineStep {
         if (session.getInputParams() == null) {
             return;
         }
-        session.getInputParams().putIfAbsent("missing_fields", new ArrayList<>());
-        session.getInputParams().putIfAbsent("schema_field_details", new LinkedHashMap<>());
-        session.getInputParams().putIfAbsent("missing_field_options", new LinkedHashMap<>());
-        session.getInputParams().putIfAbsent("schema_description", "");
+        if (!session.getInputParams().containsKey("missing_fields")) {
+            session.putInputParam("missing_fields", new ArrayList<>());
+        }
+        if (!session.getInputParams().containsKey("schema_field_details")) {
+            session.putInputParam("schema_field_details", new LinkedHashMap<>());
+        }
+        if (!session.getInputParams().containsKey("missing_field_options")) {
+            session.putInputParam("missing_field_options", new LinkedHashMap<>());
+        }
+        if (!session.getInputParams().containsKey("schema_description")) {
+            session.putInputParam("schema_description", "");
+        }
     }
 }

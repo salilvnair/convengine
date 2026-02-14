@@ -10,5 +10,6 @@ public class ConversationRequest {
 
     private UUID conversationId;
     private String message;
+    private Boolean reset;
     private Map<String, Object> inputParams;
 }

@@ -1,3 +1,21 @@
+-- public.ce_config definition
+
+-- Drop table
+
+-- DROP TABLE ce_config;
+
+CREATE TABLE ce_config (
+                           config_id int4 NOT NULL,
+                           config_type text NOT NULL,
+                           config_key text NOT NULL,
+                           config_value text NOT NULL,
+                           enabled bool DEFAULT true NOT NULL,
+                           created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                           CONSTRAINT ce_config_pkey PRIMARY KEY (config_id)
+);
+CREATE UNIQUE INDEX ux_ce_config_type_key ON public.ce_config USING btree (config_type, config_key);
+
+
 -- public.ce_container_config definition
 
 -- Drop table
@@ -34,6 +52,7 @@ CREATE TABLE ce_conversation (
                                  context_json jsonb DEFAULT '{}'::jsonb NOT NULL,
                                  last_user_text text NULL,
                                  last_assistant_json jsonb NULL,
+                                 input_params_json jsonb DEFAULT '{}'::jsonb NOT NULL,
                                  created_at timestamptz DEFAULT now() NOT NULL,
                                  updated_at timestamptz DEFAULT now() NOT NULL,
                                  CONSTRAINT ce_conversation_pkey PRIMARY KEY (conversation_id)
@@ -181,7 +200,7 @@ CREATE TABLE ce_prompt_template (
                                     created_at timestamptz DEFAULT now() NOT NULL,
                                     CONSTRAINT ce_prompt_template_pkey PRIMARY KEY (template_id)
 );
-CREATE INDEX idx_ce_prompt_template_lookup ON public.ce_prompt_template USING btree (purpose, intent_code, state_code, enabled);
+CREATE INDEX idx_ce_prompt_template_lookup ON public.ce_prompt_template USING btree (response_type, intent_code, state_code, enabled);
 
 
 -- public.ce_response definition
@@ -288,20 +307,6 @@ CREATE TABLE ce_mcp_db_tool (
                                 CONSTRAINT ce_mcp_db_tool_tool_id_fkey FOREIGN KEY (tool_id) REFERENCES ce_mcp_tool(tool_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_ce_mcp_db_tool_dialect ON public.ce_mcp_db_tool USING btree (dialect);
-
-CREATE TABLE ce_config (
-                           config_id        INTEGER PRIMARY KEY,
-                           config_type      text NOT NULL,
-                           config_key       text NOT NULL,
-                           config_value     text NOT NULL,
-                           enabled          BOOLEAN NOT NULL DEFAULT true,
-                           created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE UNIQUE INDEX ux_ce_config_type_key
-    ON ce_config (config_type, config_key);
-
-
 
 INSERT INTO ce_config
 (config_id, config_type, config_key, config_value, enabled, created_at)

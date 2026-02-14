@@ -134,7 +134,7 @@ public class AgentIntentResolver implements IntentResolver {
                         .allowedIntents(allowedIntents)
                         .pendingClarification(pendingClarification)
                         .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
-                        .extra(session.getInputParams())
+                        .extra(session.promptTemplateVars())
                         .build();
 
         String systemPrompt = renderer.render(SYSTEM_PROMPT, promptTemplateContext);
@@ -216,6 +216,14 @@ public class AgentIntentResolver implements IntentResolver {
                 needsClarification = false;
                 clarificationQuestion = null;
             }
+        }
+
+        // Treat followups as valid clarification questions when the model flags clarification/collision.
+        if ((needsClarification || INTENT_COLLISION_STATE.equalsIgnoreCase(state))
+                && (clarificationQuestion == null || clarificationQuestion.isBlank())
+                && !followups.isEmpty()) {
+            clarificationQuestion = followups.getFirst();
+            needsClarification = true;
         }
 
         if (needsClarification) {

@@ -67,6 +67,12 @@ public class AuditConversationHistoryProvider implements ConversationHistoryProv
             if (node.has("json")) return node.get("json").asText();
             if (node.has("output")) return node.get("output").asText();
             if (node.has("question")) return node.get("question").asText();
+            if (node.has("data")) {
+                JsonNode data = node.get("data");
+                if (data.has("text")) return data.get("text").asText();
+                if (data.has("output")) return data.get("output").asText();
+                if (data.has("question")) return data.get("question").asText();
+            }
 
             return payload;
         } catch (Exception e) {

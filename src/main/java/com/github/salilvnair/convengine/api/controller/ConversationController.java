@@ -2,6 +2,8 @@ package com.github.salilvnair.convengine.api.controller;
 
 import com.github.salilvnair.convengine.api.dto.ConversationRequest;
 import com.github.salilvnair.convengine.api.dto.ConversationResponse;
+import com.github.salilvnair.convengine.api.dto.AuditTraceResponse;
+import com.github.salilvnair.convengine.audit.AuditTraceService;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.core.ConversationalEngine;
@@ -14,7 +16,6 @@ import com.github.salilvnair.convengine.repo.AuditRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,7 @@ public class ConversationController {
     private final ConversationalEngine engine;
     private final AuditRepository auditRepository;
     private final AuditService audit;
+    private final AuditTraceService auditTraceService;
 
     @PostMapping("/message")
     public ConversationResponse message(@RequestBody ConversationRequest request) {
@@ -37,11 +39,19 @@ public class ConversationController {
                         ? request.getConversationId()
                         : UUID.randomUUID();
 
+        Map<String, Object> inputParams = new LinkedHashMap<>();
+        if (request.getInputParams() != null) {
+            inputParams.putAll(request.getInputParams());
+        }
+        if (Boolean.TRUE.equals(request.getReset())) {
+            inputParams.put("reset", true);
+        }
+
         EngineContext engineContext =
                 EngineContext.builder()
                         .conversationId(conversationId.toString())
                         .userText(request.getMessage())
-                        .inputParams(request.getInputParams())
+                        .inputParams(inputParams)
                         .build();
 
         try {
@@ -125,11 +135,20 @@ public class ConversationController {
             );
             return error;
         }
+        finally {
+            // Safety flush for deferred audit mode. In immediate mode this is a no-op.
+            audit.flushPending(conversationId);
+        }
     }
 
     @GetMapping("/audit/{conversationId}")
     public List<CeAudit> getAudit(@PathVariable("conversationId") UUID conversationId) {
         return auditRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
+    }
+
+    @GetMapping("/audit/{conversationId}/trace")
+    public AuditTraceResponse getAuditTrace(@PathVariable("conversationId") UUID conversationId) {
+        return auditTraceService.trace(conversationId);
     }
 
     // ----------------------------------------

@@ -128,7 +128,7 @@ public class ResponseResolutionStep implements EngineStep {
         outputPayload.put("intent", session.getIntent());
         outputPayload.put("state", session.getState());
         outputPayload.put("context", session.contextDict());
-        outputPayload.put("extractedData", session.schemaExtractedDataDict());
+        outputPayload.put("schemaJson", session.schemaJson());
         audit.audit("ASSISTANT_OUTPUT", session.getConversationId(), outputPayload);
 
         return new StepResult.Continue();
