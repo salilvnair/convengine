@@ -19,6 +19,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Getter
 @Setter
@@ -33,6 +34,8 @@ public class EngineSession {
     private String userText;
     private String intent;
     private String state;
+    private boolean intentLocked;
+    private String intentLockReason;
 
     private String contextJson;
     private List<ConversationTurn> conversationHistory;
@@ -69,6 +72,27 @@ public class EngineSession {
     private final List<StepTiming> stepTimings = new ArrayList<>();
     private Map<String, Object> inputParams = new LinkedHashMap<>();
     private Map<String, Object> safeInputParamsForOutput = new LinkedHashMap<>();
+    private Map<String, Object> systemExtensions = new LinkedHashMap<>();
+    private Set<String> unknownSystemInputParamKeys = new LinkedHashSet<>();
+    private Set<String> systemDerivedInputParamKeys = new LinkedHashSet<>();
+
+    private static final Set<String> CONTROLLED_PROMPT_KEYS = Set.of(
+            "missing_fields",
+            "missing_field_options",
+            "schema_description",
+            "schema_field_details",
+            "schema_id",
+            "schema_extracted_data",
+            "context",
+            "session",
+            "intent_scores",
+            "intent_top3",
+            "intent_collision_candidates",
+            "followups",
+            "agentResolver"
+    );
+    private static final Pattern SAFE_INPUT_KEY_PATTERN = Pattern.compile("^[a-zA-Z0-9_.-]{1,120}$");
+    private static final Set<String> RESET_CONTROL_KEYS = Set.of("reset", "restart", "conversation_reset");
 
 
     public boolean hasPendingClarification() {
@@ -101,15 +125,36 @@ public class EngineSession {
         this.conversationId = UUID.fromString(engineContext.getConversationId());
         this.userText = engineContext.getUserText();
         if (engineContext.getInputParams() != null) {
-            initializeInputParams(engineContext.getInputParams());
+            mergeInputParams(engineContext.getInputParams(), true, false);
         }
     }
 
-    private void initializeInputParams(Map<String, Object> inputParams) {
-        inputParams.forEach((s,v)->{
-            this.inputParams.put(s, v);
-            this.safeInputParamsForOutput.put(s, jsonSafe(v));
-        });
+    private void mergeInputParams(Map<String, Object> params, boolean overwrite, boolean fromSystemWrite) {
+        if (params == null || params.isEmpty()) {
+            return;
+        }
+        params.forEach((key, value) -> mergeInputParam(key, value, overwrite, fromSystemWrite));
+    }
+
+    private void mergeInputParam(String key, Object value, boolean overwrite, boolean fromSystemWrite) {
+        if (key == null || key.isBlank()) {
+            return;
+        }
+        String normalizedKey = key.trim();
+        if (fromSystemWrite && !isControlledPromptKey(normalizedKey)) {
+            systemExtensions.put(normalizedKey, value);
+            unknownSystemInputParamKeys.add(normalizedKey);
+            systemDerivedInputParamKeys.add(normalizedKey);
+        }
+        if (!overwrite && inputParams.containsKey(normalizedKey)) {
+            return;
+        }
+        inputParams.put(normalizedKey, value);
+        safeInputParamsForOutput.put(normalizedKey, jsonSafe(value));
+    }
+
+    private boolean isControlledPromptKey(String key) {
+        return CONTROLLED_PROMPT_KEYS.contains(key);
     }
 
     // -------------------------------------------------
@@ -129,7 +174,7 @@ public class EngineSession {
             JsonNode root = mapper.readTree(inputParamsJson);
             if (!root.isObject()) return;
             Map<String, Object> params = mapper.convertValue(root, new TypeReference<>() {});
-            initializeInputParams(params);
+            mergeInputParams(params, false, false);
         }
         catch (Exception e) {
             log.error(e.getMessage(), e);
@@ -146,12 +191,14 @@ public class EngineSession {
         }
 
         restoreClarificationFromContext();
+        restoreIntentLockFromContext();
     }
 
     public void syncToConversation() {
         if (conversation == null) return;
 
         persistClarificationToContext();
+        persistIntentLockToContext();
 
         conversation.setIntentCode(intent);
         conversation.setStateCode(state);
@@ -196,6 +243,39 @@ public class EngineSession {
                     node.path("reason").asText(null);
 
         } catch (Exception e) {
+            // ignore
+        }
+    }
+
+    private void persistIntentLockToContext() {
+        try {
+            ObjectNode root =
+                    contextJson == null || contextJson.isBlank()
+                            ? mapper.createObjectNode()
+                            : (ObjectNode) mapper.readTree(contextJson);
+            ObjectNode lock = mapper.createObjectNode();
+            lock.put("locked", intentLocked);
+            lock.put("reason", intentLockReason);
+            root.set("intent_lock", lock);
+            this.contextJson = mapper.writeValueAsString(root);
+        } catch (Exception ignored) {
+            // ignore
+        }
+    }
+
+    private void restoreIntentLockFromContext() {
+        try {
+            if (contextJson == null || contextJson.isBlank()) {
+                return;
+            }
+            JsonNode root = mapper.readTree(contextJson);
+            JsonNode lock = root.path("intent_lock");
+            if (lock.isMissingNode() || lock.isNull()) {
+                return;
+            }
+            this.intentLocked = lock.path("locked").asBoolean(false);
+            this.intentLockReason = lock.path("reason").asText(null);
+        } catch (Exception ignored) {
             // ignore
         }
     }
@@ -283,6 +363,8 @@ public class EngineSession {
         sessionMap.put("hasContainerData", hasContainerData);
         sessionMap.put("containerData", containerDataDict());
         sessionMap.put("hasAnySchemaValue", schemaHasAnyValue);
+        sessionMap.put("intentLocked", intentLocked);
+        sessionMap.put("intentLockReason", intentLockReason);
         sessionMap.put("missingRequiredFields", missingRequiredFields);
         sessionMap.put("missingFieldOptions", missingFieldOptions);
         sessionMap.put("userText", userText);
@@ -323,11 +405,33 @@ public class EngineSession {
     }
 
     public void putInputParam(String key, Object value) {
-        if (key == null || key.isBlank()) {
-            return;
+        mergeInputParam(key, value, true, true);
+    }
+
+    public Map<String, Object> promptTemplateVars() {
+        Map<String, Object> vars = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : inputParams.entrySet()) {
+            if (isExposablePromptVar(e.getKey())) {
+                vars.put(e.getKey(), e.getValue());
+            }
         }
-        inputParams.put(key, value);
-        safeInputParamsForOutput.put(key, jsonSafe(value));
+        return vars;
+    }
+
+    private boolean isExposablePromptVar(String key) {
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+        if (!SAFE_INPUT_KEY_PATTERN.matcher(key).matches()) {
+            return false;
+        }
+        if (isControlledPromptKey(key)) {
+            return true;
+        }
+        if (systemDerivedInputParamKeys.contains(key)) {
+            return false;
+        }
+        return !key.startsWith("_");
     }
 
     public Map<String, Object> safeInputParams() {
@@ -341,6 +445,9 @@ public class EngineSession {
             out.put(e.getKey(), v);
         }
 
+        if (!unknownSystemInputParamKeys.isEmpty()) {
+            out.put("droppedSystemPromptVars", new ArrayList<>(unknownSystemInputParamKeys));
+        }
         return out;
     }
 
@@ -407,14 +514,67 @@ public class EngineSession {
     }
 
     public void addPromptTemplateVars() {
-        putInputParam("missing_fields", valueOrDefaultList(getInputParams().get("missing_fields")));
-        putInputParam("missing_field_options", valueOrDefaultMap(getInputParams().get("missing_field_options")));
-        putInputParam("schema_description", valueOrDefaultString(getInputParams().get("schema_description")));
-        putInputParam("schema_field_details", valueOrDefaultMap(getInputParams().get("schema_field_details")));
-        putInputParam("schema_id", getInputParams().getOrDefault("schema_id", null));
+        putInputParam("missing_fields", valueOrDefaultList(inputParams.get("missing_fields")));
+        putInputParam("missing_field_options", valueOrDefaultMap(inputParams.get("missing_field_options")));
+        putInputParam("schema_description", valueOrDefaultString(inputParams.get("schema_description")));
+        putInputParam("schema_field_details", valueOrDefaultMap(inputParams.get("schema_field_details")));
+        putInputParam("schema_id", inputParams.getOrDefault("schema_id", null));
         putInputParam("schema_extracted_data", schemaExtractedDataDict());
         putInputParam("context", contextDict());
         putInputParam("session", sessionDict());
+    }
+
+    public void lockIntent(String reason) {
+        this.intentLocked = true;
+        this.intentLockReason = reason == null || reason.isBlank() ? "UNKNOWN" : reason;
+    }
+
+    public void unlockIntent() {
+        this.intentLocked = false;
+        this.intentLockReason = null;
+    }
+
+    public void resetForConversationRestart() {
+        this.intent = "UNKNOWN";
+        this.state = "UNKNOWN";
+        this.contextJson = "{}";
+        this.resolvedSchema = null;
+        this.schemaComplete = false;
+        this.schemaHasAnyValue = false;
+        this.lastLlmOutput = null;
+        this.lastLlmStage = null;
+        this.missingRequiredFields = new ArrayList<>();
+        this.missingFieldOptions = new LinkedHashMap<>();
+        this.validationTablesJson = null;
+        this.validationDecision = null;
+        this.payload = null;
+        this.containerDataJson = null;
+        this.hasContainerData = false;
+        this.containerData = null;
+        this.finalResult = null;
+        this.awaitingClarification = false;
+        this.clarificationTurn = 0;
+        this.lastClarificationQuestion = null;
+        this.pendingClarificationQuestionHistory = new ArrayList<>();
+        this.pendingClarificationReasonsHistory = new ArrayList<>();
+        clearClarification();
+        unlockIntent();
+        this.inputParams.clear();
+        this.safeInputParamsForOutput.clear();
+        this.systemExtensions.clear();
+        this.unknownSystemInputParamKeys.clear();
+        this.systemDerivedInputParamKeys.clear();
+        if (engineContext.getInputParams() != null) {
+            Map<String, Object> requestParams = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : engineContext.getInputParams().entrySet()) {
+                String key = e.getKey();
+                if (key != null && RESET_CONTROL_KEYS.contains(key.trim().toLowerCase())) {
+                    continue;
+                }
+                requestParams.put(e.getKey(), e.getValue());
+            }
+            mergeInputParams(requestParams, true, false);
+        }
     }
 
 

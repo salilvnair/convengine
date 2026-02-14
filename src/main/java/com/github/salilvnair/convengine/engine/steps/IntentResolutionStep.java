@@ -32,9 +32,14 @@ public class IntentResolutionStep implements EngineStep {
 
         Map<String, Object> startPayload = new LinkedHashMap<>();
         startPayload.put("previousIntent", previousIntent);
+        startPayload.put("intentLocked", session.isIntentLocked());
+        startPayload.put("intentLockReason", session.getIntentLockReason());
         audit.audit("INTENT_RESOLVE_START", session.getConversationId(), startPayload);
 
-        if (isActiveSchemaCollection(session)) {
+        if (session.isIntentLocked() || isActiveSchemaCollection(session)) {
+            if (!session.isIntentLocked()) {
+                session.lockIntent("SCHEMA_INCOMPLETE");
+            }
             session.clearClarification();
             if (session.getConversation() != null) {
                 session.getConversation().setIntentCode(session.getIntent());
@@ -43,6 +48,8 @@ public class IntentResolutionStep implements EngineStep {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("intent", session.getIntent());
             payload.put("state", session.getState());
+            payload.put("intentLocked", session.isIntentLocked());
+            payload.put("intentLockReason", session.getIntentLockReason());
             audit.audit("INTENT_RESOLVE_SKIPPED_SCHEMA_COLLECTION", session.getConversationId(), payload);
             return new StepResult.Continue();
         }

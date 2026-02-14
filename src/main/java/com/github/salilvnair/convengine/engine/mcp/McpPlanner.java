@@ -105,7 +105,7 @@ public class McpPlanner {
                                     .userInput(session.getUserText())
                                     .mcpTools(toolsJson)
                                     .mcpObservations(obsJson)
-                                    .extra(session.getInputParams())
+                                    .extra(session.promptTemplateVars())
                                     .build();
 
         String systemPrompt = renderer.render(SYSTEM_PROMPT, ctx);

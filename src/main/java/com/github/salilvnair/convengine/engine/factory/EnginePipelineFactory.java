@@ -1,7 +1,10 @@
 package com.github.salilvnair.convengine.engine.factory;
 
+import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.AuditSessionContext;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
+import com.github.salilvnair.convengine.engine.hook.EngineStepHook;
 import com.github.salilvnair.convengine.engine.model.StepTiming;
 import com.github.salilvnair.convengine.engine.pipeline.EnginePipeline;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
@@ -25,6 +28,8 @@ public class EnginePipelineFactory {
     private static final Logger log = LoggerFactory.getLogger(EnginePipelineFactory.class);
 
     private final List<EngineStep> discoveredSteps;
+    private final List<EngineStepHook> stepHooks;
+    private final AuditService audit;
 
     private EnginePipeline pipeline;
 
@@ -244,7 +249,7 @@ public class EnginePipelineFactory {
     private List<EngineStep> wrapWithTiming(List<EngineStep> steps) {
         Map<Class<?>, EngineStep> wrapped = new ConcurrentHashMap<>();
         for (EngineStep step : steps) {
-            wrapped.put(step.getClass(), new TimingEngineStep(step));
+            wrapped.put(step.getClass(), new TimingEngineStep(step, stepHooks, audit));
         }
         return steps.stream().map(s -> wrapped.get(s.getClass())).toList();
     }
@@ -252,20 +257,44 @@ public class EnginePipelineFactory {
     private static final class TimingEngineStep implements EngineStep {
 
         private final EngineStep delegate;
+        private final List<EngineStepHook> stepHooks;
+        private final AuditService audit;
 
-        private TimingEngineStep(EngineStep delegate) {
+        private TimingEngineStep(
+                EngineStep delegate,
+                List<EngineStepHook> stepHooks,
+                AuditService audit
+        ) {
             this.delegate = delegate;
+            this.stepHooks = stepHooks == null ? List.of() : stepHooks;
+            this.audit = audit;
         }
 
         @Override
         public StepResult execute(EngineSession session) {
             long start = System.nanoTime();
+            String stepName = delegate.getClass().getSimpleName();
+            String stepClass = delegate.getClass().getName();
+            AuditSessionContext.set(session);
 
             StepTiming timing = StepTiming.builder()
-                    .stepName(delegate.getClass().getSimpleName())
+                    .stepName(stepName)
                     .startedAtNs(start)
                     .success(false)
                     .build();
+
+            audit.audit(
+                    "STEP_ENTER",
+                    session.getConversationId(),
+                    stepAuditPayload(session, stepName, stepClass, Map.of())
+            );
+            for (EngineStepHook hook : stepHooks) {
+                runHookSafely(() -> {
+                    if (hook.supports(stepName, session)) {
+                        hook.beforeStep(stepName, session);
+                    }
+                }, hook, "beforeStep", stepName, session);
+            }
 
             try {
                 StepResult r = delegate.execute(session);
@@ -274,6 +303,26 @@ public class EnginePipelineFactory {
                 timing.setDurationMs((end - start) / 1_000_000);
                 timing.setSuccess(true);
                 session.getStepTimings().add(timing);
+                for (EngineStepHook hook : stepHooks) {
+                    runHookSafely(() -> {
+                        if (hook.supports(stepName, session)) {
+                            hook.afterStep(stepName, session, r);
+                        }
+                    }, hook, "afterStep", stepName, session);
+                }
+                audit.audit(
+                        "STEP_EXIT",
+                        session.getConversationId(),
+                        stepAuditPayload(
+                                session,
+                                stepName,
+                                stepClass,
+                                Map.of(
+                                        "outcome", r.getClass().getSimpleName(),
+                                        "durationMs", timing.getDurationMs()
+                                )
+                        )
+                );
                 return r;
             } catch (Exception e) {
                 long end = System.nanoTime();
@@ -281,8 +330,80 @@ public class EnginePipelineFactory {
                 timing.setDurationMs((end - start) / 1_000_000);
                 timing.setError(e.getClass().getSimpleName() + ": " + e.getMessage());
                 session.getStepTimings().add(timing);
+                for (EngineStepHook hook : stepHooks) {
+                    runHookSafely(() -> {
+                        if (hook.supports(stepName, session)) {
+                            hook.onStepError(stepName, session, e);
+                        }
+                    }, hook, "onStepError", stepName, session);
+                }
+                audit.audit(
+                        "STEP_ERROR",
+                        session.getConversationId(),
+                        Map.of(
+                                "step", stepName,
+                                "stepClass", stepClass,
+                                "durationMs", timing.getDurationMs(),
+                                "errorType", e.getClass().getSimpleName(),
+                                "errorMessage", String.valueOf(e.getMessage())
+                        )
+                );
                 throw e;
+            } finally {
+                AuditSessionContext.clear();
             }
+        }
+
+        private void runHookSafely(
+                Runnable hookCall,
+                EngineStepHook hook,
+                String phase,
+                String stepName,
+                EngineSession session
+        ) {
+            try {
+                hookCall.run();
+            } catch (Exception ex) {
+                log.warn(
+                        "EngineStepHook {} failed during {} for step {} convId={}: {}",
+                        hook.getClass().getSimpleName(),
+                        phase,
+                        stepName,
+                        session.getConversationId(),
+                        ex.getMessage()
+                );
+                audit.audit(
+                        "STEP_HOOK_ERROR",
+                        session.getConversationId(),
+                        Map.of(
+                                "step", stepName,
+                                "phase", phase,
+                                "hookClass", hook.getClass().getName(),
+                                "errorType", ex.getClass().getSimpleName(),
+                                "errorMessage", String.valueOf(ex.getMessage())
+                        )
+                );
+            }
+        }
+
+        private Map<String, Object> stepAuditPayload(
+                EngineSession session,
+                String stepName,
+                String stepClass,
+                Map<String, Object> extra
+        ) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("step", stepName);
+            payload.put("stepClass", stepClass);
+            payload.putAll(extra);
+
+            // Add intent/state inside payload _meta so they are visible with stage metadata.
+            Map<String, Object> stepMeta = new LinkedHashMap<>();
+            stepMeta.put("intent", session.getIntent());
+            stepMeta.put("state", session.getState());
+            payload.put("_meta", stepMeta);
+
+            return payload;
         }
     }
 }

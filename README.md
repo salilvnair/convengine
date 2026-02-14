@@ -1,196 +1,433 @@
 # ConvEngine Java
 
-ConvEngine Java is a deterministic conversational workflow engine with a database-first control plane.
+ConvEngine is a deterministic, database-configured conversational workflow engine for enterprise-grade, auditable conversation systems.
 
-It is built for auditable, enterprise workflows where intent resolution, schema collection, state transitions, and responses must be explicit and configurable.
+It is designed for stateful workflows where intent, schema collection, rules, and responses must be explicit and traceable.
 
-## Architectural Goals
+## Core Architecture
 
-- deterministic execution over free-form behavior
-- configuration-driven workflow semantics
-- strict state and schema control
-- postmortem-friendly observability
-- framework extensibility (MCP, container data)
+### API Layer
+- `POST /api/v1/conversation/message`
+- `GET /api/v1/conversation/audit/{conversationId}`
+- `GET /api/v1/conversation/audit/{conversationId}/trace`
 
-## System Architecture
+### Engine Layer
+- `DefaultConversationalEngine` creates session + executes pipeline
+- `EnginePipelineFactory` builds annotation-driven DAG order
+- `EngineStep` units operate on mutable `EngineSession`
 
-### 1) API Layer
-- Accepts user input + conversation id.
-- Builds engine context.
-- Delegates to engine pipeline.
+### Persistence Layer
+- `ce_*` tables are the control plane and runtime state
+- `ce_audit` is the source of truth for postmortems
 
-### 2) Engine Orchestration Layer
-- Ordered step execution.
-- Each step has narrow responsibility.
-- Stops only on terminal condition or hard error.
+### LLM Layer
+- Consumer provides `LlmClient` implementation
+- Engine uses constrained prompts and JSON contracts
 
-### 3) Resolver Layer
-- intent resolvers (classifier + agent)
-- collision resolver
-- rule evaluation resolvers
-- response type and output format resolvers
-- MCP planner/executor
+## Pipeline (Typical)
 
-### 4) Persistence Layer
-- JPA/Hibernate-backed `ce_*` tables
-- conversation + audit + metadata all persisted
+1. `LoadOrCreateConversationStep`
+2. `ResetConversationStep`
+3. `PersistConversationBootstrapStep`
+4. `AuditUserInputStep`
+5. `PolicyEnforcementStep`
+6. `IntentResolutionStep`
+7. `ResetResolvedIntentStep`
+8. `FallbackIntentStateStep`
+9. `AddContainerDataStep`
+10. `McpToolStep`
+11. `SchemaExtractionStep`
+12. `AutoAdvanceStep`
+13. `RulesStep`
+14. `ResponseResolutionStep`
+15. `PersistConversationStep`
+16. `PipelineEndGuardStep`
 
-### 5) LLM Integration Layer
-- OpenAI provider (or equivalent adapter)
-- strict JSON extraction/intent contracts
-- all invocations audited
+Exact order is resolved via `@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`, and terminal/bootstrap annotations.
 
-## Execution Pipeline (Reference)
+## Control Plane Tables
 
-1. Load/Create conversation
-2. Persist bootstrap
-3. Audit user input
-4. Intent resolution
-5. Fallback intent/state
-6. Add container data (if configured)
-7. MCP tool step (if configured)
-8. Schema extraction
-9. Auto-advance facts
-10. Rule evaluation
-11. Response resolution
-12. Persist conversation
+- `ce_intent`
+- `ce_intent_classifier`
+- `ce_output_schema`
+- `ce_prompt_template`
+- `ce_response`
+- `ce_rule`
+- `ce_policy`
+- `ce_mcp_tool`
+- `ce_mcp_db_tool`
+- `ce_config`
+- `ce_conversation`
+- `ce_audit`
 
-## Data Control Plane (`ce_*`)
+## Implemented Value Matrix (Source-of-Truth)
 
-Core tables and role:
+### Response
+- `ce_response.response_type`: `EXACT`, `DERIVED`
+- `ce_response.output_format`: `TEXT`, `JSON`
 
-- `ce_intent`: allowed intents and hints
-- `ce_intent_classifier`: deterministic intent patterns
-- `ce_output_schema`: extraction schemas by intent/state
-- `ce_prompt_template`: prompt templates keyed by `response_type`
-- `ce_response`: response mapping by intent/state
-- `ce_rule`: transition and context mutation rules
-- `ce_conversation`: current runtime state
-- `ce_audit`: stage-level event stream
-- `ce_mcp_tool`: MCP tool registry
-- `ce_mcp_db_tool`: SQL-backed MCP tool definitions
-- `ce_config`: runtime config for resolver prompts/thresholds
+### Rule Types
+- Implemented resolvers: `EXACT`, `REGEX`, `JSON_PATH`
 
-## Prompting Model
-
-Prompt sources:
-
-1. `ce_config` for engine-level resolvers:
-- intent agent
-- intent collision resolver
-- MCP planner
-
-2. `ce_prompt_template` for extraction and response derivation:
-- `response_type=SCHEMA_EXTRACTED_DATA`
-- `response_type=TEXT`
-- `response_type=JSON`
-
-## Intent Model
-
-Intent resolution combines:
-- classifier match
-- LLM agent scoring (`intentScores`)
-
-If score gap is small:
-- engine enters `INTENT_COLLISION`
-- collision resolver asks disambiguation question
-
-If top intent is clear:
-- engine continues with selected intent/state
-
-## Schema and State Model
-
-When schema is configured:
-- extract strict JSON from user turn
-- merge into conversation context
-- compute:
-    - `schemaComplete`
-    - `hasAnySchemaValue`
-
-State transitions are applied by rules, not by hardcoded domain logic.
-
-## Rule Engine
-
-Rule types:
-- `AGENT`
-- `REGEX`
-- `EXACT`
-- `JSON_PATH`
-
-Actions:
-- `SET_STATE`
+### Rule Actions
 - `SET_INTENT`
+- `RESOLVE_INTENT`
+- `SET_STATE`
 - `SET_JSON`
 - `GET_CONTEXT`
-- `GET_SESSION`
 - `GET_SCHEMA_EXTRACTED_DATA`
-- `SHORT_CIRCUIT`
-- `RESOLVE_INTENT` (marker)
+- `GET_SESSION`
+- `SET_TASK`
 
-## Response Resolution
+### OutputType (engine templates)
+- `TEXT`
+- `JSON`
+- `SCHEMA_JSON`
 
-Selection:
-- `ce_response` by `intent + state` (with fallback)
+## Session Continuity and Intent Lock
 
-Resolution path:
-- `EXACT` => direct payload
-- `DERIVED` => render prompt and invoke format resolver (TEXT/JSON)
+During schema collection, intent can be lock-pinned to prevent resolver drift on subsequent turns.
 
-For collision state:
-- dedicated collision resolver can short-circuit normal mapping.
+- lock is persisted in `context_json.intent_lock`
+- unlocked when schema completes or schema path is absent
 
-## Observability and Postmortem
+## Reset Semantics
 
-`ce_audit` is the operational source of truth.
+Conversation reset can be triggered by:
 
-Typical high-value stage events:
-- `*_LLM_INPUT` / `*_LLM_OUTPUT`
-- `SCHEMA_STATUS`
-- `AUTO_ADVANCE_FACTS`
-- `RULE_MATCHED`
-- `SET_*` / `GET_*`
-- `ASSISTANT_OUTPUT`
-- `ENGINE_RETURN`
-- `PIPELINE_TIMING`
+- request body: `reset=true`
+- input params: `reset=true | restart=true | conversation_reset=true`
+- message commands: `reset`, `restart`, `/reset`, `/restart`
+- resolved intent codes configured via `ce_config`
 
-## Example Flows
+Config:
 
-### Example 1: Greeting
-User: `Hi`  
-Outcome:
-- intent resolves to greeting
-- no schema collection
-- mapped greeting response returned
+```sql
+INSERT INTO ce_config (config_type, config_key, config_value, enabled)
+VALUES ('ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,START_OVER', true);
+```
 
-### Example 2: Ambiguous intent collision
-User asks a query that can map to two intents with near-equal scores.  
-Outcome:
-- `INTENT_COLLISION` state
-- one disambiguation follow-up is asked
-- next user turn resolves to one intent and flow continues
+Default reset intent code: `RESET_SESSION`.
 
-### Example 3: Identifier-required operational query
-User asks for analysis without required identifier.  
-Outcome:
-- clarification question asks for missing identifier
-- once provided, analysis path resumes deterministically
+## Consumer Extension Points
 
-## Extending the Engine (Recommended)
+### 1) Step interception (`EngineStepHook`)
 
-1. Add/update intent metadata.
-2. Add classifier patterns if needed.
-3. Define output schema for collection flows.
-4. Define rule transitions.
-5. Define response mappings.
-6. Add templates (`response_type`).
-7. Add resolver config in `ce_config`.
-8. Validate with multi-turn audit traces.
+```java
+@Component
+public class MyHook implements EngineStepHook {
+    @Override
+    public boolean supports(String stepName, EngineSession session) {
+        return "SchemaExtractionStep".equals(stepName);
+    }
+
+    @Override
+    public void beforeStep(String stepName, EngineSession session) {
+        session.putInputParam("consumer_hint", "compact");
+    }
+}
+```
+
+### 2) Response transformer
+- Annotate bean with `@ResponseTransformer(intent, state)`
+- Implement `ResponseTransformerHandler`
+
+### 3) Container extensions
+- `@ContainerDataTransformer(intent, state)`
+- request/response interceptors for container execution
+
+### 4) Rule task execution
+- `SET_TASK` action delegates to custom task executor paths
+
+## Streaming Transport (Configurable)
+
+### SSE (default enabled)
+- Endpoint: `GET /api/v1/conversation/stream/{conversationId}`
+- Streams audit events as they are persisted
+
+### STOMP/WebSocket (default disabled)
+- Enable with `convengine.transport.stomp.enabled=true`
+- Endpoint: `convengine.transport.stomp.endpoint` (default `/ws-convengine`)
+- Topic: `convengine.transport.stomp.auditDestinationBase/{conversationId}`
+  (default `/topic/convengine/audit/{conversationId}`)
+
+### Transport properties
+
+```yaml
+convengine:
+  transport:
+    sse:
+      enabled: true
+      emitter-timeout-ms: 1800000
+    stomp:
+      enabled: false
+      endpoint: /ws-convengine
+      app-destination-prefix: /app
+      topic-prefix: /topic
+      audit-destination-base: /topic/convengine/audit
+      allowed-origin-pattern: "*"
+      sock-js: true
+```
+
+### Full `application.yml` example (SSE + STOMP + Experimental)
+
+```yaml
+server:
+  port: 8080
+
+convengine:
+  transport:
+    sse:
+      enabled: true
+      emitter-timeout-ms: 1800000
+    stomp:
+      enabled: true
+      endpoint: /ws-convengine
+      app-destination-prefix: /app
+      topic-prefix: /topic
+      audit-destination-base: /topic/convengine/audit
+      allowed-origin-pattern: "*"
+      sock-js: true
+  experimental:
+    enabled: true
+```
+
+### How SSE/STOMP flow reaches engine
+
+1. Client calls `POST /api/v1/conversation/message`.
+2. `ConversationController` invokes `ConversationalEngine`.
+3. Pipeline steps run (`IntentResolutionStep`, `SchemaExtractionStep`, `RulesStep`, `ResponseResolutionStep`, etc.).
+4. Each important stage is written to `ce_audit`.
+5. `AuditEventPublisher` publishes that stage to enabled transports:
+   - SSE: `GET /api/v1/conversation/stream/{conversationId}`
+   - STOMP topic: `/topic/convengine/audit/{conversationId}`
+6. UI listens and updates timeline/state in near real-time.
+
+### Consumer usage pattern
+
+1. Send message through REST (`/message`) for deterministic request/response.
+2. Subscribe to SSE (or STOMP) for streaming audit telemetry.
+3. On each stream event, re-fetch:
+   - `GET /audit/{conversationId}` (raw timeline), or
+   - `GET /audit/{conversationId}/trace` (normalized step/stack view).
+4. Render intent/state/response from `/message`; render diagnostics from stream + audit API.
+
+### React Vite client example (`convengine.api.js`)
+
+```js
+const API_BASE = "http://localhost:8080/api/v1/conversation";
+
+export async function sendMessage(conversationId, message, inputParams = {}, reset = false) {
+  const res = await fetch(`${API_BASE}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId, message, inputParams, reset })
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAudits(conversationId) {
+  const res = await fetch(`${API_BASE}/audit/${conversationId}`);
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
+}
+
+export function subscribeConversationSse(conversationId, handlers = {}) {
+  const source = new EventSource(`${API_BASE}/stream/${conversationId}`);
+
+  source.onopen = () => handlers.onConnected?.();
+  source.onerror = (error) => handlers.onError?.(error);
+
+  ["CONNECTED", "USER_INPUT", "STEP_ENTER", "STEP_EXIT", "STEP_ERROR", "ASSISTANT_OUTPUT", "ENGINE_RETURN"]
+    .forEach((stage) => {
+      source.addEventListener(stage, (event) => {
+        let data = null;
+        try { data = event.data ? JSON.parse(event.data) : null; } catch {}
+        handlers.onEvent?.({ stage, data, raw: event });
+      });
+    });
+
+  return {
+    close() {
+      source.close();
+      handlers.onClosed?.();
+    }
+  };
+}
+
+// STOMP scaffold (optional)
+// npm install @stomp/stompjs sockjs-client
+// import { Client } from "@stomp/stompjs";
+// import SockJS from "sockjs-client";
+//
+// export function subscribeConversationStomp(conversationId, handlers = {}) {
+//   const client = new Client({
+//     webSocketFactory: () => new SockJS("http://localhost:8080/ws-convengine"),
+//     reconnectDelay: 5000,
+//     onConnect: () => {
+//       handlers.onConnected?.();
+//       client.subscribe(`/topic/convengine/audit/${conversationId}`, (msg) => {
+//         let data = msg.body;
+//         try { data = JSON.parse(msg.body); } catch {}
+//         handlers.onEvent?.(data);
+//       });
+//     },
+//     onStompError: (frame) => handlers.onError?.(frame)
+//   });
+//
+//   client.activate();
+//   return {
+//     close() {
+//       client.deactivate();
+//       handlers.onClosed?.();
+//     }
+//   };
+// }
+```
+
+### React Vite typed client example (`convengine.api.ts`)
+
+```ts
+const API_BASE = "http://localhost:8080/api/v1/conversation";
+
+export type SseStage =
+  | "CONNECTED"
+  | "USER_INPUT"
+  | "STEP_ENTER"
+  | "STEP_EXIT"
+  | "STEP_ERROR"
+  | "ASSISTANT_OUTPUT"
+  | "ENGINE_RETURN";
+
+export interface ConversationEvent<T = unknown> {
+  stage: SseStage;
+  data: T | null;
+  raw: MessageEvent;
+}
+
+export interface StreamHandlers<T = unknown> {
+  onConnected?: () => void;
+  onEvent?: (event: ConversationEvent<T>) => void;
+  onError?: (error: Event) => void;
+  onClosed?: () => void;
+}
+
+export async function sendMessage(
+  conversationId: string,
+  message: string,
+  inputParams: Record<string, unknown> = {},
+  reset = false
+) {
+  const res = await fetch(`${API_BASE}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationId, message, inputParams, reset })
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
+}
+
+export function subscribeConversationSse<T = unknown>(
+  conversationId: string,
+  handlers: StreamHandlers<T> = {}
+) {
+  const source = new EventSource(`${API_BASE}/stream/${conversationId}`);
+  const stages: SseStage[] = [
+    "CONNECTED",
+    "USER_INPUT",
+    "STEP_ENTER",
+    "STEP_EXIT",
+    "STEP_ERROR",
+    "ASSISTANT_OUTPUT",
+    "ENGINE_RETURN"
+  ];
+
+  source.onopen = () => handlers.onConnected?.();
+  source.onerror = (error) => handlers.onError?.(error);
+
+  stages.forEach((stage) => {
+    source.addEventListener(stage, (event) => {
+      let data: T | null = null;
+      try {
+        data = (event as MessageEvent).data ? JSON.parse((event as MessageEvent).data) as T : null;
+      }
+      catch {
+        data = null;
+      }
+      handlers.onEvent?.({ stage, data, raw: event as MessageEvent });
+    });
+  });
+
+  return {
+    close() {
+      source.close();
+      handlers.onClosed?.();
+    }
+  };
+}
+```
+
+## Audit and Trace APIs
+
+### Raw audit
+- `GET /api/v1/conversation/audit/{conversationId}`
+
+### Normalized trace
+- `GET /api/v1/conversation/audit/{conversationId}/trace`
+- Includes:
+  - step timeline (`STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`)
+  - stage stream in order
+  - source class/file metadata
+
+## Experimental SQL Config Generation API
+
+Feature flag:
+
+```yaml
+convengine:
+  experimental:
+    enabled: true
+```
+
+Endpoint:
+- `POST /api/v1/conversation/experimental/generate-sql`
+
+Request:
+
+```json
+{
+  "scenario": "Build workflow for outage ticket intake",
+  "domain": "network support",
+  "constraints": "Require account id before status lookup",
+  "includeMcp": true
+}
+```
+
+Response:
+- `success`
+- `sql`
+- `warnings`
+- `note`
+
+The generator uses `LlmClient.generateText(...)` and applies safety checks (forbidden DDL/DML detection).
+
+## Auto-configuration
+
+Enable in consumer app:
+
+```java
+@EnableConvEngine
+@SpringBootApplication
+public class App {
+}
+```
+
+Also provide an `LlmClient` bean.
 
 ## Design Constraints
 
-- avoid domain hardcoding in steps
-- avoid hidden transitions in resolver code
-- keep behavior declarative in DB
-- keep LLM outputs constrained and audited
-
-ConvEngine Java should be operated as a policy-driven workflow runtime, not as an unconstrained chat assistant.
+- Keep workflow behavior in DB config first
+- Avoid hidden transitions in code
+- Keep LLM outputs constrained and auditable
+- Prefer deterministic rule/response mapping over ad-hoc branching

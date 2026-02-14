@@ -52,7 +52,7 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
                         .containerDataJson(session.getContainerDataJson())
                         .validationJson(session.getValidationTablesJson())
                         .conversationHistory(historyJson)
-                        .extra(session.getInputParams())
+                        .extra(session.promptTemplateVars())
                         .build();
 
         String systemPrompt = renderer.render(template.getSystemPrompt(), ctx);
