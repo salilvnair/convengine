@@ -7,10 +7,11 @@ import com.github.salilvnair.convengine.config.ConvEngineTransportConfig;
 import com.github.salilvnair.convengine.entity.CeAudit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.github.salilvnair.convengine.config.stream.ConvEngineStreamEnabledCondition;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
 import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
+@Conditional(ConvEngineStreamEnabledCondition.class)
 @ConditionalOnProperty(prefix = "convengine.transport.sse", name = "enabled", havingValue = "true", matchIfMissing = true)
 @Slf4j
 public class AuditSseService implements AuditEventListener {

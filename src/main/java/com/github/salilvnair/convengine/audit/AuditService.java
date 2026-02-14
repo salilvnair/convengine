@@ -1,7 +1,6 @@
 package com.github.salilvnair.convengine.audit;
 
 import com.github.salilvnair.convengine.util.JsonUtil;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -29,5 +28,9 @@ public interface AuditService {
             return;
         }
         audit(stage, conversationId, JsonUtil.toJson(payload));
+    }
+
+    default void flushPending(UUID conversationId) {
+        // no-op by default
     }
 }

@@ -150,6 +150,7 @@ public class MyHook implements EngineStepHook {
 - Endpoint: `convengine.transport.stomp.endpoint` (default `/ws-convengine`)
 - Topic: `convengine.transport.stomp.auditDestinationBase/{conversationId}`
   (default `/topic/convengine/audit/{conversationId}`)
+- Broker mode defaults to in-memory simple broker; optional relay mode is configurable.
 
 ### Transport properties
 
@@ -167,6 +168,62 @@ convengine:
       audit-destination-base: /topic/convengine/audit
       allowed-origin-pattern: "*"
       sock-js: true
+      broker:
+        mode: SIMPLE # SIMPLE | RELAY
+        relay-destination-prefixes: /topic,/queue
+        relay-host: localhost
+        relay-port: 61613
+        client-login: ""
+        client-passcode: ""
+        system-login: ""
+        system-passcode: ""
+        virtual-host: ""
+        system-heartbeat-send-interval-ms: 10000
+        system-heartbeat-receive-interval-ms: 10000
+```
+
+### Audit dispatch, backpressure, and stage controls
+
+By default, audit save + publish behaves as before (sync dispatch, all stages, no rate-limit).
+
+```yaml
+convengine:
+  audit:
+    enabled: true
+    level: ALL # ALL | STANDARD | ERROR_ONLY | NONE
+    include-stages: [] # supports wildcard, e.g. STEP_* or INTENT_*
+    exclude-stages: [] # supports wildcard
+    persistence:
+      mode: IMMEDIATE # IMMEDIATE | DEFERRED_BULK
+      jdbc-batch-size: 200
+      max-buffered-events: 5000
+      flush-stages: ENGINE_KNOWN_FAILURE,ENGINE_UNKNOWN_FAILURE
+      final-step-names: PipelineEndGuardStep
+      flush-on-stop-outcome: true
+    dispatch:
+      async-enabled: false
+      worker-threads: 2
+      queue-capacity: 2000
+      rejection-policy: CALLER_RUNS # CALLER_RUNS | DROP_NEWEST | DROP_OLDEST | ABORT
+      keep-alive-seconds: 60
+    rate-limit:
+      enabled: false
+      max-events: 200
+      window-ms: 1000
+      per-conversation: true
+      per-stage: true
+      max-tracked-buckets: 20000
+```
+
+You can also enable key features using annotations on consumer app:
+
+```java
+@EnableConvEngine
+@EnableConvEngineAsyncAuditDispatch
+@EnableConvEngineStompBrokerRelay
+@SpringBootApplication
+public class MyApplication {
+}
 ```
 
 ### Full `application.yml` example (SSE + STOMP + Experimental)
@@ -417,13 +474,21 @@ The generator uses `LlmClient.generateText(...)` and applies safety checks (forb
 Enable in consumer app:
 
 ```java
-@EnableConvEngine
+@EnableConvEngine(stream = true)
 @SpringBootApplication
 public class App {
 }
 ```
 
 Also provide an `LlmClient` bean.
+
+`stream` behavior:
+- `stream = true` (default): framework expects at least one stream transport enabled.
+  Startup fails if both are disabled:
+  - `convengine.transport.sse.enabled=false`
+  - `convengine.transport.stomp.enabled=false`
+- `stream = false`: framework ignores SSE/STOMP beans even if transport flags are true.
+  Use only plain REST controller flow (`/message`, `/audit`, `/audit/{id}/trace`).
 
 ## Design Constraints
 

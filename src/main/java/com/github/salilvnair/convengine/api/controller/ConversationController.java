@@ -16,7 +16,6 @@ import com.github.salilvnair.convengine.repo.AuditRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -135,6 +134,10 @@ public class ConversationController {
                     )
             );
             return error;
+        }
+        finally {
+            // Safety flush for deferred audit mode. In immediate mode this is a no-op.
+            audit.flushPending(conversationId);
         }
     }
 

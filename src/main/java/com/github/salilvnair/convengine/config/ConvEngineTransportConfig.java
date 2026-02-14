@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import java.util.List;
 
 @Component
 @ConfigurationProperties(prefix = "convengine.transport")
@@ -31,5 +32,27 @@ public class ConvEngineTransportConfig {
         private String auditDestinationBase = "/topic/convengine/audit";
         private String allowedOriginPattern = "*";
         private boolean sockJs = true;
+        private Broker broker = new Broker();
+    }
+
+    @Getter
+    @Setter
+    public static class Broker {
+        private Mode mode = Mode.SIMPLE;
+        private List<String> relayDestinationPrefixes = List.of("/topic", "/queue");
+        private String relayHost = "localhost";
+        private int relayPort = 61613;
+        private String clientLogin = "";
+        private String clientPasscode = "";
+        private String systemLogin = "";
+        private String systemPasscode = "";
+        private String virtualHost = "";
+        private long systemHeartbeatSendIntervalMs = 10000;
+        private long systemHeartbeatReceiveIntervalMs = 10000;
+    }
+
+    public enum Mode {
+        SIMPLE,
+        RELAY
     }
 }

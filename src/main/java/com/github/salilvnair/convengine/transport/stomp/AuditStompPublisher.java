@@ -7,12 +7,15 @@ import com.github.salilvnair.convengine.config.ConvEngineTransportConfig;
 import com.github.salilvnair.convengine.entity.CeAudit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import com.github.salilvnair.convengine.config.stream.ConvEngineStreamEnabledCondition;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@Conditional(ConvEngineStreamEnabledCondition.class)
 @ConditionalOnBean(SimpMessagingTemplate.class)
 @ConditionalOnProperty(prefix = "convengine.transport.stomp", name = "enabled", havingValue = "true")
 public class AuditStompPublisher implements AuditEventListener {
