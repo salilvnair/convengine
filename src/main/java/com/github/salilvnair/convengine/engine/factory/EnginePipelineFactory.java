@@ -274,6 +274,7 @@ public class EnginePipelineFactory {
         public StepResult execute(EngineSession session) {
             long start = System.nanoTime();
             String stepName = delegate.getClass().getSimpleName();
+            EngineStep.Name typedStepName = EngineStep.Name.fromStepName(stepName);
             String stepClass = delegate.getClass().getName();
             AuditSessionContext.set(session);
 
@@ -290,8 +291,8 @@ public class EnginePipelineFactory {
             );
             for (EngineStepHook hook : stepHooks) {
                 runHookSafely(() -> {
-                    if (hook.supports(stepName, session)) {
-                        hook.beforeStep(stepName, session);
+                    if (hook.supports(typedStepName, session)) {
+                        hook.beforeStep(typedStepName, session);
                     }
                 }, hook, "beforeStep", stepName, session);
             }
@@ -305,8 +306,8 @@ public class EnginePipelineFactory {
                 session.getStepTimings().add(timing);
                 for (EngineStepHook hook : stepHooks) {
                     runHookSafely(() -> {
-                        if (hook.supports(stepName, session)) {
-                            hook.afterStep(stepName, session, r);
+                        if (hook.supports(typedStepName, session)) {
+                            hook.afterStep(typedStepName, session, r);
                         }
                     }, hook, "afterStep", stepName, session);
                 }
@@ -332,8 +333,8 @@ public class EnginePipelineFactory {
                 session.getStepTimings().add(timing);
                 for (EngineStepHook hook : stepHooks) {
                     runHookSafely(() -> {
-                        if (hook.supports(stepName, session)) {
-                            hook.onStepError(stepName, session, e);
+                        if (hook.supports(typedStepName, session)) {
+                            hook.onStepError(typedStepName, session, e);
                         }
                     }, hook, "onStepError", stepName, session);
                 }
