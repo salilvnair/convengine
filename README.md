@@ -119,12 +119,12 @@ Default reset intent code: `RESET_SESSION`.
 @Component
 public class MyHook implements EngineStepHook {
     @Override
-    public boolean supports(String stepName, EngineSession session) {
-        return "SchemaExtractionStep".equals(stepName);
+    public boolean supports(EngineStep.Name stepName, EngineSession session) {
+        return EngineStep.Name.SchemaExtractionStep == stepName;
     }
 
     @Override
-    public void beforeStep(String stepName, EngineSession session) {
+    public void beforeStep(EngineStep.Name stepName, EngineSession session) {
         session.putInputParam("consumer_hint", "compact");
     }
 }
