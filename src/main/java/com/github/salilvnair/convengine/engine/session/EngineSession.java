@@ -82,7 +82,7 @@ public class EngineSession {
             "schema_description",
             "schema_field_details",
             "schema_id",
-            "schema_extracted_data",
+            "schema_json",
             "context",
             "session",
             "intent_scores",
@@ -331,7 +331,7 @@ public class EngineSession {
         }
     }
 
-    public Map<String, Object> schemaExtractedDataDict() {
+    public Map<String, Object> schemaJson() {
         Map<String, Object> context = contextDict();
         if (resolvedSchema == null || resolvedSchema.getJsonSchema() == null) {
             return context;
@@ -371,7 +371,7 @@ public class EngineSession {
         sessionMap.put("pendingClarificationQuestion", pendingClarificationQuestion);
         sessionMap.put("lastLlmStage", lastLlmStage);
         sessionMap.put("context", contextDict());
-        sessionMap.put("schemaExtractedData", schemaExtractedDataDict());
+        sessionMap.put("schemaJson", schemaJson());
         sessionMap.put("lastLlmOutput", extractLastLlmOutputForSession());
         return sessionMap;
     }
@@ -519,7 +519,7 @@ public class EngineSession {
         putInputParam("schema_description", valueOrDefaultString(inputParams.get("schema_description")));
         putInputParam("schema_field_details", valueOrDefaultMap(inputParams.get("schema_field_details")));
         putInputParam("schema_id", inputParams.getOrDefault("schema_id", null));
-        putInputParam("schema_extracted_data", schemaExtractedDataDict());
+        putInputParam("schema_json", schemaJson());
         putInputParam("context", contextDict());
         putInputParam("session", sessionDict());
     }

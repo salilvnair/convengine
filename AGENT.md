@@ -129,9 +129,7 @@ Actions:
 - `SET_JSON`
 - `GET_CONTEXT`
 - `GET_SESSION`
-- `GET_SCHEMA_EXTRACTED_DATA`
-- `SHORT_CIRCUIT`
-- `RESOLVE_INTENT` (marker action)
+- `GET_SCHEMA_JSON`
 
 Rule audits should include `ruleId`, state/intent, context, extracted data, and session input snapshots.
 

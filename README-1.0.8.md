@@ -22,6 +22,7 @@ This document summarizes all Java-level changes added for `1.0.8`, including new
 6. Added experimental SQL generation API (feature-flagged) that asks LLM to produce `ce_*` INSERT scripts.
 7. Hardened input parameter handling in `EngineSession` to avoid uncontrolled prompt variables.
 8. Added intent locking lifecycle so incomplete schema collection keeps previous intent and avoids re-resolving intent.
+9. Renamed rule action constant from `GET_SCHEMA_EXTRACTED_DATA` to `GET_SCHEMA_JSON`.
 
 ## Detailed Class-Level Changes
 
@@ -436,6 +437,7 @@ Each audit payload now gets normalized `_meta` with:
 6. Async audit dispatch and backpressure are now configurable without changing engine API contracts.
 7. STOMP broker can run either in simple in-memory mode (default) or relay mode (property/annotation enabled).
 8. Streaming can be hard-disabled by annotation via `@EnableConvEngine(stream=false)`, forcing plain REST mode.
+9. If your DB already has `ce_rule.action='GET_SCHEMA_EXTRACTED_DATA'`, migrate those rows to `GET_SCHEMA_JSON`.
 
 ## Suggested Release Message (Short)
 `1.0.8` adds step lifecycle hooks and audits, reset semantics (`RESET_SESSION` intent and input command resets), trace API, SSE/STOMP streaming audits, controlled prompt var exposure, configurable async audit dispatch + backpressure + stage/rate controls, deferred bulk audit persistence, optional STOMP broker relay mode, stream on/off gating via `@EnableConvEngine(stream=...)`, and an experimental SQL-generation endpoint.

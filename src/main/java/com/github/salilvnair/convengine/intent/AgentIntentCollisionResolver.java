@@ -78,7 +78,7 @@ public class AgentIntentCollisionResolver implements IntentCollisionResolver {
         outputPayload.put("intent", session.getIntent());
         outputPayload.put("state", session.getState());
         outputPayload.put("context", session.contextDict());
-        outputPayload.put("extractedData", session.schemaExtractedDataDict());
+        outputPayload.put("schemaJson", session.schemaJson());
         audit.audit("INTENT_COLLISION_RESOLVED", session.getConversationId(), outputPayload);
     }
 }

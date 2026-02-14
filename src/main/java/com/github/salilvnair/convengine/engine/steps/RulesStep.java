@@ -70,7 +70,7 @@ public class RulesStep implements EngineStep {
                 matchedPayload.put("intent", session.getIntent());
                 matchedPayload.put("state", session.getState());
                 matchedPayload.put("context", session.contextDict());
-                matchedPayload.put("extractedData", session.schemaExtractedDataDict());
+                matchedPayload.put("schemaJson", session.schemaJson());
                 audit.audit(
                         "RULE_MATCHED (" + stage + ")",
                         session.getConversationId(),

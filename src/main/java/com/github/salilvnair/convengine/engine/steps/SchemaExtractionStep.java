@@ -56,7 +56,7 @@ public class SchemaExtractionStep implements EngineStep {
             session.setMissingFieldOptions(new LinkedHashMap<>());
             ensureSchemaPromptVars(session);
             session.putInputParam("context", session.contextDict());
-            session.putInputParam("schema_extracted_data", session.schemaExtractedDataDict());
+            session.putInputParam("schema_json", session.schemaJson());
             session.putInputParam("session", session.sessionDict());
         }
 
@@ -146,7 +146,7 @@ public class SchemaExtractionStep implements EngineStep {
         statusPayload.put("intentLocked", session.isIntentLocked());
         statusPayload.put("intentLockReason", session.getIntentLockReason());
         statusPayload.put("context", session.contextDict());
-        statusPayload.put("extractedData", session.schemaExtractedDataDict());
+        statusPayload.put("schemaJson", session.schemaJson());
         audit.audit("SCHEMA_STATUS", session.getConversationId(), statusPayload);
     }
 

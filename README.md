@@ -71,13 +71,15 @@ Exact order is resolved via `@MustRunAfter`, `@MustRunBefore`, `@RequiresConvers
 
 ### Rule Actions
 - `SET_INTENT`
-- `RESOLVE_INTENT`
 - `SET_STATE`
 - `SET_JSON`
 - `GET_CONTEXT`
-- `GET_SCHEMA_EXTRACTED_DATA`
+- `GET_SCHEMA_JSON`
 - `GET_SESSION`
 - `SET_TASK`
+
+Migration note:
+- If existing `ce_rule.action` rows use `GET_SCHEMA_EXTRACTED_DATA`, update them to `GET_SCHEMA_JSON`.
 
 ### OutputType (engine templates)
 - `TEXT`
@@ -468,6 +470,11 @@ Response:
 - `note`
 
 The generator uses `LlmClient.generateText(...)` and applies safety checks (forbidden DDL/DML detection).
+
+DDL note:
+- In `src/main/resources/sql/ddl.sql`, the `ce_config` seed for `config_id=9` currently has a duplicated column-list line before `VALUES`.
+- Correct form is a single line:
+  - `INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled, created_at)`
 
 ## Auto-configuration
 
