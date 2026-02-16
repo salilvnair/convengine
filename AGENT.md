@@ -1,175 +1,255 @@
-# ConvEngine (Java) — AGENT.md
+# ConvEngine (Java) - AGENT.md
 
 ## Overview
 
-ConvEngine Java is a deterministic, database-driven conversational workflow engine.
+ConvEngine is a deterministic, configuration-driven conversational workflow engine.
 
-It is not an open-ended chatbot runtime.  
-It is a stateful orchestration engine that resolves intent, collects structured data, applies rule-driven transitions, and emits configured responses with full auditability.
+It is not an open-ended chatbot runtime. Business behavior is declared in `ce_*` tables and executed by an auditable step pipeline.
 
----
+Current library baseline: `1.0.8`.
 
-## Core Principles
+## Runtime Architecture
 
-1. DB-driven control plane  
-   Runtime behavior is defined in `ce_*` tables.
+### Request entry and engine flow
+1. `ConversationController.message(...)` receives request and builds `EngineContext`.
+2. `DefaultConversationalEngine.process(...)` opens `EngineSession` from `EngineSessionFactory`.
+3. `EnginePipelineFactory` builds a DAG-ordered pipeline.
+4. Pipeline executes steps in order.
+5. `PersistConversationStep` and `PipelineEndGuardStep` finalize output and timings.
+6. Controller maps `EngineResult` to API DTO and returns.
 
-2. Deterministic pipeline  
-   Requests run through ordered engine steps.
+### Canonical pipeline (current)
+1. `LoadOrCreateConversationStep`
+2. `ResetConversationStep`
+3. `PersistConversationBootstrapStep`
+4. `AuditUserInputStep`
+5. `PolicyEnforcementStep`
+6. `IntentResolutionStep`
+7. `ResetResolvedIntentStep`
+8. `FallbackIntentStateStep`
+9. `AddContainerDataStep`
+10. `McpToolStep`
+11. `SchemaExtractionStep`
+12. `AutoAdvanceStep`
+13. `RulesStep`
+14. `ResponseResolutionStep`
+15. `PersistConversationStep`
+16. `PipelineEndGuardStep`
 
-3. LLM as constrained subsystem  
-   LLM is used for controlled classification, extraction, and derivation only.
+Order is enforced via step annotations (`@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`) and DAG validation.
 
-4. Rule-based state progression  
-   Intent/state transitions are governed by `ce_rule`.
+## API Surface
 
----
+### REST APIs
+- `POST /api/v1/conversation/message`
+- `GET /api/v1/conversation/audit/{conversationId}`
+- `GET /api/v1/conversation/audit/{conversationId}/trace`
+- `POST /api/v1/conversation/experimental/generate-sql` (feature-flagged)
 
-## Runtime Pipeline
+### SSE stream API
+- `GET /api/v1/conversation/stream/{conversationId}`
+- Emits event name = audit stage (plus `CONNECTED` on subscribe).
 
-Typical step flow:
-1. Load/Create conversation
-2. Persist bootstrap
-3. Audit user input
-4. Intent resolution
-5. Fallback intent/state (if needed)
-6. Add container data (framework-specific)
-7. MCP tool step (if configured and not blocked)
-8. Schema extraction
-9. Auto-advance facts
-10. Rule evaluation
-11. Response resolution
-12. Persist conversation
+### Typical stream stages
+- `CONNECTED`
+- `USER_INPUT`
+- `STEP_ENTER`
+- `STEP_EXIT`
+- `STEP_ERROR`
+- `ASSISTANT_OUTPUT`
+- `ENGINE_RETURN`
 
-Each stage emits audit events in `ce_audit`.
+## Data Model Contracts
 
----
-
-## Runtime Objects
-
-### EngineContext
-Immutable request envelope:
-- `conversationId`
-- `userText`
-- `inputParams`
-
-### EngineSession
-Mutable conversation runtime:
-- `intent`, `state`
-- `contextJson`
-- `resolvedSchema`
-- `schemaComplete`, `hasAnySchemaValue`
-- `pendingClarificationQuestion`, `pendingClarificationReason`
-- `lastLlmOutput`, `lastLlmStage`
-- `inputParams`
-
-Supports audit-safe parameter snapshotting for postmortem.
-
----
-
-## Prompt and Response Architecture
-
-### Prompt source hierarchy
-1. `ce_config` for system-level resolvers (`AgentIntentResolver`, collision resolver, MCP planner).
-2. `ce_prompt_template` for response/extraction flows keyed by `response_type`.
-
-### Response routing
-`ce_response` mapping by `intent + state` with priority/fallback.
-
-Response strategies:
-- `EXACT`
-- `DERIVED`
-
-Derived responses delegate by `output_format` (TEXT/JSON) into format resolvers.
-
----
-
-## Intent Resolution
-
-Composite model:
-- classifier resolver
-- agent resolver
-
-Agent resolver can return:
-- top intent
-- confidence
-- intent score list
-- collision state (`INTENT_COLLISION`)
-- follow-up candidates
-
-When collision is detected:
-- dedicated collision resolver produces a disambiguation question
-- response mapping path is short-circuited for that turn
-
----
-
-## Schema Extraction
-
-When `ce_output_schema` exists for current intent/state:
-- strict JSON extraction runs
-- extraction merges into `contextJson`
-- missing required fields and options are computed
-- schema facts are emitted:
-    - `schemaComplete`
-    - `hasAnySchemaValue`
-
----
-
-## Rule Engine
-
-Rule types:
-- `AGENT`
-- `REGEX`
-- `EXACT`
-- `JSON_PATH`
-
-Actions:
-- `SET_STATE`
-- `SET_INTENT`
-- `SET_JSON`
-- `GET_CONTEXT`
-- `GET_SESSION`
-- `GET_SCHEMA_JSON`
-
-Rule audits should include `ruleId`, state/intent, context, extracted data, and session input snapshots.
-
----
-
-## MCP and Container Hooks
-
-Java runtime may include:
-- MCP planning/execution with DB-configured tools
-- container data step (CCF integration)
-
-These are framework hooks and should remain configurable, not hardcoded per domain.
-
----
-
-## Persistence Tables
-
-Primary tables:
+### Non-transactional behavior tables
+- `ce_config`
+- `ce_container_config`
 - `ce_intent`
 - `ce_intent_classifier`
 - `ce_output_schema`
+- `ce_policy`
 - `ce_prompt_template`
 - `ce_response`
 - `ce_rule`
-- `ce_conversation`
-- `ce_audit`
 - `ce_mcp_tool`
 - `ce_mcp_db_tool`
-- `ce_config`
 
----
+### Runtime/transactional tables
+- `ce_conversation`
+- `ce_audit`
+- `ce_llm_call_log`
+- `ce_validation_snapshot`
 
-## Operational Guidance
+### Important schema truths
 
-1. Keep workflow semantics in DB config first.
-2. Keep step code domain-agnostic.
-3. Use audit payloads for root-cause debugging before changing logic.
-4. Avoid hidden state transitions in resolver code.
-5. Prefer explicit `ce_rule` transitions over conditional hardcoding.
+`ce_prompt_template` uses:
+- `template_id` (PK)
+- `intent_code`
+- `state_code`
+- `response_type`
+- `system_prompt`
+- `user_prompt`
+- `temperature`
+- `enabled`
 
----
+There is no `template_code` in current DDL.
 
-ConvEngine Java should behave as a deterministic conversational workflow runtime whose business behavior is declared in data.
+`ce_response` uses:
+- `response_id` (PK)
+- `intent_code`
+- `state_code`
+- `output_format`
+- `response_type`
+- `exact_text`
+- `derivation_hint`
+- `json_schema`
+- `priority`
+- `enabled`
+
+There is no `prompt_template_code` in current DDL.
+
+## Enum / Value Matrix (Current)
+
+### `ce_response`
+- `response_type`: `EXACT | DERIVED`
+- `output_format`: `TEXT | JSON`
+
+### `ce_prompt_template`
+- `response_type`: `TEXT | JSON | SCHEMA_JSON`
+
+### `ce_rule`
+- `rule_type`: `EXACT | REGEX | JSON_PATH`
+- `action`: `SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK`
+
+### `ce_intent_classifier`
+- `rule_type`: `REGEX | CONTAINS | STARTS_WITH`
+
+## Session and State Contracts
+
+`EngineSession` is the live mutable runtime envelope. Core fields:
+- `intent`, `state`
+- `contextJson`
+- schema status (`resolvedSchema`, `schemaComplete`, `schemaHasAnyValue`)
+- clarification state (`pendingClarificationQuestion`, etc)
+- `inputParams` with controlled exposure
+- `payload` and final `EngineResult`
+
+### Intent lock behavior
+- Incomplete schema collection can lock intent to prevent reclassification drift.
+- Lock state is persisted/restored via context.
+
+### Controlled prompt vars
+- Prompt resolvers use `promptTemplateVars()` and safe filters.
+- System-derived unsafe keys are not blindly exposed to prompt templates.
+
+## Reset Semantics
+
+### Input/message based reset
+Reset can be triggered by:
+- request `reset=true`
+- input params `reset=true | restart=true | conversation_reset=true`
+- user message commands (`reset`, `restart`, `/reset`, `/restart`)
+
+### Intent-based reset via config
+`ResetResolvedIntentStep` supports reset intent codes from `ce_config`:
+- `config_type='ResetResolvedIntentStep'`
+- `config_key='RESET_INTENT_CODES'`
+- default includes `RESET_SESSION`
+
+Example:
+```sql
+INSERT INTO ce_config (config_type, config_key, config_value, enabled)
+VALUES ('ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,START_OVER', true);
+```
+
+## Rule Engine Contracts
+
+`RulesStep` loads enabled rules ordered by priority and applies multi-pass execution (up to bounded passes) when intent/state changes.
+
+### Action value formats
+- `SET_TASK`: `beanName:methodName` or `beanName:methodA,methodB`
+- `SET_JSON`: `targetKey:jsonPath`
+- `GET_CONTEXT`: `targetKey` (optional, default `context`)
+- `GET_SESSION`: `targetKey` (optional, default `session`)
+
+### `SET_TASK` runtime
+- Action is resolved by `SetTaskActionResolver`.
+- Task invocation is delegated to `CeRuleTaskExecutor`.
+- Target bean must be a Spring bean implementing `CeRuleTask`.
+- Method signature must accept `(EngineSession, CeRule)`.
+
+### Custom rule actions
+Consumers can add custom actions by creating a Spring bean implementing `RuleActionResolver`.  
+`RuleActionResolverFactory` auto-discovers these resolvers by `action().toUpperCase()`.
+
+## Extension Points (Consumer)
+
+### Step hooks
+`EngineStepHook` supports typed and compatibility signatures:
+- `supports(EngineStep.Name stepName, EngineSession session)`
+- `supports(String stepName, EngineSession session)`
+- `beforeStep(...)`, `afterStep(...)`, `onStepError(...)`
+
+Use `EngineStep.Name` enum matching where possible.
+
+### Output and container interception
+- `@ResponseTransformer` + `ResponseTransformerHandler`
+- `@ContainerDataTransformer` + handler
+- `@ContainerDataInterceptor`
+
+These are intended for consumer-specific intervention without forking core engine steps.
+
+## Audit and Trace Model
+
+### Core behavior
+- `ce_audit` is the source of truth for execution timeline.
+- Step lifecycle emits `STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`.
+- Audit metadata should track runtime session `intent` and `state`.
+
+### Trace API
+- `GET /api/v1/conversation/audit/{conversationId}/trace`
+- Reconstructs ordered step timeline and stage events from audit rows.
+
+### Audit controls (`convengine.audit.*`)
+- enable/disable + level filtering (`ALL`, `STANDARD`, `ERROR_ONLY`, `NONE`)
+- include/exclude stage filters
+- async dispatch with bounded queue + rejection policy
+- rate limiting
+- persistence mode:
+  - `IMMEDIATE`
+  - `DEFERRED_BULK` with flush conditions
+
+## Streaming and Transport
+
+### Enable/disable behavior
+- `@EnableConvEngine(stream = true)`:
+  - validates that at least one transport is enabled (`sse` or `stomp`)
+  - fails startup if both are disabled
+- `@EnableConvEngine(stream = false)`:
+  - stream conditions are bypassed
+  - REST-only behavior remains active
+
+### Transport properties
+- `convengine.transport.sse.*`
+- `convengine.transport.stomp.*`
+- STOMP broker mode:
+  - `SIMPLE` (in-memory)
+  - `RELAY` (external broker relay)
+
+## Experimental SQL Generation
+
+- Feature flag: `convengine.experimental.enabled=true`
+- Endpoint: `POST /api/v1/conversation/experimental/generate-sql`
+- Prompt knowledge source:
+  - `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
+- Generates non-transactional `ce_*` inserts only.
+- Excludes runtime transactional tables.
+
+## Engineering Guidance
+
+1. Prefer DB config changes before Java code changes.
+2. Keep step logic domain-agnostic and composable.
+3. Keep transitions explicit in `ce_rule`; avoid hidden branching.
+4. Validate behavior via audit trace before production rollout.
+5. Keep prompt inputs controlled; avoid uncontrolled param injection.
+6. When updating docs/examples, align SQL strictly with `src/main/resources/sql/ddl.sql`.
