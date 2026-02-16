@@ -6,7 +6,15 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## Version
 
-- Current library version: `1.0.8`
+- Current library version: `1.0.9`
+
+## What Changed In 1.0.9
+
+### Experimental SQL generation
+- Extended experimental SQL generation to return SQL grouped by table and downloadable ZIP output.
+- Added combined `seed.sql` plus per-table SQL files (`<table>.sql`) in zip payload flow.
+- Improved SQL generation response model for consumer tooling and import workflows.
+- Tightened SQL generation documentation and prompt guidance to keep output aligned with latest DDL and runtime enums.
 
 ## What Changed In 1.0.8 (Revamp Summary)
 
