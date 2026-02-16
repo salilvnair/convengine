@@ -1,30 +1,57 @@
 # ConvEngine Java
 
-ConvEngine is a deterministic, database-configured conversational workflow engine for enterprise-grade, auditable conversation systems.
+ConvEngine is a deterministic, database-driven conversational workflow engine for enterprise use-cases.
 
-It is designed for stateful workflows where intent, schema collection, rules, and responses must be explicit and traceable.
+It is designed for auditable, stateful flows where intent resolution, schema extraction, rule transitions, and response generation must be explicit and traceable.
 
-## Core Architecture
+## Version
 
-### API Layer
+- Current library version: `1.0.8`
+
+## What Changed In 1.0.8 (Revamp Summary)
+
+### Engine and pipeline
+- Added full step lifecycle audit stages: `STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`.
+- Added `EngineStepHook` extension point for before/after/error step intervention.
+- Added typed step matching using `EngineStep.Name` enum (string fallback retained for compatibility).
+- Added `ResetConversationStep` (input/message driven reset).
+- Added `ResetResolvedIntentStep` (intent-driven reset via `ce_config`).
+- Added `PipelineEndGuardStep` protection and broader pipeline consistency checks.
+
+### Session and intent continuity
+- `EngineSession` hardened for controlled prompt variable exposure (`promptTemplateVars()`).
+- Added intent-lock lifecycle so incomplete schema collection does not repeatedly re-resolve intent.
+- Added full restart/reset state cleanup via `resetForConversationRestart()`.
+- Added persisted conversation bootstrap safety in `EngineSessionFactory`.
+
+### Audit, trace, streaming
+- Added normalized trace API: `GET /api/v1/conversation/audit/{conversationId}/trace`.
+- Added stage filtering/verbosity/rate limiting (`convengine.audit.*`).
+- Added configurable audit dispatch modes with backpressure controls.
+- Added configurable persistence mode for audit: `IMMEDIATE` or `DEFERRED_BULK`.
+- Added SSE transport and STOMP/WebSocket transport as pluggable audit streams.
+- Added optional STOMP broker relay mode (`SIMPLE` or `RELAY`).
+
+### Experimental capabilities
+- Added experimental SQL generation endpoint:
+  - `POST /api/v1/conversation/experimental/generate-sql`
+- Added SQL generation guide in classpath prompt resource:
+  - `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
+- SQL generator covers non-transactional `ce_*` tables and excludes runtime tables.
+
+### Rule/action naming updates
+- Rule action `GET_SCHEMA_EXTRACTED_DATA` migrated to `GET_SCHEMA_JSON`.
+
+## Core API
+
+### Endpoints
 - `POST /api/v1/conversation/message`
 - `GET /api/v1/conversation/audit/{conversationId}`
 - `GET /api/v1/conversation/audit/{conversationId}/trace`
+- `GET /api/v1/conversation/stream/{conversationId}` (SSE)
+- `POST /api/v1/conversation/experimental/generate-sql` (feature-flagged)
 
-### Engine Layer
-- `DefaultConversationalEngine` creates session + executes pipeline
-- `EnginePipelineFactory` builds annotation-driven DAG order
-- `EngineStep` units operate on mutable `EngineSession`
-
-### Persistence Layer
-- `ce_*` tables are the control plane and runtime state
-- `ce_audit` is the source of truth for postmortems
-
-### LLM Layer
-- Consumer provides `LlmClient` implementation
-- Engine uses constrained prompts and JSON contracts
-
-## Pipeline (Typical)
+## Runtime Step Set (Canonical)
 
 1. `LoadOrCreateConversationStep`
 2. `ResetConversationStep`
@@ -43,118 +70,143 @@ It is designed for stateful workflows where intent, schema collection, rules, an
 15. `PersistConversationStep`
 16. `PipelineEndGuardStep`
 
-Exact order is resolved via `@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`, and terminal/bootstrap annotations.
+Order is enforced by step annotations (`@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`) and pipeline DAG validation.
 
-## Control Plane Tables
+## Control Plane Data Model
 
+### Non-transactional configuration tables
+- `ce_config`
+- `ce_container_config`
 - `ce_intent`
 - `ce_intent_classifier`
+- `ce_mcp_tool`
 - `ce_output_schema`
+- `ce_policy`
 - `ce_prompt_template`
 - `ce_response`
 - `ce_rule`
-- `ce_policy`
-- `ce_mcp_tool`
 - `ce_mcp_db_tool`
-- `ce_config`
+
+### Runtime/transactional tables
 - `ce_conversation`
 - `ce_audit`
+- `ce_llm_call_log`
+- `ce_validation_snapshot`
 
-## Implemented Value Matrix (Source-of-Truth)
+## Enum / Value Matrix (Current)
 
-### Response
-- `ce_response.response_type`: `EXACT`, `DERIVED`
-- `ce_response.output_format`: `TEXT`, `JSON`
+### `ce_response`
+- `response_type`: `EXACT`, `DERIVED`
+- `output_format`: `TEXT`, `JSON`
 
-### Rule Types
-- Implemented resolvers: `EXACT`, `REGEX`, `JSON_PATH`
+### `ce_prompt_template`
+- `response_type`: `TEXT`, `JSON`, `SCHEMA_JSON`
 
-### Rule Actions
-- `SET_INTENT`
-- `SET_STATE`
-- `SET_JSON`
-- `GET_CONTEXT`
-- `GET_SCHEMA_JSON`
-- `GET_SESSION`
-- `SET_TASK`
+### `ce_rule`
+- `rule_type`: `EXACT`, `REGEX`, `JSON_PATH`
+- `action`: `SET_INTENT`, `SET_STATE`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`
 
-Migration note:
-- If existing `ce_rule.action` rows use `GET_SCHEMA_EXTRACTED_DATA`, update them to `GET_SCHEMA_JSON`.
-
-### OutputType (engine templates)
-- `TEXT`
-- `JSON`
-- `SCHEMA_JSON`
-
-## Session Continuity and Intent Lock
-
-During schema collection, intent can be lock-pinned to prevent resolver drift on subsequent turns.
-
-- lock is persisted in `context_json.intent_lock`
-- unlocked when schema completes or schema path is absent
+### `ce_intent_classifier`
+- `rule_type`: `REGEX`, `CONTAINS`, `STARTS_WITH`
 
 ## Reset Semantics
 
 Conversation reset can be triggered by:
-
 - request body: `reset=true`
-- input params: `reset=true | restart=true | conversation_reset=true`
+- input params: `reset=true` or `restart=true` or `conversation_reset=true`
 - message commands: `reset`, `restart`, `/reset`, `/restart`
-- resolved intent codes configured via `ce_config`
+- resolved intent code matched by config key `RESET_INTENT_CODES`
 
-Config:
+### Intent-driven reset config
 
 ```sql
-INSERT INTO ce_config (config_type, config_key, config_value, enabled)
-VALUES ('ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,START_OVER', true);
+INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled)
+VALUES (100, 'ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,START_OVER', true);
 ```
 
-Default reset intent code: `RESET_SESSION`.
+Default reset intent code is `RESET_SESSION`.
 
-## Consumer Extension Points
-
-### 1) Step interception (`EngineStepHook`)
+## Consumer Bootstrapping
 
 ```java
-@Component
-public class MyHook implements EngineStepHook {
-    @Override
-    public boolean supports(EngineStep.Name stepName, EngineSession session) {
-        return EngineStep.Name.SchemaExtractionStep == stepName;
-    }
+import com.github.salilvnair.convengine.annotation.EnableConvEngine;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-    @Override
-    public void beforeStep(EngineStep.Name stepName, EngineSession session) {
-        session.putInputParam("consumer_hint", "compact");
-    }
+@EnableConvEngine(stream = true)
+@SpringBootApplication
+public class MyApplication {
+  public static void main(String[] args) {
+    SpringApplication.run(MyApplication.class, args);
+  }
 }
 ```
 
-### 2) Response transformer
-- Annotate bean with `@ResponseTransformer(intent, state)`
-- Implement `ResponseTransformerHandler`
+### Optional feature annotations
 
-### 3) Container extensions
-- `@ContainerDataTransformer(intent, state)`
-- request/response interceptors for container execution
+```java
+import com.github.salilvnair.convengine.annotation.EnableConvEngineAsyncAuditDispatch;
+import com.github.salilvnair.convengine.annotation.EnableConvEngineStompBrokerRelay;
 
-### 4) Rule task execution
-- `SET_TASK` action delegates to custom task executor paths
+@EnableConvEngineAsyncAuditDispatch
+@EnableConvEngineStompBrokerRelay
+```
 
-## Streaming Transport (Configurable)
+## Required Consumer Bean
 
-### SSE (default enabled)
-- Endpoint: `GET /api/v1/conversation/stream/{conversationId}`
-- Streams audit events as they are persisted
+Provide an `LlmClient` implementation from consumer app.
 
-### STOMP/WebSocket (default disabled)
-- Enable with `convengine.transport.stomp.enabled=true`
-- Endpoint: `convengine.transport.stomp.endpoint` (default `/ws-convengine`)
-- Topic: `convengine.transport.stomp.auditDestinationBase/{conversationId}`
-  (default `/topic/convengine/audit/{conversationId}`)
-- Broker mode defaults to in-memory simple broker; optional relay mode is configurable.
+```java
+public interface LlmClient {
+  String generateText(String hint, String contextJson);
+  String generateJson(String hint, String jsonSchema, String contextJson);
+  float[] generateEmbedding(String input);
+}
+```
 
-### Transport properties
+## Engine Extension Points
+
+### 1) Step hooks (`EngineStepHook`)
+
+```java
+import com.github.salilvnair.convengine.engine.hook.EngineStepHook;
+import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
+import com.github.salilvnair.convengine.engine.session.EngineSession;
+import org.springframework.stereotype.Component;
+
+@Component
+public class SchemaHintHook implements EngineStepHook {
+  @Override
+  public boolean supports(EngineStep.Name stepName, EngineSession session) {
+    return EngineStep.Name.SchemaExtractionStep == stepName;
+  }
+
+  @Override
+  public void beforeStep(EngineStep.Name stepName, EngineSession session) {
+    session.putInputParam("consumer_hint", "compact");
+  }
+}
+```
+
+### 2) Response transformation
+- `@ResponseTransformer` + `ResponseTransformerHandler`
+
+### 3) Container transformation/interception
+- `@ContainerDataTransformer` + `ContainerDataTransformerHandler`
+- `@ContainerDataInterceptor`
+
+## Streaming Transport
+
+### `@EnableConvEngine(stream = true)` behavior
+- Startup fails if both transports are disabled:
+  - `convengine.transport.sse.enabled=false`
+  - `convengine.transport.stomp.enabled=false`
+
+### `@EnableConvEngine(stream = false)` behavior
+- Streaming transport checks are skipped.
+- Core REST flow remains active.
+
+### Transport configuration
 
 ```yaml
 convengine:
@@ -184,17 +236,15 @@ convengine:
         system-heartbeat-receive-interval-ms: 10000
 ```
 
-### Audit dispatch, backpressure, and stage controls
-
-By default, audit save + publish behaves as before (sync dispatch, all stages, no rate-limit).
+## Audit Controls
 
 ```yaml
 convengine:
   audit:
     enabled: true
     level: ALL # ALL | STANDARD | ERROR_ONLY | NONE
-    include-stages: [] # supports wildcard, e.g. STEP_* or INTENT_*
-    exclude-stages: [] # supports wildcard
+    include-stages: []
+    exclude-stages: []
     persistence:
       mode: IMMEDIATE # IMMEDIATE | DEFERRED_BULK
       jdbc-batch-size: 200
@@ -217,138 +267,23 @@ convengine:
       max-tracked-buckets: 20000
 ```
 
-You can also enable key features using annotations on consumer app:
+## Audit Flow (REST + Stream)
 
-```java
-@EnableConvEngine
-@EnableConvEngineAsyncAuditDispatch
-@EnableConvEngineStompBrokerRelay
-@SpringBootApplication
-public class MyApplication {
-}
-```
+1. Client calls `POST /message`.
+2. Engine executes pipeline.
+3. Stages are persisted to `ce_audit`.
+4. Audit listeners publish to enabled SSE/STOMP channels.
+5. Client can consume:
+   - `GET /audit/{conversationId}`
+   - `GET /audit/{conversationId}/trace`
+   - live SSE/STOMP events
 
-### Full `application.yml` example (SSE + STOMP + Experimental)
+## Frontend Integration (TypeScript SSE Helper)
 
-```yaml
-server:
-  port: 8080
-
-convengine:
-  transport:
-    sse:
-      enabled: true
-      emitter-timeout-ms: 1800000
-    stomp:
-      enabled: true
-      endpoint: /ws-convengine
-      app-destination-prefix: /app
-      topic-prefix: /topic
-      audit-destination-base: /topic/convengine/audit
-      allowed-origin-pattern: "*"
-      sock-js: true
-  experimental:
-    enabled: true
-```
-
-### How SSE/STOMP flow reaches engine
-
-1. Client calls `POST /api/v1/conversation/message`.
-2. `ConversationController` invokes `ConversationalEngine`.
-3. Pipeline steps run (`IntentResolutionStep`, `SchemaExtractionStep`, `RulesStep`, `ResponseResolutionStep`, etc.).
-4. Each important stage is written to `ce_audit`.
-5. `AuditEventPublisher` publishes that stage to enabled transports:
-   - SSE: `GET /api/v1/conversation/stream/{conversationId}`
-   - STOMP topic: `/topic/convengine/audit/{conversationId}`
-6. UI listens and updates timeline/state in near real-time.
-
-### Consumer usage pattern
-
-1. Send message through REST (`/message`) for deterministic request/response.
-2. Subscribe to SSE (or STOMP) for streaming audit telemetry.
-3. On each stream event, re-fetch:
-   - `GET /audit/{conversationId}` (raw timeline), or
-   - `GET /audit/{conversationId}/trace` (normalized step/stack view).
-4. Render intent/state/response from `/message`; render diagnostics from stream + audit API.
-
-### React Vite client example (`convengine.api.js`)
-
-```js
-const API_BASE = "http://localhost:8080/api/v1/conversation";
-
-export async function sendMessage(conversationId, message, inputParams = {}, reset = false) {
-  const res = await fetch(`${API_BASE}/message`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ conversationId, message, inputParams, reset })
-  });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
-}
-
-export async function fetchAudits(conversationId) {
-  const res = await fetch(`${API_BASE}/audit/${conversationId}`);
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
-}
-
-export function subscribeConversationSse(conversationId, handlers = {}) {
-  const source = new EventSource(`${API_BASE}/stream/${conversationId}`);
-
-  source.onopen = () => handlers.onConnected?.();
-  source.onerror = (error) => handlers.onError?.(error);
-
-  ["CONNECTED", "USER_INPUT", "STEP_ENTER", "STEP_EXIT", "STEP_ERROR", "ASSISTANT_OUTPUT", "ENGINE_RETURN"]
-    .forEach((stage) => {
-      source.addEventListener(stage, (event) => {
-        let data = null;
-        try { data = event.data ? JSON.parse(event.data) : null; } catch {}
-        handlers.onEvent?.({ stage, data, raw: event });
-      });
-    });
-
-  return {
-    close() {
-      source.close();
-      handlers.onClosed?.();
-    }
-  };
-}
-
-// STOMP scaffold (optional)
-// npm install @stomp/stompjs sockjs-client
-// import { Client } from "@stomp/stompjs";
-// import SockJS from "sockjs-client";
-//
-// export function subscribeConversationStomp(conversationId, handlers = {}) {
-//   const client = new Client({
-//     webSocketFactory: () => new SockJS("http://localhost:8080/ws-convengine"),
-//     reconnectDelay: 5000,
-//     onConnect: () => {
-//       handlers.onConnected?.();
-//       client.subscribe(`/topic/convengine/audit/${conversationId}`, (msg) => {
-//         let data = msg.body;
-//         try { data = JSON.parse(msg.body); } catch {}
-//         handlers.onEvent?.(data);
-//       });
-//     },
-//     onStompError: (frame) => handlers.onError?.(frame)
-//   });
-//
-//   client.activate();
-//   return {
-//     close() {
-//       client.deactivate();
-//       handlers.onClosed?.();
-//     }
-//   };
-// }
-```
-
-### React Vite typed client example (`convengine.api.ts`)
+Use this from a Vite/React client (or any TS frontend) to call REST `/message` and subscribe to stream events.
 
 ```ts
-const API_BASE = "http://localhost:8080/api/v1/conversation";
+const API_BASE = "/api/v1/conversation";
 
 export type SseStage =
   | "CONNECTED"
@@ -437,11 +372,11 @@ export function subscribeConversationSse<T = unknown>(
 - Includes:
   - step timeline (`STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`)
   - stage stream in order
-  - source class/file metadata
+  - source class metadata
 
-## Experimental SQL Config Generation API
+## Experimental SQL Generation
 
-Feature flag:
+Enable flag:
 
 ```yaml
 convengine:
@@ -456,50 +391,31 @@ Request:
 
 ```json
 {
-  "scenario": "Build workflow for outage ticket intake",
-  "domain": "network support",
-  "constraints": "Require account id before status lookup",
+  "scenario": "Disconnect electricity for account",
+  "domain": "utilities",
+  "constraints": "Collect accountNumber and disconnectDate first",
   "includeMcp": true
 }
 ```
 
-Response:
+Response fields:
 - `success`
 - `sql`
 - `warnings`
 - `note`
 
-The generator uses `LlmClient.generateText(...)` and applies safety checks (forbidden DDL/DML detection).
+Safety constraints include forbidden statement detection and required-table coverage checks.
 
-DDL note:
-- In `src/main/resources/sql/ddl.sql`, the `ce_config` seed for `config_id=9` currently has a duplicated column-list line before `VALUES`.
-- Correct form is a single line:
-  - `INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled, created_at)`
+## Notes
 
-## Auto-configuration
+- SQL generation reference guide lives at:
+  - `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
+- Latest DDL lives at:
+  - `src/main/resources/sql/ddl.sql`
 
-Enable in consumer app:
+## Design Principles
 
-```java
-@EnableConvEngine(stream = true)
-@SpringBootApplication
-public class App {
-}
-```
-
-Also provide an `LlmClient` bean.
-
-`stream` behavior:
-- `stream = true` (default): framework expects at least one stream transport enabled.
-  Startup fails if both are disabled:
-  - `convengine.transport.sse.enabled=false`
-  - `convengine.transport.stomp.enabled=false`
-- `stream = false`: framework ignores SSE/STOMP beans even if transport flags are true.
-  Use only plain REST controller flow (`/message`, `/audit`, `/audit/{id}/trace`).
-
-## Design Constraints
-
-- Keep workflow behavior in DB config first
-- Avoid hidden transitions in code
-- Keep LLM outputs constrained and auditable
-- Prefer deterministic rule/response mapping over ad-hoc branching
+- Keep behavior in DB config first.
+- Keep runtime deterministic and auditable.
+- Use LLM only in constrained, schema-bound paths.
+- Prefer explicit `ce_rule` transitions over hidden branching logic.

@@ -2,20 +2,27 @@ package com.github.salilvnair.convengine.experimental;
 
 import com.github.salilvnair.convengine.api.dto.ExperimentalSqlGenerationRequest;
 import com.github.salilvnair.convengine.api.dto.ExperimentalSqlGenerationResponse;
+import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 @RequiredArgsConstructor
@@ -53,7 +60,8 @@ public class ExperimentalSqlGenerationService {
                     false,
                     "",
                     warnings,
-                    "Provide a non-empty scenario."
+                    "Provide a non-empty scenario.",
+                    new LinkedHashMap<>()
             );
         }
         boolean includeMcp = request.getIncludeMcp() == null || request.getIncludeMcp();
@@ -105,25 +113,31 @@ public class ExperimentalSqlGenerationService {
                 
                 Required table coverage in this call:
                 %s
-                
-                SQL generation wiki reference (same as system prompt):
-                %s
                 """.formatted(
                 scenario,
                 safe(request.getDomain()),
                 safe(request.getConstraints()),
                 includeMcp ? "true" : "false",
-                expectedTablesCsv(expectedTables),
-                agentWiki
+                expectedTablesCsv(expectedTables)
         );
 
-        String raw = llmClient.generateText(
-                systemPrompt.formatted(
-                        expectedTablesCsv(expectedTables),
-                        agentWiki
-                ) + "\n\n" + userPrompt,
-                "{}"
+        String raw;
+        LlmInvocationContext.set(
+                UUID.randomUUID(),
+                "EXPERIMENTAL_SQL",
+                "GENERATE"
         );
+        try {
+            raw = llmClient.generateText(
+                    systemPrompt.formatted(
+                            expectedTablesCsv(expectedTables),
+                            agentWiki
+                    ) + "\n\n" + userPrompt,
+                    "{}"
+            );
+        } finally {
+            LlmInvocationContext.clear();
+        }
         String sql = normalizeSql(raw);
 
         if (sql.isBlank()) {
@@ -140,13 +154,43 @@ public class ExperimentalSqlGenerationService {
             warnings.add("Missing INSERTs for required tables: " + String.join(", ", missingExpectedTables));
         }
 
+        Map<String, String> sqlByTable = splitSqlByTable(sql);
         boolean success = warnings.isEmpty();
         return new ExperimentalSqlGenerationResponse(
                 success,
                 sql,
                 warnings,
-                "Experimental output: review before applying in production."
+                "Experimental output: review before applying in production.",
+                sqlByTable
         );
+    }
+
+    public byte[] buildSqlZip(ExperimentalSqlGenerationResponse response) {
+        Map<String, String> byTable = response.getSqlByTable();
+        if (byTable == null || byTable.isEmpty()) {
+            byTable = splitSqlByTable(response.getSql());
+        }
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+             ZipOutputStream zos = new ZipOutputStream(baos, StandardCharsets.UTF_8)) {
+
+            for (Map.Entry<String, String> entry : byTable.entrySet()) {
+                String tableName = sanitizeFileName(entry.getKey());
+                String fileName = tableName + ".sql";
+                writeZipEntry(zos, fileName, entry.getValue());
+            }
+            writeZipEntry(zos, "seed.sql", safe(response.getSql()));
+
+            String warningsText = response.getWarnings() == null || response.getWarnings().isEmpty()
+                    ? "No warnings."
+                    : String.join(System.lineSeparator(), response.getWarnings());
+            writeZipEntry(zos, "warnings.txt", warningsText);
+            writeZipEntry(zos, "note.txt", safe(response.getNote()));
+
+            zos.finish();
+            return baos.toByteArray();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to build SQL zip: " + e.getMessage(), e);
+        }
     }
 
     private String normalizeSql(String raw) {
@@ -205,16 +249,111 @@ public class ExperimentalSqlGenerationService {
         return tables;
     }
 
+    private Map<String, String> splitSqlByTable(String sql) {
+        Map<String, StringBuilder> grouped = new LinkedHashMap<>();
+        for (String tableName : NON_TRANSACTIONAL_TABLES_DDL_ORDER) {
+            grouped.put(tableName, new StringBuilder());
+        }
+        grouped.put("misc", new StringBuilder());
+
+        if (sql == null || sql.isBlank()) {
+            return grouped.entrySet().stream()
+                    .filter(e -> e.getValue().length() > 0)
+                    .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue().toString().trim()), Map::putAll);
+        }
+
+        for (String statement : splitStatements(sql)) {
+            String table = extractInsertTable(statement);
+            String key = table == null ? "misc" : table.toLowerCase(Locale.ROOT);
+            StringBuilder bucket = grouped.computeIfAbsent(key, k -> new StringBuilder());
+            if (bucket.length() > 0) {
+                bucket.append(System.lineSeparator()).append(System.lineSeparator());
+            }
+            bucket.append(statement.trim());
+            if (!statement.trim().endsWith(";")) {
+                bucket.append(";");
+            }
+        }
+
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<String, StringBuilder> entry : grouped.entrySet()) {
+            String value = entry.getValue().toString().trim();
+            if (!value.isBlank()) {
+                out.put(entry.getKey(), value);
+            }
+        }
+        return out;
+    }
+
+    private List<String> splitStatements(String sql) {
+        List<String> statements = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inSingleQuote = false;
+        for (int i = 0; i < sql.length(); i++) {
+            char ch = sql.charAt(i);
+            current.append(ch);
+            if (ch == '\'') {
+                boolean escaped = i + 1 < sql.length() && sql.charAt(i + 1) == '\'';
+                if (escaped) {
+                    current.append(sql.charAt(i + 1));
+                    i++;
+                } else {
+                    inSingleQuote = !inSingleQuote;
+                }
+            } else if (ch == ';' && !inSingleQuote) {
+                String statement = current.toString().trim();
+                if (!statement.isBlank()) {
+                    statements.add(statement);
+                }
+                current.setLength(0);
+            }
+        }
+        String tail = current.toString().trim();
+        if (!tail.isBlank()) {
+            statements.add(tail);
+        }
+        return statements;
+    }
+
+    private String extractInsertTable(String statement) {
+        String normalized = statement == null ? "" : statement.trim();
+        normalized = normalized.replaceAll("(?m)^\\s*--.*$", "").trim();
+        Matcher matcher = INSERT_TABLE_PATTERN.matcher(normalized);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    private void writeZipEntry(ZipOutputStream zos, String name, String content) throws IOException {
+        ZipEntry entry = new ZipEntry(name);
+        zos.putNextEntry(entry);
+        byte[] bytes = safe(content).getBytes(StandardCharsets.UTF_8);
+        zos.write(bytes);
+        zos.closeEntry();
+    }
+
+    private String sanitizeFileName(String input) {
+        if (input == null || input.isBlank()) {
+            return "misc";
+        }
+        return input.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "_");
+    }
+
     private String loadSqlGenerationAgentWiki() {
+        return loadClasspathResource(SQL_GENERATION_AGENT_RESOURCE, "SQL generation wiki");
+    }
+
+    private String loadClasspathResource(String resourcePath, String label) {
         try (InputStream in = Thread.currentThread()
                 .getContextClassLoader()
-                .getResourceAsStream(SQL_GENERATION_AGENT_RESOURCE)) {
+                .getResourceAsStream(resourcePath)) {
             if (in == null) {
-                return "SQL generation wiki not found at classpath:" + SQL_GENERATION_AGENT_RESOURCE;
+                return label + " not found at classpath:" + resourcePath;
             }
             return new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
         } catch (IOException e) {
-            return "Failed to load SQL generation wiki: " + e.getMessage();
+            return "Failed to load " + label + ": " + e.getMessage();
         }
     }
 
