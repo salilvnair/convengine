@@ -6,7 +6,32 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## Version
 
-- Current library version: `1.0.9`
+- Current library version: `1.0.10`
+
+## What Changed In 1.0.10
+
+### Rule phase model (`ce_rule.phase`)
+- Added `ce_rule.phase` with runtime contract:
+  - `PIPELINE_RULES`
+  - `AGENT_POST_INTENT`
+- Added `RulePhase` enum and normalized phase handling.
+- `RulesStep` now executes phase-filtered rule sets.
+- Agent post-intent rule execution now runs only `AGENT_POST_INTENT` rules.
+
+### Post-intent rule execution and metadata
+- Enabled immediate post-intent rule pass in `AgentIntentResolver` after accepted intent.
+- Added rule execution metadata in `EngineSession` and `inputParams`:
+  - `postIntentRule` / `post_intent_rule`
+  - `rule_phase`
+  - `rule_execution_source`
+  - `rule_execution_origin`
+- Added phase/source metadata into rule audit payloads (`RULE_MATCHED`, `RULE_APPLIED`, `RULE_NO_MATCH`).
+
+### Streaming startup validation hardening
+- Removed fragile conditional gating from stream startup validator.
+- Validator now reads stream setting via `ObjectProvider<ConvEngineStreamSettings>` in `@PostConstruct`.
+- Hardened `ConvEngineStreamEnabledCondition` to evaluate in `REGISTER_BEAN` phase and support registry fallback.
+- Prevents false-positive stream validation failures caused by bean registration timing.
 
 ## What Changed In 1.0.9
 
@@ -112,6 +137,7 @@ Order is enforced by step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Requ
 
 ### `ce_rule`
 - `rule_type`: `EXACT`, `REGEX`, `JSON_PATH`
+- `phase`: `PIPELINE_RULES`, `AGENT_POST_INTENT`
 - `action`: `SET_INTENT`, `SET_STATE`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`
 
 ### `ce_intent_classifier`

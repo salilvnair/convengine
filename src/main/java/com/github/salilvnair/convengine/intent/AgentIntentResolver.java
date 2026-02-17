@@ -6,6 +6,7 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.steps.RulesStep;
+import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.model.JsonPayload;
@@ -299,7 +300,7 @@ public class AgentIntentResolver implements IntentResolver {
         session.setRuleExecutionOrigin("AGENT_INTENT_RESOLVER");
         session.putInputParam("rule_execution_source", "AgentIntentResolver PostIntent");
         session.putInputParam("rule_execution_origin", "AGENT_INTENT_RESOLVER");
-        rulesStep.applyRules(session, "AgentIntentResolver PostIntent");
+        rulesStep.applyRules(session, "AgentIntentResolver PostIntent", RulePhase.AGENT_POST_INTENT.name());
     }
 
     private boolean isSchemaDrivenIntent(String intent) {

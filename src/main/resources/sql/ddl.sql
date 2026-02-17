@@ -236,6 +236,7 @@ CREATE INDEX idx_ce_response_lookup ON public.ce_response USING btree (state_cod
 
 CREATE TABLE ce_rule (
                          rule_id bigserial NOT NULL,
+                         phase text DEFAULT 'PIPELINE_RULES' NOT NULL,
                          intent_code text NULL,
                          rule_type text NOT NULL,
                          match_pattern text NOT NULL,
@@ -247,7 +248,7 @@ CREATE TABLE ce_rule (
                          created_at timestamptz DEFAULT now() NOT NULL,
                          CONSTRAINT ce_rule_pkey PRIMARY KEY (rule_id)
 );
-CREATE INDEX idx_ce_rule_priority ON public.ce_rule USING btree (enabled, priority);
+CREATE INDEX idx_ce_rule_priority ON public.ce_rule USING btree (enabled, phase, priority);
 
 
 -- public.ce_validation_snapshot definition

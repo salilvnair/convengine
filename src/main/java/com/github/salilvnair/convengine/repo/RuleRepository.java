@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface RuleRepository extends JpaRepository<CeRule, Long> {
     List<CeRule> findByEnabledTrueOrderByPriorityAsc();
+    List<CeRule> findByEnabledTrueAndPhaseOrderByPriorityAsc(String phase);
 }

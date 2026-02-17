@@ -21,6 +21,8 @@ public class CeRule {
     private String action;
     @Column(name = "action_value")
     private String actionValue;
+    @Column(name = "phase")
+    private String phase;
     @Column(name = "priority")
     private int priority;
     @Column(name = "enabled")

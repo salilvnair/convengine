@@ -10,6 +10,7 @@ import com.github.salilvnair.convengine.engine.rule.action.factory.RuleTypeResol
 import com.github.salilvnair.convengine.engine.rule.type.core.RuleTypeResolver;
 import com.github.salilvnair.convengine.engine.rule.type.factory.RuleActionResolverFactory;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
+import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.CeRule;
 import com.github.salilvnair.convengine.repo.RuleRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
@@ -37,18 +38,26 @@ public class RulesStep implements EngineStep {
 
     @Override
     public StepResult execute(EngineSession session) {
-        applyRules(session, "RulesStep");
+        applyRules(session, "RulesStep", RulePhase.PIPELINE_RULES.name());
         session.syncToConversation();
         return new StepResult.Continue();
     }
 
     public void applyRules(EngineSession session, String stage) {
+        applyRules(session, stage, null);
+    }
+
+    public void applyRules(EngineSession session, String stage, String requestedPhase) {
         String source = (stage == null || stage.isBlank()) ? "RulesStep" : stage;
         String origin = source.toLowerCase().contains("agentintentresolver")
                 ? "AGENT_INTENT_RESOLVER"
                 : "RULES_STEP";
-        boolean agentPostIntentPhase = "AGENT_INTENT_RESOLVER".equals(origin);
-        String phase = agentPostIntentPhase ? "AGENT_POST_INTENT" : "PIPELINE_RULES";
+        String phase = requestedPhase == null || requestedPhase.isBlank()
+                ? ("AGENT_INTENT_RESOLVER".equals(origin)
+                    ? RulePhase.AGENT_POST_INTENT.name()
+                    : RulePhase.PIPELINE_RULES.name())
+                : RulePhase.normalize(requestedPhase);
+        boolean agentPostIntentPhase = RulePhase.AGENT_POST_INTENT.name().equals(phase);
         session.setPostIntentRule(agentPostIntentPhase);
         session.setRuleExecutionSource(source);
         session.setRuleExecutionOrigin(origin);
@@ -60,7 +69,7 @@ public class RulesStep implements EngineStep {
 
         boolean anyMatched = false;
         int maxPasses = 5;
-        List<CeRule> allRules = ruleRepo.findByEnabledTrueOrderByPriorityAsc();
+        List<CeRule> allRules = ruleRepo.findByEnabledTrueAndPhaseOrderByPriorityAsc(phase);
         for (int pass = 0; pass < maxPasses; pass++) {
             boolean passChanged = false;
             String passIntent = session.getIntent();
