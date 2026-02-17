@@ -160,6 +160,15 @@ VALUES (100, 'ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,STA
 
 Default reset intent code is `RESET_SESSION`.
 
+### Sticky intent config
+
+When sticky intent is enabled, ConvEngine keeps the currently resolved intent across turns and skips re-resolution unless an explicit switch/reset signal is present.
+
+```sql
+INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled)
+VALUES (101, 'IntentResolutionStep', 'STICKY_INTENT', 'true', true);
+```
+
 ## Consumer Bootstrapping
 
 ```java

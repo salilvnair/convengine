@@ -488,3 +488,6 @@ Return JSON EXACTLY in this schema:
   "answer": "<text_or_null>"
 }
 ', true, '2026-02-10 10:15:54.230');
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(12, 'IntentResolutionStep', 'STICKY_INTENT', 'true', true, '2026-02-17 10:15:54.230');

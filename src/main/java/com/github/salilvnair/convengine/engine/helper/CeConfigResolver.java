@@ -32,6 +32,13 @@ public class CeConfigResolver {
                 .orElse(defaultValue);
     }
 
+    public boolean resolveBoolean(Object configType, String configKey, boolean defaultValue) {
+        String type = configType.getClass().getSimpleName();
+        return repo.findByConfigTypeAndConfigKeyAndEnabledTrue(type, configKey)
+                .map(c -> parseBoolean(c.getConfigValue(), defaultValue))
+                .orElse(defaultValue);
+    }
+
     private double parseDouble(String v, double def) {
         try {
             return Double.parseDouble(v);
@@ -46,5 +53,17 @@ public class CeConfigResolver {
         } catch (Exception e) {
             return def;
         }
+    }
+
+    private boolean parseBoolean(String v, boolean def) {
+        if (v == null) {
+            return def;
+        }
+        String normalized = v.trim().toLowerCase();
+        return switch (normalized) {
+            case "true", "1", "yes", "on" -> true;
+            case "false", "0", "no", "off" -> false;
+            default -> def;
+        };
     }
 }
