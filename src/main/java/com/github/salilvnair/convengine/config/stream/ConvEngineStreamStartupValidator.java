@@ -3,18 +3,25 @@ package com.github.salilvnair.convengine.config.stream;
 import com.github.salilvnair.convengine.config.ConvEngineTransportConfig;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Conditional;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-@Conditional(ConvEngineStreamEnabledCondition.class)
 public class ConvEngineStreamStartupValidator {
 
     private final ConvEngineTransportConfig transportConfig;
+    private final ObjectProvider<ConvEngineStreamSettings> streamSettingsProvider;
 
     @PostConstruct
     void validateTransportSelection() {
+        boolean streamEnabled = streamSettingsProvider
+                .getIfAvailable(() -> new ConvEngineStreamSettings(true))
+                .streamEnabled();
+        if (!streamEnabled) {
+            return;
+        }
+
         boolean sseEnabled = transportConfig.getSse() != null && transportConfig.getSse().isEnabled();
         boolean stompEnabled = transportConfig.getStomp() != null && transportConfig.getStomp().isEnabled();
         if (!sseEnabled && !stompEnabled) {

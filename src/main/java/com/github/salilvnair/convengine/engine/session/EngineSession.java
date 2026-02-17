@@ -72,6 +72,9 @@ public class EngineSession {
     private final List<StepTiming> stepTimings = new ArrayList<>();
     private Map<String, Object> inputParams = new LinkedHashMap<>();
     private Map<String, Object> safeInputParamsForOutput = new LinkedHashMap<>();
+    private boolean postIntentRule;
+    private String ruleExecutionSource;
+    private String ruleExecutionOrigin;
     private Map<String, Object> systemExtensions = new LinkedHashMap<>();
     private Set<String> unknownSystemInputParamKeys = new LinkedHashSet<>();
     private Set<String> systemDerivedInputParamKeys = new LinkedHashSet<>();
@@ -370,6 +373,9 @@ public class EngineSession {
         sessionMap.put("userText", userText);
         sessionMap.put("pendingClarificationQuestion", pendingClarificationQuestion);
         sessionMap.put("lastLlmStage", lastLlmStage);
+        sessionMap.put("postIntentRule", postIntentRule);
+        sessionMap.put("ruleExecutionSource", ruleExecutionSource);
+        sessionMap.put("ruleExecutionOrigin", ruleExecutionOrigin);
         sessionMap.put("context", contextDict());
         sessionMap.put("schemaJson", schemaJson());
         sessionMap.put("lastLlmOutput", extractLastLlmOutputForSession());
@@ -555,6 +561,9 @@ public class EngineSession {
         this.awaitingClarification = false;
         this.clarificationTurn = 0;
         this.lastClarificationQuestion = null;
+        this.postIntentRule = false;
+        this.ruleExecutionSource = null;
+        this.ruleExecutionOrigin = null;
         this.pendingClarificationQuestionHistory = new ArrayList<>();
         this.pendingClarificationReasonsHistory = new ArrayList<>();
         clearClarification();

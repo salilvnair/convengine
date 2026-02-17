@@ -279,6 +279,7 @@ public class AgentIntentResolver implements IntentResolver {
         if (state != null && !state.isBlank()) {
             session.setState(state);
         }
+        applyPostIntentRules(session);
 
         Map<String, Object> accepted = new LinkedHashMap<>();
         accepted.put("intent", session.getIntent());
@@ -290,12 +291,14 @@ public class AgentIntentResolver implements IntentResolver {
         return session.getIntent();
     }
 
-
-    @Deprecated(forRemoval = true)
     private void applyPostIntentRules(EngineSession session) {
         if (session.getIntent() == null || session.getIntent().isBlank()) {
             return;
         }
+        session.setRuleExecutionSource("AgentIntentResolver PostIntent");
+        session.setRuleExecutionOrigin("AGENT_INTENT_RESOLVER");
+        session.putInputParam("rule_execution_source", "AgentIntentResolver PostIntent");
+        session.putInputParam("rule_execution_origin", "AGENT_INTENT_RESOLVER");
         rulesStep.applyRules(session, "AgentIntentResolver PostIntent");
     }
 

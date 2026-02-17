@@ -43,6 +43,21 @@ public class RulesStep implements EngineStep {
     }
 
     public void applyRules(EngineSession session, String stage) {
+        String source = (stage == null || stage.isBlank()) ? "RulesStep" : stage;
+        String origin = source.toLowerCase().contains("agentintentresolver")
+                ? "AGENT_INTENT_RESOLVER"
+                : "RULES_STEP";
+        boolean agentPostIntentPhase = "AGENT_INTENT_RESOLVER".equals(origin);
+        String phase = agentPostIntentPhase ? "AGENT_POST_INTENT" : "PIPELINE_RULES";
+        session.setPostIntentRule(agentPostIntentPhase);
+        session.setRuleExecutionSource(source);
+        session.setRuleExecutionOrigin(origin);
+        session.putInputParam("post_intent_rule", agentPostIntentPhase);
+        session.putInputParam("rule_execution_source", source);
+        session.putInputParam("rule_execution_origin", origin);
+        session.putInputParam("rule_phase", phase);
+        session.putInputParam("rule_agent_post_intent", agentPostIntentPhase);
+
         boolean anyMatched = false;
         int maxPasses = 5;
         List<CeRule> allRules = ruleRepo.findByEnabledTrueOrderByPriorityAsc();
@@ -69,6 +84,10 @@ public class RulesStep implements EngineStep {
                 matchedPayload.put("ruleType", rule.getRuleType());
                 matchedPayload.put("intent", session.getIntent());
                 matchedPayload.put("state", session.getState());
+                matchedPayload.put("ruleExecutionSource", source);
+                matchedPayload.put("ruleExecutionOrigin", origin);
+                matchedPayload.put("rulePhase", phase);
+                matchedPayload.put("ruleAgentPostIntent", agentPostIntentPhase);
                 matchedPayload.put("context", session.contextDict());
                 matchedPayload.put("schemaJson", session.schemaJson());
                 audit.audit(
@@ -96,6 +115,10 @@ public class RulesStep implements EngineStep {
                 payload.put("type", rule.getRuleType());
                 payload.put("pattern", rule.getMatchPattern());
                 payload.put("action", rule.getAction());
+                payload.put("ruleExecutionSource", source);
+                payload.put("ruleExecutionOrigin", origin);
+                payload.put("rulePhase", phase);
+                payload.put("ruleAgentPostIntent", agentPostIntentPhase);
                 payload.put("actionValue", JsonUtil.parseOrNull(rule.getActionValue()));
                 log.info("Rule applied: {}", payload);
                 audit.audit("RULE_APPLIED ("+stage+")" , session.getConversationId(), payload);
@@ -110,6 +133,10 @@ public class RulesStep implements EngineStep {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("intent", session.getIntent());
             payload.put("state", session.getState());
+            payload.put("ruleExecutionSource", source);
+            payload.put("ruleExecutionOrigin", origin);
+            payload.put("rulePhase", phase);
+            payload.put("ruleAgentPostIntent", agentPostIntentPhase);
             audit.audit("RULE_NO_MATCH ("+stage+")", session.getConversationId(), payload);
         }
     }
