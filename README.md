@@ -27,6 +27,12 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
   - `rule_execution_origin`
 - Added phase/source metadata into rule audit payloads (`RULE_MATCHED`, `RULE_APPLIED`, `RULE_NO_MATCH`).
 
+### Sticky intent continuity (`ce_config`)
+- Added `IntentResolutionStep.STICKY_INTENT` (default `true`) to keep resolved intent/state stable across turns.
+- `IntentResolutionStep` now skips unnecessary re-resolution when intent/state are already resolved.
+- Added audit stage `INTENT_RESOLVE_SKIPPED_STICKY_INTENT` for sticky-skip visibility.
+- Explicit reset/switch/force signals still trigger intent resolution.
+
 ### Streaming startup validation hardening
 - Removed fragile conditional gating from stream startup validator.
 - Validator now reads stream setting via `ObjectProvider<ConvEngineStreamSettings>` in `@PostConstruct`.

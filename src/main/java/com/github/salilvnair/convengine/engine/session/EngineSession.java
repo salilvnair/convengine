@@ -78,6 +78,7 @@ public class EngineSession {
     private Map<String, Object> systemExtensions = new LinkedHashMap<>();
     private Set<String> unknownSystemInputParamKeys = new LinkedHashSet<>();
     private Set<String> systemDerivedInputParamKeys = new LinkedHashSet<>();
+    private Set<String> USER_PROMPT_KEYS = new LinkedHashSet<>();
 
     private static final Set<String> CONTROLLED_PROMPT_KEYS = Set.of(
             "missing_fields",
@@ -144,6 +145,7 @@ public class EngineSession {
             return;
         }
         String normalizedKey = key.trim();
+        USER_PROMPT_KEYS.add(normalizedKey);
         if (fromSystemWrite && !isControlledPromptKey(normalizedKey)) {
             systemExtensions.put(normalizedKey, value);
             unknownSystemInputParamKeys.add(normalizedKey);
@@ -157,7 +159,7 @@ public class EngineSession {
     }
 
     private boolean isControlledPromptKey(String key) {
-        return CONTROLLED_PROMPT_KEYS.contains(key);
+        return CONTROLLED_PROMPT_KEYS.contains(key) || USER_PROMPT_KEYS.contains(key);
     }
 
     // -------------------------------------------------
@@ -428,16 +430,7 @@ public class EngineSession {
         if (key == null || key.isBlank()) {
             return false;
         }
-        if (!SAFE_INPUT_KEY_PATTERN.matcher(key).matches()) {
-            return false;
-        }
-        if (isControlledPromptKey(key)) {
-            return true;
-        }
-        if (systemDerivedInputParamKeys.contains(key)) {
-            return false;
-        }
-        return !key.startsWith("_");
+        return inputParams.containsKey(key);
     }
 
     public Map<String, Object> safeInputParams() {
@@ -573,6 +566,7 @@ public class EngineSession {
         this.systemExtensions.clear();
         this.unknownSystemInputParamKeys.clear();
         this.systemDerivedInputParamKeys.clear();
+        this.USER_PROMPT_KEYS.clear();
         if (engineContext.getInputParams() != null) {
             Map<String, Object> requestParams = new LinkedHashMap<>();
             for (Map.Entry<String, Object> e : engineContext.getInputParams().entrySet()) {
