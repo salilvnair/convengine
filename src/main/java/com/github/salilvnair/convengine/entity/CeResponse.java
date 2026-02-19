@@ -2,6 +2,8 @@ package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "ce_response")
@@ -31,6 +33,7 @@ public class CeResponse {
     @Column(columnDefinition = "text", name = "derivation_hint")
     private String derivationHint;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "json_schema")
     private String jsonSchema;
 

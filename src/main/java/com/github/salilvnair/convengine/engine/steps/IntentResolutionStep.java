@@ -145,6 +145,11 @@ public class IntentResolutionStep implements EngineStep {
         if (!stickyIntentEnabled) {
             return false;
         }
+        // Sticky intent is only valid while collecting incomplete schema fields.
+        // For regular turns, intent should be re-evaluated (e.g., GREETINGS -> FAQ).
+        if (!isActiveSchemaCollection(session)) {
+            return false;
+        }
         if (!hasResolvedIntent(session.getIntent())) {
             return false;
         }

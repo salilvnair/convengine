@@ -1,8 +1,6 @@
 package com.github.salilvnair.convengine.entity;
 
-import com.github.salilvnair.convengine.entity.converter.MapStringSetJsonConverter;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
@@ -12,6 +10,8 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -38,10 +38,11 @@ public class CeMcpDbTool {
     @Column(name = "sql_template", nullable = false)
     private String sqlTemplate;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "param_schema", nullable = false)
     private String paramSchema;
 
-    @Convert(converter = MapStringSetJsonConverter.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "allowed_identifiers")
     private Map<String, Set<String>> allowedIdentifiers;
 

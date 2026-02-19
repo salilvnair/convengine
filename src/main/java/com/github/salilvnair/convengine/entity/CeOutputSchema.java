@@ -2,6 +2,8 @@ package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "ce_output_schema")
@@ -23,6 +25,7 @@ public class CeOutputSchema {
     @Column(name = "state_code", nullable = false)
     private String stateCode;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "json_schema", nullable = false)
     private String jsonSchema;
 
