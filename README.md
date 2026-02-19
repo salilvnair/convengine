@@ -6,7 +6,20 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## Version
 
-- Current library version: `1.0.11`
+- Current library version: `1.0.12`
+
+## What Changed In 1.0.12
+
+### Audit metadata enrichment for input params
+- Added normalized runtime `inputParams` into audit stage metadata (`_meta.inputParams`) across emitted audit events.
+- Added API-origin-only `userInputParams` into audit stage metadata (`_meta.userInputParams`) to preserve raw request parameters separately from framework-mutated/runtime params.
+
+### API parameter isolation hardening
+- `userInputParams` is now deep-copied from request payload at controller ingress to avoid shared nested object references and later mutation bleed-through.
+- This keeps audit traces stable and deterministic even when runtime steps enrich `inputParams`.
+
+### Helper extraction for controller cleanliness
+- Moved deep-copy utility into `engine.helper.InputParamsHelper` to keep controller code thin and reusable.
 
 ## What Changed In 1.0.11
 
