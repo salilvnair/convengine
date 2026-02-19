@@ -10,6 +10,8 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## What Changed In 1.0.15
 
+Release commit: `c820cf6`
+
 ### Schema extraction refactor + provider-owned computation
 - Refactored `SchemaExtractionStep` to be orchestration-focused and delegated schema-heavy computation to provider contract.
 - Added resolver computation model:
