@@ -1,6 +1,8 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
@@ -25,6 +27,7 @@ import java.util.*;
 @Component
 @RequiresConversationPersisted
 public class SchemaExtractionStep implements EngineStep {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final OutputSchemaRepository outputSchemaRepo;
     private final PromptTemplateRepository promptTemplateRepo;
@@ -76,6 +79,9 @@ public class SchemaExtractionStep implements EngineStep {
         session.putInputParam("schema_field_details", schemaFieldDetails);
         session.putInputParam("schema_description", schema.getDescription() == null ? "" : schema.getDescription());
         session.putInputParam("schema_id", schema.getSchemaId());
+        String seededContextJson = seedContextFromInputParams(session, schema.getJsonSchema());
+        session.setContextJson(seededContextJson);
+        session.getConversation().setContextJson(seededContextJson);
         ensureSchemaPromptVars(session);
 
         PromptTemplateContext promptTemplateContext = PromptTemplateContext
@@ -110,7 +116,8 @@ public class SchemaExtractionStep implements EngineStep {
         llmOutputPayload.put("json", extractedJson);
         audit.audit("SCHEMA_EXTRACTION_LLM_OUTPUT", session.getConversationId(), llmOutputPayload);
 
-        String merged = JsonUtil.merge(safeJson(session.getContextJson()), extractedJson);
+        String sanitizedExtractedJson = sanitizeExtractedJson(extractedJson);
+        String merged = JsonUtil.merge(safeJson(session.getContextJson()), sanitizedExtractedJson);
         session.setContextJson(merged);
         session.getConversation().setContextJson(merged);
 
@@ -247,6 +254,89 @@ public class SchemaExtractionStep implements EngineStep {
 
     private int priorityOf(CeOutputSchema schema) {
         return schema.getPriority() == null ? Integer.MAX_VALUE : schema.getPriority();
+    }
+
+    private String seedContextFromInputParams(EngineSession session, String schemaJson) {
+        try {
+            JsonNode schemaNode = JsonUtil.parseOrNull(schemaJson);
+            JsonNode properties = schemaNode.path("properties");
+            if (!properties.isObject()) {
+                return safeJson(session.getContextJson());
+            }
+            JsonNode existingContext = JsonUtil.parseOrNull(safeJson(session.getContextJson()));
+            ObjectNode contextNode = existingContext != null && existingContext.isObject()
+                    ? ((ObjectNode) existingContext.deepCopy())
+                    : MAPPER.createObjectNode();
+            for (Iterator<String> it = properties.fieldNames(); it.hasNext(); ) {
+                String field = it.next();
+                Object currentValue = jsonNodeToObject(contextNode.path(field));
+                Object inputValue = session.getInputParams().get(field);
+                if (!hasMeaningfulValue(currentValue) && hasMeaningfulValue(inputValue)) {
+                    contextNode.set(field, MAPPER.valueToTree(inputValue));
+                }
+            }
+            return MAPPER.writeValueAsString(contextNode);
+        } catch (Exception e) {
+            return safeJson(session.getContextJson());
+        }
+    }
+
+    private String sanitizeExtractedJson(String extractedJson) {
+        try {
+            JsonNode node = JsonUtil.parseOrNull(extractedJson);
+            if (!node.isObject()) {
+                return "{}";
+            }
+            ObjectNode cleaned = MAPPER.createObjectNode();
+            node.fields().forEachRemaining(entry -> {
+                JsonNode value = entry.getValue();
+                if (value == null || value.isNull()) {
+                    return;
+                }
+                if (value.isTextual() && value.asText().isBlank()) {
+                    return;
+                }
+                if (value.isArray() && value.isEmpty()) {
+                    return;
+                }
+                cleaned.set(entry.getKey(), value);
+            });
+            return MAPPER.writeValueAsString(cleaned);
+        } catch (Exception e) {
+            return "{}";
+        }
+    }
+
+    private Object jsonNodeToObject(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        if (node.isTextual()) {
+            return node.asText();
+        }
+        if (node.isNumber()) {
+            return node.numberValue();
+        }
+        if (node.isBoolean()) {
+            return node.asBoolean();
+        }
+        return MAPPER.convertValue(node, Object.class);
+    }
+
+    private boolean hasMeaningfulValue(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof String s) {
+            return !s.isBlank();
+        }
+        if (value instanceof Collection<?> c) {
+            return !c.isEmpty();
+        }
+        if (value instanceof Map<?, ?> m) {
+            return !m.isEmpty();
+        }
+        return true;
     }
 
     private void ensureSchemaPromptVars(EngineSession session) {

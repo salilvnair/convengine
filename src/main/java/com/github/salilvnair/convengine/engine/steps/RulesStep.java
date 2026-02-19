@@ -69,15 +69,19 @@ public class RulesStep implements EngineStep {
 
         boolean anyMatched = false;
         int maxPasses = 5;
-        List<CeRule> allRules = ruleRepo.findByEnabledTrueAndPhaseOrderByPriorityAsc(phase);
         for (int pass = 0; pass < maxPasses; pass++) {
             boolean passChanged = false;
             String passIntent = session.getIntent();
+            String passState = session.getState();
+            List<CeRule> allRules = ruleRepo.findEligibleByPhaseAndStateOrderByPriorityAsc(phase, passState);
 
             for (CeRule rule : allRules) {
 
                 if (rule.getIntentCode() != null &&
                         !rule.getIntentCode().equalsIgnoreCase(passIntent)) {
+                    continue;
+                }
+                if (!matchesState(rule.getStateCode(), passState)) {
                     continue;
                 }
 
@@ -91,6 +95,7 @@ public class RulesStep implements EngineStep {
                 matchedPayload.put("ruleId", rule.getRuleId());
                 matchedPayload.put("action", rule.getAction());
                 matchedPayload.put("ruleType", rule.getRuleType());
+                matchedPayload.put("ruleStateCode", rule.getStateCode());
                 matchedPayload.put("intent", session.getIntent());
                 matchedPayload.put("state", session.getState());
                 matchedPayload.put("ruleExecutionSource", source);
@@ -122,6 +127,7 @@ public class RulesStep implements EngineStep {
                 payload.put("ruleId", rule.getRuleId());
                 payload.put("intent", session.getIntent());
                 payload.put("type", rule.getRuleType());
+                payload.put("ruleStateCode", rule.getStateCode());
                 payload.put("pattern", rule.getMatchPattern());
                 payload.put("action", rule.getAction());
                 payload.put("ruleExecutionSource", source);
@@ -148,5 +154,18 @@ public class RulesStep implements EngineStep {
             payload.put("ruleAgentPostIntent", agentPostIntentPhase);
             audit.audit("RULE_NO_MATCH ("+stage+")", session.getConversationId(), payload);
         }
+    }
+
+    private boolean matchesState(String ruleStateCode, String sessionState) {
+        if (ruleStateCode == null || ruleStateCode.isBlank()) {
+            return true;
+        }
+        if ("ANY".equalsIgnoreCase(ruleStateCode.trim())) {
+            return true;
+        }
+        if (sessionState == null || sessionState.isBlank()) {
+            return false;
+        }
+        return ruleStateCode.trim().equalsIgnoreCase(sessionState.trim());
     }
 }

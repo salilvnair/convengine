@@ -120,6 +120,7 @@ There is no `prompt_template_code` in current DDL.
 
 ### `ce_rule`
 - `rule_type`: `EXACT | REGEX | JSON_PATH`
+- `state_code`: `NULL` (all states), `ANY` (all states), or a specific `state_code`
 - `action`: `SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK`
 
 ### `ce_intent_classifier`
@@ -166,6 +167,11 @@ VALUES ('ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,START_OV
 ## Rule Engine Contracts
 
 `RulesStep` loads enabled rules ordered by priority and applies multi-pass execution (up to bounded passes) when intent/state changes.
+
+State scoping contract for `ce_rule.state_code`:
+- `NULL` -> rule is eligible for all states.
+- `ANY` -> rule is eligible for all states.
+- Specific value -> rule is eligible only when session state equals that value (case-insensitive).
 
 ### Action value formats
 - `SET_TASK`: `beanName:methodName` or `beanName:methodA,methodB`

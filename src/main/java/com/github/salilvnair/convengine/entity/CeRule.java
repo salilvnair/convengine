@@ -13,6 +13,8 @@ public class CeRule {
     private Long ruleId;
     @Column(name = "intent_code")
     private String intentCode;
+    @Column(name = "state_code")
+    private String stateCode;
     @Column(name = "rule_type")
     private String ruleType;
     @Column(name = "match_pattern")

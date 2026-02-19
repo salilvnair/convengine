@@ -6,7 +6,17 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## Version
 
-- Current library version: `1.0.13`
+- Current library version: `1.0.14`
+
+## What Changed In 1.0.14
+
+### Rule state scope (`ce_rule.state_code`)
+- Added optional `ce_rule.state_code` to scope a rule by state.
+- Matching contract:
+  - `NULL` -> applies to all states
+  - `ANY` -> applies to all states
+  - exact value -> applies only when session state matches that value (case-insensitive)
+- This reduces unnecessary rule evaluations in unrelated states.
 
 ## What Changed In 1.0.13
 
@@ -211,6 +221,7 @@ Order is enforced by step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Requ
 ### `ce_rule`
 - `rule_type`: `EXACT`, `REGEX`, `JSON_PATH`
 - `phase`: `PIPELINE_RULES`, `AGENT_POST_INTENT`
+- `state_code`: `NULL` (all states), `ANY` (all states), or a specific `state_code`
 - `action`: `SET_INTENT`, `SET_STATE`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`
 
 ### `ce_intent_classifier`

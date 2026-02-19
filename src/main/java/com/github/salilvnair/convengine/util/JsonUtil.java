@@ -162,7 +162,7 @@ public final class JsonUtil {
                     return true;
                 }
                 case "string" -> {
-                    return data.isTextual();
+                    return data.isTextual() && !data.asText().isBlank();
                 }
             }
         }

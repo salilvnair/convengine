@@ -143,6 +143,7 @@ CREATE TABLE ce_rule (
   rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
   phase TEXT NOT NULL DEFAULT 'PIPELINE_RULES',
   intent_code TEXT,
+  state_code TEXT,
   rule_type TEXT NOT NULL,
   match_pattern TEXT NOT NULL,
   action TEXT NOT NULL,
@@ -152,7 +153,7 @@ CREATE TABLE ce_rule (
   description TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_ce_rule_priority ON ce_rule (enabled, phase, priority);
+CREATE INDEX idx_ce_rule_priority ON ce_rule (enabled, phase, state_code, priority);
 
 CREATE TABLE ce_validation_snapshot (
   snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
