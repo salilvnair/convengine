@@ -6,7 +6,7 @@ ConvEngine is a deterministic, configuration-driven conversational workflow engi
 
 It is not an open-ended chatbot runtime. Business behavior is declared in `ce_*` tables and executed by an auditable step pipeline.
 
-Current library baseline: `1.0.8`.
+Current library baseline: `1.0.13`.
 
 ## Runtime Architecture
 
@@ -77,6 +77,7 @@ Order is enforced via step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Req
 ### Runtime/transactional tables
 - `ce_conversation`
 - `ce_audit`
+- `ce_conversation_history`
 - `ce_llm_call_log`
 - `ce_validation_snapshot`
 
@@ -203,8 +204,11 @@ These are intended for consumer-specific intervention without forking core engin
 
 ### Core behavior
 - `ce_audit` is the source of truth for execution timeline.
+- `ce_conversation_history` is the source for conversation-turn reconstruction used by prompt history providers.
 - Step lifecycle emits `STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`.
 - Audit metadata should track runtime session `intent` and `state`.
+- `_meta` persistence in DB payloads is controlled by `convengine.audit.persist-meta`.
+- `ce_conversation_history` writes are synchronous; `ce_audit` persistence can run in `IMMEDIATE` or `DEFERRED_BULK` strategy mode.
 
 ### Trace API
 - `GET /api/v1/conversation/audit/{conversationId}/trace`
@@ -218,6 +222,10 @@ These are intended for consumer-specific intervention without forking core engin
 - persistence mode:
   - `IMMEDIATE`
   - `DEFERRED_BULK` with flush conditions
+
+### Configuration ownership
+- ConvEngine does not ship framework-level `application.yaml` defaults.
+- Consumer applications own all `convengine.*` property configuration.
 
 ## Streaming and Transport
 

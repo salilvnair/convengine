@@ -6,13 +6,40 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## Version
 
-- Current library version: `1.0.12`
+- Current library version: `1.0.13`
+
+## What Changed In 1.0.13
+
+### Audit persistence split (sync history + async/deferred audit)
+- Refactored audit persistence into strategy-based components:
+  - `audit.persistence.ImmediateAuditPersistenceStrategy`
+  - `audit.persistence.DeferredBulkAuditPersistenceStrategy`
+  - `audit.persistence.AuditPersistenceStrategyFactory`
+  - `audit.persistence.AuditDbWriter`
+- `DbAuditService` now acts as a thin orchestrator.
+
+### Conversation history guarantee for prompt templates
+- `ce_conversation_history` is now persisted synchronously on every eligible stage before `ce_audit` strategy persistence.
+- This guarantees `{{conversation_history}}` availability even when:
+  - `convengine.audit.persistence.mode=DEFERRED_BULK`
+  - `convengine.audit.dispatch.async-enabled=true`
+
+### Consumer-owned configuration
+- Removed framework-level default `application.yaml` from ConvEngine jar.
+- Consumers must define their own `convengine.*` properties in host app config.
 
 ## What Changed In 1.0.12
 
 ### Audit metadata enrichment for input params
 - Added normalized runtime `inputParams` into audit stage metadata (`_meta.inputParams`) across emitted audit events.
 - Added API-origin-only `userInputParams` into audit stage metadata (`_meta.userInputParams`) to preserve raw request parameters separately from framework-mutated/runtime params.
+- Added `contextDict` and `session` snapshots in `_meta` for richer runtime troubleshooting.
+- Added config toggle `convengine.audit.persist-meta` to store/drop `_meta` in persisted `ce_audit.payload_json`.
+
+### Conversation history storage
+- Added dedicated runtime table `ce_conversation_history` for prompt history usage.
+- Conversation history now stores user entries and AI entries per conversation (`USER_INPUT`, `INTENT_AI_RESPONSE`, `MCP_AI_RESPONSE`, `RESOLVE_RESPONSE_AI_RESPONSE`).
+- History provider now reads from `ce_conversation_history` instead of reconstructing from raw `ce_audit`.
 
 ### API parameter isolation hardening
 - `userInputParams` is now deep-copied from request payload at controller ingress to avoid shared nested object references and later mutation bleed-through.
@@ -168,6 +195,7 @@ Order is enforced by step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Requ
 ### Runtime/transactional tables
 - `ce_conversation`
 - `ce_audit`
+- `ce_conversation_history`
 - `ce_llm_call_log`
 - `ce_validation_snapshot`
 
@@ -327,10 +355,13 @@ convengine:
 
 ## Audit Controls
 
+Define these properties in your consumer application config (`application.yml` or `application.properties`).
+
 ```yaml
 convengine:
   audit:
     enabled: true
+    persist-meta: true
     level: ALL # ALL | STANDARD | ERROR_ONLY | NONE
     include-stages: []
     exclude-stages: []
@@ -360,9 +391,10 @@ convengine:
 
 1. Client calls `POST /message`.
 2. Engine executes pipeline.
-3. Stages are persisted to `ce_audit`.
-4. Audit listeners publish to enabled SSE/STOMP channels.
-5. Client can consume:
+3. Conversation history entries are persisted to `ce_conversation_history` synchronously.
+4. Stages are persisted to `ce_audit` using configured persistence mode.
+5. Audit listeners publish to enabled SSE/STOMP channels.
+6. Client can consume:
    - `GET /audit/{conversationId}`
    - `GET /audit/{conversationId}/trace`
    - live SSE/STOMP events

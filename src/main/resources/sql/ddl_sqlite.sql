@@ -176,6 +176,19 @@ CREATE TABLE ce_audit (
 );
 CREATE INDEX idx_ce_audit_conversation ON ce_audit (conversation_id, created_at DESC);
 
+CREATE TABLE ce_conversation_history (
+  history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id TEXT NOT NULL,
+  entry_type TEXT NOT NULL,
+  role TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  content_text TEXT,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ce_conversation_history_conv ON ce_conversation_history (conversation_id, created_at DESC);
+
 CREATE TABLE ce_mcp_db_tool (
   tool_id INTEGER NOT NULL PRIMARY KEY,
   dialect TEXT NOT NULL DEFAULT 'POSTGRES',

@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.engine.history.core.ConversationHistoryProvider;
 import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
-import com.github.salilvnair.convengine.entity.CeAudit;
-import com.github.salilvnair.convengine.repo.AuditRepository;
+import com.github.salilvnair.convengine.entity.CeConversationHistory;
+import com.github.salilvnair.convengine.repo.ConversationHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -17,36 +17,42 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuditConversationHistoryProvider implements ConversationHistoryProvider {
 
-    private static final String USER_STAGE = "USER_INPUT";
-    private static final List<String> BOT_STAGES = List.of("ASSISTANT_OUTPUT", "RESOLVE_RESPONSE_LLM_OUTPUT", "INTENT_AGENT_LLM_OUTPUT");
+    private static final String USER_ENTRY_TYPE = "USER_INPUT";
+    private static final List<String> AI_ENTRY_TYPES = List.of(
+            "INTENT_AI_RESPONSE",
+            "MCP_AI_RESPONSE",
+            "RESOLVE_RESPONSE_AI_RESPONSE",
+            "AI_RESPONSE"
+    );
 
-    private final AuditRepository auditRepo;
+    private final ConversationHistoryRepository conversationHistoryRepository;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
     public List<ConversationTurn> lastTurns(UUID conversationId, int limit) {
 
-        List<CeAudit> audits = auditRepo.findByConversationIdOrderByCreatedAtAsc(conversationId);
+        List<CeConversationHistory> historyRows = conversationHistoryRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
 
         List<ConversationTurn> turns = new ArrayList<>();
 
         String pendingUser = null;
 
-        for (CeAudit audit : audits) {
+        for (CeConversationHistory row : historyRows) {
 
-            String stage = audit.getStage();
-            String payload = audit.getPayloadJson();
+            String entryType = row.getEntryType();
+            String payload = row.getPayloadJson();
+            String contentText = row.getContentText();
 
-            if (USER_STAGE.equals(stage)) {
-                pendingUser = extractText(payload);
+            if (USER_ENTRY_TYPE.equals(entryType)) {
+                pendingUser = firstNonBlank(contentText, extractText(payload));
                 continue;
             }
 
-            if (BOT_STAGES.contains(stage) && pendingUser != null) {
+            if (AI_ENTRY_TYPES.contains(entryType) && pendingUser != null) {
                 turns.add(
                         new ConversationTurn(
                                 pendingUser,
-                                extractText(payload)
+                                firstNonBlank(contentText, extractText(payload))
                         )
                 );
                 pendingUser = null;
@@ -56,6 +62,13 @@ public class AuditConversationHistoryProvider implements ConversationHistoryProv
         // Return only last N turns
         int from = Math.max(0, turns.size() - limit);
         return turns.subList(from, turns.size());
+    }
+
+    private String firstNonBlank(String primary, String fallback) {
+        if (primary != null && !primary.isBlank()) {
+            return primary;
+        }
+        return fallback;
     }
 
     private String extractText(String payload) {

@@ -288,6 +288,20 @@ CREATE TABLE ce_audit (
 );
 CREATE INDEX idx_ce_audit_conversation ON public.ce_audit USING btree (conversation_id, created_at DESC);
 
+CREATE TABLE ce_conversation_history (
+                          history_id bigserial NOT NULL,
+                          conversation_id uuid NOT NULL,
+                          entry_type text NOT NULL,
+                          role text NOT NULL,
+                          stage text NOT NULL,
+                          content_text text NULL,
+                          payload_json jsonb NULL,
+                          created_at timestamptz DEFAULT now() NOT NULL,
+                          CONSTRAINT ce_conversation_history_pkey PRIMARY KEY (history_id),
+                          CONSTRAINT ce_conversation_history_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ce_conversation_history_conv ON public.ce_conversation_history USING btree (conversation_id, created_at DESC);
+
 
 -- public.ce_mcp_db_tool definition
 

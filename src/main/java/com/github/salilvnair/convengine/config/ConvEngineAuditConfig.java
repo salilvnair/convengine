@@ -14,6 +14,7 @@ import java.util.Set;
 public class ConvEngineAuditConfig {
 
     private boolean enabled = true;
+    private boolean persistMeta = true;
     private Level level = Level.ALL;
     private Set<String> includeStages = new LinkedHashSet<>();
     private Set<String> excludeStages = new LinkedHashSet<>();
