@@ -33,6 +33,11 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 - Added audit stage `INTENT_RESOLVE_SKIPPED_STICKY_INTENT` for sticky-skip visibility.
 - Explicit reset/switch/force signals still trigger intent resolution.
 
+### Prompt variable exposure (`inputParams`)
+- `promptTemplateVars()` now exposes all keys present in `inputParams`.
+- This includes runtime/system-derived keys written via `session.putInputParam(...)` (for example `publish_result`).
+- `CONTROLLED_PROMPT_KEYS` is retained, and dynamic `USER_PROMPT_KEYS` now tracks keys merged into `inputParams`.
+
 ### Streaming startup validation hardening
 - Removed fragile conditional gating from stream startup validator.
 - Validator now reads stream setting via `ObjectProvider<ConvEngineStreamSettings>` in `@PostConstruct`.
@@ -459,8 +464,10 @@ Safety constraints include forbidden statement detection and required-table cove
 
 - SQL generation reference guide lives at:
   - `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
-- Latest DDL lives at:
-  - `src/main/resources/sql/ddl.sql`
+- DDL by dialect lives at:
+  - `src/main/resources/sql/ddl_postgres.sql` (legacy: `src/main/resources/sql/ddl.sql`)
+  - `src/main/resources/sql/ddl_oracle.sql`
+  - `src/main/resources/sql/ddl_sqlite.sql`
 
 ## Design Principles
 

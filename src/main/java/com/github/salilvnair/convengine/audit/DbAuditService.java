@@ -21,6 +21,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -38,6 +39,8 @@ public class DbAuditService implements AuditService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ThreadLocal<BufferedAuditBatch> deferredBatch = new ThreadLocal<>();
+    private static final DateTimeFormatter SQLITE_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS XXX");
+    private volatile Boolean sqliteDialect;
 
     @Override
     public void audit(String stage, UUID conversationId, String payloadJson) {
@@ -218,17 +221,22 @@ public class DbAuditService implements AuditService {
             return;
         }
         int batchSize = Math.max(1, auditConfig.getPersistence().getJdbcBatchSize());
-        String sql = "INSERT INTO ce_audit (conversation_id, stage, payload_json, created_at) VALUES (?, ?, CAST(? AS jsonb), ?)";
+        String sql = "INSERT INTO ce_audit (conversation_id, stage, payload_json, created_at) VALUES (?, ?, ?, ?)";
         for (int i = 0; i < records.size(); i += batchSize) {
             List<CeAudit> chunk = records.subList(i, Math.min(i + batchSize, records.size()));
             jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
                 @Override
                 public void setValues(PreparedStatement ps, int idx) throws SQLException {
                     CeAudit row = chunk.get(idx);
-                    ps.setObject(1, row.getConversationId());
+                    ps.setString(1, row.getConversationId() == null ? null : row.getConversationId().toString());
                     ps.setString(2, row.getStage());
                     ps.setString(3, row.getPayloadJson());
-                    ps.setTimestamp(4, Timestamp.from(row.getCreatedAt().toInstant()));
+                    if (isSqliteDialect()) {
+                        ps.setString(4, SQLITE_TS_FMT.format(row.getCreatedAt()));
+                    }
+                    else {
+                        ps.setTimestamp(4, Timestamp.from(row.getCreatedAt().toInstant()));
+                    }
                 }
 
                 @Override
@@ -242,6 +250,30 @@ public class DbAuditService implements AuditService {
     private boolean isDeferredBulkMode() {
         return auditConfig.getPersistence() != null
                 && ConvEngineAuditConfig.Mode.DEFERRED_BULK == auditConfig.getPersistence().getMode();
+    }
+
+    private boolean isSqliteDialect() {
+        Boolean cached = sqliteDialect;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
+            if (sqliteDialect != null) {
+                return sqliteDialect;
+            }
+            String url = null;
+            try {
+                if (jdbcTemplate.getDataSource() != null) {
+                    try (var conn = jdbcTemplate.getDataSource().getConnection()) {
+                        url = conn.getMetaData().getURL();
+                    }
+                }
+            }
+            catch (Exception ignored) {
+            }
+            sqliteDialect = url != null && url.toLowerCase().contains(":sqlite:");
+            return sqliteDialect;
+        }
     }
 
     private String resolveIntent(ObjectNode root, CeConversation conversation) {

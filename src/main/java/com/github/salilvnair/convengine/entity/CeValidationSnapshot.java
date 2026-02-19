@@ -32,7 +32,7 @@ public class CeValidationSnapshot {
     @Column(name = "schema_id")
     private Long schemaId;
 
-    @Column(name = "validation_tables", columnDefinition = "jsonb")
+    @Column(name = "validation_tables")
     private String validationTables;
 
     @Column(name = "validation_decision", columnDefinition = "text")

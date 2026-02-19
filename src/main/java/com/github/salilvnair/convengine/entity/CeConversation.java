@@ -5,8 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -33,19 +31,16 @@ public class CeConversation {
     @Column(name = "state_code")
     private String stateCode;
 
-    @Column(columnDefinition = "jsonb", name = "context_json")
-    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "context_json")
     private String contextJson;
 
-    @Column(columnDefinition = "jsonb", name = "input_params_json")
-    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "input_params_json")
     private String inputParamsJson;
 
     @Column(name = "last_user_text")
     private String lastUserText;
 
-    @Column(columnDefinition = "jsonb", name = "last_assistant_json")
-    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "last_assistant_json")
     private String lastAssistantJson;
 
     @Column(name = "created_at")
