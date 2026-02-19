@@ -16,4 +16,5 @@ public class EngineContext {
     private String conversationId;
     private String userText;
     private Map<String, Object> inputParams;
+    private Map<String, Object> userInputParams;
 }

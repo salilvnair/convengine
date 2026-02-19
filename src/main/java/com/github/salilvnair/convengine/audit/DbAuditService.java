@@ -25,8 +25,10 @@ import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -107,6 +109,8 @@ public class DbAuditService implements AuditService {
             if (state != null && !state.isBlank()) {
                 meta.put("state", state);
             }
+            addInputParamsMeta(root, meta, conversation);
+            addUserInputParamsMeta(root, meta);
             return mapper.writeValueAsString(root);
         }
         catch (Exception e) {
@@ -127,6 +131,8 @@ public class DbAuditService implements AuditService {
                         meta.put("state", conversation.getStateCode());
                     }
                 }
+                addInputParamsMeta(fallback, meta, conversation);
+                addUserInputParamsMeta(fallback, meta);
                 return mapper.writeValueAsString(fallback);
             }
             catch (Exception ignored) {
@@ -344,6 +350,82 @@ public class DbAuditService implements AuditService {
         catch (Exception ignored) {
             return null;
         }
+    }
+
+    private void addInputParamsMeta(ObjectNode root, ObjectNode meta, CeConversation conversation) {
+        try {
+            ObjectNode resolved = resolveInputParamsNode(root, conversation);
+            if (resolved == null) {
+                return;
+            }
+            meta.set("inputParams", resolved);
+        }
+        catch (Exception ignored) {
+            // best-effort metadata enrichment only
+        }
+    }
+
+    private ObjectNode resolveInputParamsNode(ObjectNode root, CeConversation conversation) {
+        EngineSession session = AuditSessionContext.get();
+        if (session != null && session.getInputParams() != null && !session.getInputParams().isEmpty()) {
+            Map<String, Object> copy = new LinkedHashMap<>(session.getInputParams());
+            var node = mapper.valueToTree(copy);
+            if (node.isObject()) {
+                return (ObjectNode) node;
+            }
+        }
+        if (root != null) {
+            var payloadNode = root.path("inputParams");
+            if (payloadNode.isObject() && payloadNode.size() > 0) {
+                return ((ObjectNode) payloadNode).deepCopy();
+            }
+        }
+        if (conversation != null && conversation.getInputParamsJson() != null && !conversation.getInputParamsJson().isBlank()) {
+            try {
+                var conversationNode = mapper.readTree(conversation.getInputParamsJson());
+                if (conversationNode.isObject() && conversationNode.size() > 0) {
+                    return (ObjectNode) conversationNode;
+                }
+            }
+            catch (Exception ignored) {
+                // invalid persisted json should not break audit flow
+            }
+        }
+        return null;
+    }
+
+    private void addUserInputParamsMeta(ObjectNode root, ObjectNode meta) {
+        try {
+            ObjectNode resolved = resolveUserInputParamsNode(root);
+            if (resolved == null) {
+                return;
+            }
+            meta.set("userInputParams", resolved);
+        }
+        catch (Exception ignored) {
+            // best-effort metadata enrichment only
+        }
+    }
+
+    private ObjectNode resolveUserInputParamsNode(ObjectNode root) {
+        EngineSession session = AuditSessionContext.get();
+        if (session != null
+                && session.getEngineContext() != null
+                && session.getEngineContext().getUserInputParams() != null
+                && !session.getEngineContext().getUserInputParams().isEmpty()) {
+            Map<String, Object> copy = new LinkedHashMap<>(session.getEngineContext().getUserInputParams());
+            var node = mapper.valueToTree(copy);
+            if (node.isObject()) {
+                return (ObjectNode) node;
+            }
+        }
+        if (root != null) {
+            var payloadNode = root.path("userInputParams");
+            if (payloadNode.isObject() && !payloadNode.isEmpty()) {
+                return ((ObjectNode) payloadNode).deepCopy();
+            }
+        }
+        return null;
     }
 
     private void insertSingleJdbc(CeAudit row) {
