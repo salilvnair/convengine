@@ -3,7 +3,9 @@ package com.github.salilvnair.convengine.intent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.steps.RulesStep;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
@@ -104,9 +106,9 @@ public class AgentIntentResolver implements IntentResolver {
 
     @Override
     public String resolve(EngineSession session) {
-        session.putInputParam("agentResolver", true);
+        session.putInputParam(ConvEngineInputParamKey.AGENT_RESOLVER, true);
         String intent = _resolve(session);
-        session.putInputParam("agentResolver", false);
+        session.putInputParam(ConvEngineInputParamKey.AGENT_RESOLVER, false);
         return intent;
     }
 
@@ -115,14 +117,14 @@ public class AgentIntentResolver implements IntentResolver {
         List<AllowedIntent> allowedIntents = allowedIntentService.allowedIntents();
 
         if (allowedIntents.isEmpty()) {
-            audit.audit("INTENT_AGENT_SKIPPED", conversationId, Map.of("reason", "no allowed intents"));
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_SKIPPED, conversationId, Map.of("reason", "no allowed intents"));
             return null;
         }
 
-        session.putInputParam("intent_collision_candidates", List.of());
-        session.putInputParam("intent_scores", List.of());
-        session.putInputParam("intent_top3", List.of());
-        session.putInputParam("followups", List.of());
+        session.putInputParam(ConvEngineInputParamKey.INTENT_COLLISION_CANDIDATES, List.of());
+        session.putInputParam(ConvEngineInputParamKey.INTENT_SCORES, List.of());
+        session.putInputParam(ConvEngineInputParamKey.INTENT_TOP3, List.of());
+        session.putInputParam(ConvEngineInputParamKey.FOLLOWUPS, List.of());
 
         String pendingClarification = session.hasPendingClarification()
                 ? session.getPendingClarificationQuestion()
@@ -145,7 +147,7 @@ public class AgentIntentResolver implements IntentResolver {
         llmInput.put("templateFromCeConfig (AgentIntentResolver)", "USER_PROMPT, SYSTEM_PROMPT");
         llmInput.put("systemPrompt", systemPrompt);
         llmInput.put("userPrompt", userPrompt);
-        audit.audit("INTENT_AGENT_LLM_INPUT", conversationId, llmInput);
+        audit.audit(ConvEngineAuditStage.INTENT_AGENT_LLM_INPUT, conversationId, llmInput);
 
         LlmInvocationContext.set(conversationId, session.getIntent(), session.getState());
         String output = llm.generateJson(
@@ -158,11 +160,11 @@ public class AgentIntentResolver implements IntentResolver {
         session.setLastLlmStage("INTENT_AGENT");
         session.setPayload(new JsonPayload(output));
         session.getConversation().setLastAssistantJson(output);
-        audit.audit("INTENT_AGENT_LLM_OUTPUT", conversationId, Map.of("json", output));
+        audit.audit(ConvEngineAuditStage.INTENT_AGENT_LLM_OUTPUT, conversationId, Map.of("json", output));
 
         JsonNode node = parseNode(output);
         if (node == null || !node.isObject()) {
-            audit.audit("INTENT_AGENT_REJECTED", conversationId, Map.of("reason", "invalid json"));
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId, Map.of("reason", "invalid json"));
             return null;
         }
 
@@ -174,10 +176,10 @@ public class AgentIntentResolver implements IntentResolver {
 
         List<Map<String, Object>> scores = extractIntentScores(node, allowedIntents);
         List<String> followups = extractFollowups(node);
-        session.putInputParam("intent_scores", scores);
-        session.putInputParam("intent_top3", scores.stream().limit(3).toList());
-        session.putInputParam("followups", followups);
-        audit.audit("INTENT_AGENT_SCORES", conversationId, Map.of("scores", scores, "followups", followups));
+        session.putInputParam(ConvEngineInputParamKey.INTENT_SCORES, scores);
+        session.putInputParam(ConvEngineInputParamKey.INTENT_TOP3, scores.stream().limit(3).toList());
+        session.putInputParam(ConvEngineInputParamKey.FOLLOWUPS, followups);
+        audit.audit(ConvEngineAuditStage.INTENT_AGENT_SCORES, conversationId, Map.of("scores", scores, "followups", followups));
 
         if ((intent == null || intent.isBlank()) && !scores.isEmpty()) {
             intent = str(scores.getFirst().get("intent"));
@@ -185,7 +187,7 @@ public class AgentIntentResolver implements IntentResolver {
         }
 
         List<Map<String, Object>> collisionCandidates = collisionCandidates(scores);
-        session.putInputParam("intent_collision_candidates", collisionCandidates);
+        session.putInputParam(ConvEngineInputParamKey.INTENT_COLLISION_CANDIDATES, collisionCandidates);
 
         if (!collisionCandidates.isEmpty() && !session.hasPendingClarification() && isCollision(scores)) {
             needsClarification = true;
@@ -199,21 +201,21 @@ public class AgentIntentResolver implements IntentResolver {
                         : buildCollisionQuestion(collisionCandidates);
             }
             Map<String, Object> collisionPayload = new LinkedHashMap<>();
-            collisionPayload.put("intent", intent);
-            collisionPayload.put("state", state);
-            collisionPayload.put("question", clarificationQuestion);
-            collisionPayload.put("candidates", collisionCandidates);
-            collisionPayload.put("scores", scores.stream().limit(3).toList());
-            audit.audit("INTENT_AGENT_COLLISION", conversationId, collisionPayload);
+            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
+            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, state);
+            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.QUESTION, clarificationQuestion);
+            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CANDIDATES, collisionCandidates);
+            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCORES, scores.stream().limit(3).toList());
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_COLLISION, conversationId, collisionPayload);
         }
 
         if (needsClarification) {
             if (isSchemaDrivenIntent(intent)) {
                 Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("intent", intent);
-                payload.put("state", state);
-                payload.put("question", clarificationQuestion);
-                audit.audit("INTENT_AGENT_CLARIFICATION_SUPPRESSED_SCHEMA_FLOW", conversationId, payload);
+                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
+                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, state);
+                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.QUESTION, clarificationQuestion);
+                audit.audit(ConvEngineAuditStage.INTENT_AGENT_CLARIFICATION_SUPPRESSED_SCHEMA_FLOW, conversationId, payload);
                 needsClarification = false;
                 clarificationQuestion = null;
             }
@@ -229,7 +231,7 @@ public class AgentIntentResolver implements IntentResolver {
 
         if (needsClarification) {
             if (clarificationQuestion == null || clarificationQuestion.isBlank()) {
-                audit.audit("INTENT_AGENT_REJECTED", conversationId,
+                audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId,
                         Map.of("reason", "needsClarification without question"));
                 return null;
             }
@@ -245,34 +247,34 @@ public class AgentIntentResolver implements IntentResolver {
             }
 
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", session.getIntent());
-            payload.put("state", session.getState());
-            payload.put("question", clarificationQuestion);
-            payload.put("followups", session.getInputParams().get("followups"));
-            audit.audit("INTENT_AGENT_NEEDS_CLARIFICATION", conversationId, payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.QUESTION, clarificationQuestion);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.FOLLOWUPS, session.getInputParams().get(ConvEngineInputParamKey.FOLLOWUPS));
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_NEEDS_CLARIFICATION, conversationId, payload);
             return session.getIntent();
         }
 
         if (intent == null || intent.isBlank()) {
-            audit.audit("INTENT_AGENT_REJECTED", conversationId, Map.of("reason", "Intent could not be determined with sufficient confidence, allowed intents and scores", "allowedIntents", allowedIntents, "scores", scores));
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId, Map.of("reason", "Intent could not be determined with sufficient confidence, allowed intents and scores", "allowedIntents", allowedIntents, "scores", scores));
             return null;
         }
 
         if (!allowedIntentService.isAllowed(intent)) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", intent);
-            payload.put("state", state);
-            payload.put("reason", "Intent not in allowed intents");
-            audit.audit("INTENT_AGENT_REJECTED", conversationId, payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, state);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.REASON, "Intent not in allowed intents");
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId, payload);
             return null;
         }
 
         if (confidence < MIN_CONFIDENCE) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", intent);
-            payload.put("state", state);
-            payload.put("confidence", confidence);
-            audit.audit("INTENT_AGENT_REJECTED", conversationId, payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, state);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONFIDENCE, confidence);
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId, payload);
             return null;
         }
 
@@ -288,7 +290,7 @@ public class AgentIntentResolver implements IntentResolver {
         accepted.put("confidence", confidence);
         accepted.put("scores", scores.stream().limit(3).toList());
         session.setPendingClarificationQuestion(clarificationQuestion);
-        audit.audit("INTENT_AGENT_ACCEPTED", conversationId, accepted);
+        audit.audit(ConvEngineAuditStage.INTENT_AGENT_ACCEPTED, conversationId, accepted);
         return session.getIntent();
     }
 
@@ -298,8 +300,8 @@ public class AgentIntentResolver implements IntentResolver {
         }
         session.setRuleExecutionSource("AgentIntentResolver PostIntent");
         session.setRuleExecutionOrigin("AGENT_INTENT_RESOLVER");
-        session.putInputParam("rule_execution_source", "AgentIntentResolver PostIntent");
-        session.putInputParam("rule_execution_origin", "AGENT_INTENT_RESOLVER");
+        session.putInputParam(ConvEngineInputParamKey.RULE_EXECUTION_SOURCE, "AgentIntentResolver PostIntent");
+        session.putInputParam(ConvEngineInputParamKey.RULE_EXECUTION_ORIGIN, "AGENT_INTENT_RESOLVER");
         rulesStep.applyRules(session, "AgentIntentResolver PostIntent", RulePhase.AGENT_POST_INTENT.name());
     }
 
@@ -328,7 +330,7 @@ public class AgentIntentResolver implements IntentResolver {
         List<Map<String, Object>> scores = new ArrayList<>();
         JsonNode scoreNode = node.path("intentScores");
         if (scoreNode.isMissingNode()) {
-            scoreNode = node.path("intent_scores");
+            scoreNode = node.path(ConvEngineInputParamKey.INTENT_SCORES);
         }
 
         if (scoreNode.isObject()) {
@@ -373,7 +375,7 @@ public class AgentIntentResolver implements IntentResolver {
     }
 
     private List<String> extractFollowups(JsonNode node) {
-        JsonNode followups = node.path("followups");
+        JsonNode followups = node.path(ConvEngineInputParamKey.FOLLOWUPS);
         if (followups.isMissingNode()) {
             followups = node.path("follow_ups");
         }

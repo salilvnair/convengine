@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.intent;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeIntentClassifier;
 import com.github.salilvnair.convengine.repo.IntentClassifierRepository;
@@ -38,27 +39,27 @@ public class ClassifierIntentResolver implements IntentResolver {
 
         if (matchedIntents.size() > 1) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("userText", userText);
-            payload.put("matchedIntents", matchedIntents);
-            payload.put("matchedByRule", matchedByRule);
-            audit.audit("INTENT_CLASSIFIER_COLLISION", conversationId, payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_TEXT, userText);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MATCHED_INTENTS, matchedIntents);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MATCHED_BY_RULE, matchedByRule);
+            audit.audit(ConvEngineAuditStage.INTENT_CLASSIFIER_COLLISION, conversationId, payload);
             return null;
         }
 
         if (matchedIntents.size() == 1) {
             String intent = matchedIntents.iterator().next();
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", intent);
-            payload.put("matchedByRule", matchedByRule);
-            audit.audit("INTENT_CLASSIFICATION_MATCHED", conversationId, payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MATCHED_BY_RULE, matchedByRule);
+            audit.audit(ConvEngineAuditStage.INTENT_CLASSIFICATION_MATCHED, conversationId, payload);
             return intent;
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("userText", userText);
-        payload.put("intent", session.getIntent());
-        payload.put("state", session.getState());
-        audit.audit("INTENT_CLASSIFIER_NO_MATCH", conversationId, payload);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_TEXT, userText);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        audit.audit(ConvEngineAuditStage.INTENT_CLASSIFIER_NO_MATCH, conversationId, payload);
         return null;
     }
 

@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
@@ -21,8 +22,8 @@ public class AuditUserInputStep implements EngineStep {
     @Override
     public StepResult execute(EngineSession session) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("text", session.getUserText());
-        audit.audit("USER_INPUT", session.getConversationId(), payload);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TEXT, session.getUserText());
+        audit.audit(ConvEngineAuditStage.USER_INPUT, session.getConversationId(), payload);
         return new StepResult.Continue();
     }
 }

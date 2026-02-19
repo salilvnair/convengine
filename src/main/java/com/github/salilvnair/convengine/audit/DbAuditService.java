@@ -32,11 +32,11 @@ import java.util.UUID;
 public class DbAuditService implements AuditService {
 
     private static final Set<String> HISTORY_AI_STAGES = Set.of(
-            "INTENT_AGENT_LLM_OUTPUT",
-            "MCP_PLAN_LLM_OUTPUT",
-            "RESOLVE_RESPONSE_LLM_OUTPUT",
-            "ASSISTANT_OUTPUT",
-            "RESPONSE_EXACT"
+            ConvEngineAuditStage.INTENT_AGENT_LLM_OUTPUT.value(),
+            ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT.value(),
+            ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT.value(),
+            ConvEngineAuditStage.ASSISTANT_OUTPUT.value(),
+            ConvEngineAuditStage.RESPONSE_EXACT.value()
     );
 
     private final ConversationHistoryRepository conversationHistoryRepository;
@@ -364,17 +364,22 @@ public class DbAuditService implements AuditService {
             return null;
         }
         String normalized = stage.trim().toUpperCase(Locale.ROOT);
-        if ("USER_INPUT".equals(normalized)) {
-            return new HistoryEntryType("USER_INPUT", "USER");
+        if (ConvEngineAuditStage.USER_INPUT.value().equals(normalized)) {
+            return new HistoryEntryType(ConvEngineAuditStage.USER_INPUT.value(), "USER");
         }
         if (HISTORY_AI_STAGES.contains(normalized)) {
-            return switch (normalized) {
-                case "INTENT_AGENT_LLM_OUTPUT" -> new HistoryEntryType("INTENT_AI_RESPONSE", "AI");
-                case "MCP_PLAN_LLM_OUTPUT" -> new HistoryEntryType("MCP_AI_RESPONSE", "AI");
-                case "RESOLVE_RESPONSE_LLM_OUTPUT", "RESPONSE_EXACT", "ASSISTANT_OUTPUT" ->
-                        new HistoryEntryType("RESOLVE_RESPONSE_AI_RESPONSE", "AI");
-                default -> new HistoryEntryType("AI_RESPONSE", "AI");
-            };
+            if (ConvEngineAuditStage.INTENT_AGENT_LLM_OUTPUT.value().equals(normalized)) {
+                return new HistoryEntryType("INTENT_AI_RESPONSE", "AI");
+            }
+            if (ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT.value().equals(normalized)) {
+                return new HistoryEntryType("MCP_AI_RESPONSE", "AI");
+            }
+            if (ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT.value().equals(normalized)
+                    || ConvEngineAuditStage.RESPONSE_EXACT.value().equals(normalized)
+                    || ConvEngineAuditStage.ASSISTANT_OUTPUT.value().equals(normalized)) {
+                return new HistoryEntryType("RESOLVE_RESPONSE_AI_RESPONSE", "AI");
+            }
+            return new HistoryEntryType("AI_RESPONSE", "AI");
         }
         return null;
     }

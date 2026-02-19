@@ -5,14 +5,12 @@ import com.github.salilvnair.convengine.entity.CeAudit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
-import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
@@ -26,14 +24,13 @@ public class AuditDbWriter {
     private final ConvEngineAuditConfig auditConfig;
     private static final DateTimeFormatter SQLITE_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private volatile DbDialect dbDialect;
-    private volatile boolean sqliteTimestampNormalized;
 
     @PostConstruct
-    void initDialectAndNormalization() {
+    void initDialect() {
         try {
             resolveDialect();
         } catch (Exception e) {
-            log.warn("Audit DB dialect detection/normalization skipped: {}", e.getMessage());
+            log.warn("Audit DB dialect detection skipped: {}", e.getMessage());
         }
     }
 
@@ -96,7 +93,6 @@ public class AuditDbWriter {
             String normalized = url.toLowerCase(Locale.ROOT);
             if (normalized.contains(":sqlite:")) {
                 dbDialect = DbDialect.SQLITE;
-                normalizeSqliteTimestampsOnce();
             } else if (normalized.contains(":postgresql:")) {
                 dbDialect = DbDialect.POSTGRES;
             } else if (normalized.contains(":oracle:")) {
@@ -122,70 +118,6 @@ public class AuditDbWriter {
             ps.setString(4, SQLITE_TS_FMT.format(row.getCreatedAt().toLocalDateTime()));
         } else {
             ps.setObject(4, row.getCreatedAt());
-        }
-    }
-
-    private void normalizeSqliteTimestampsOnce() {
-        if (sqliteTimestampNormalized) {
-            return;
-        }
-        synchronized (this) {
-            if (sqliteTimestampNormalized) {
-                return;
-            }
-            jdbcTemplate.execute((ConnectionCallback<Void>) con -> {
-                try (Statement st = con.createStatement()) {
-                    st.execute("PRAGMA foreign_keys=OFF");
-                    normalizeSqliteConversationIdColumn(st, "ce_conversation");
-                    normalizeSqliteConversationIdColumn(st, "ce_audit");
-                    normalizeSqliteConversationIdColumn(st, "ce_conversation_history");
-                    normalizeSqliteConversationIdColumn(st, "ce_llm_call_log");
-                    normalizeSqliteConversationIdColumn(st, "ce_validation_snapshot");
-                    normalizeSqliteTimestampColumn(st, "ce_audit", "created_at");
-                    normalizeSqliteTimestampColumn(st, "ce_conversation_history", "created_at");
-                    normalizeSqliteTimestampColumn(st, "ce_conversation", "created_at");
-                    normalizeSqliteTimestampColumn(st, "ce_conversation", "updated_at");
-                    normalizeSqliteTimestampColumn(st, "ce_llm_call_log", "created_at");
-                    normalizeSqliteTimestampColumn(st, "ce_validation_snapshot", "created_at");
-                    st.execute("PRAGMA foreign_keys=ON");
-                }
-                return null;
-            });
-            sqliteTimestampNormalized = true;
-        }
-    }
-
-    private void normalizeSqliteTimestampColumn(Statement st, String table, String column) {
-        String sql = "UPDATE " + table + " SET " + column + " = " +
-                "CASE WHEN LENGTH(TRIM(" + column + ")) >= 13 " +
-                "THEN STRFTIME('%Y-%m-%d %H:%M:%f', CAST(" + column + " AS REAL)/1000.0, 'unixepoch') " +
-                "ELSE STRFTIME('%Y-%m-%d %H:%M:%f', CAST(" + column + " AS REAL), 'unixepoch') END " +
-                "WHERE " + column + " IS NOT NULL AND TRIM(" + column + ") <> '' AND TRIM(" + column + ") GLOB '[0-9]*'";
-        try {
-            int updated = st.executeUpdate(sql);
-            if (updated > 0) {
-                log.info("Normalized {} legacy epoch timestamp rows in {}.{}", updated, table, column);
-            }
-        } catch (Exception ignored) {
-            // table/column may not exist for some deployments; ignore safely
-        }
-    }
-
-    private void normalizeSqliteConversationIdColumn(Statement st, String table) {
-        String sql = "UPDATE " + table + " SET conversation_id = LOWER(" +
-                "SUBSTR(HEX(conversation_id),1,8) || '-' || " +
-                "SUBSTR(HEX(conversation_id),9,4) || '-' || " +
-                "SUBSTR(HEX(conversation_id),13,4) || '-' || " +
-                "SUBSTR(HEX(conversation_id),17,4) || '-' || " +
-                "SUBSTR(HEX(conversation_id),21,12)) " +
-                "WHERE conversation_id IS NOT NULL AND TYPEOF(conversation_id)='blob' AND LENGTH(HEX(conversation_id))=32";
-        try {
-            int updated = st.executeUpdate(sql);
-            if (updated > 0) {
-                log.info("Normalized {} legacy BLOB conversation_id rows in {}", updated, table);
-            }
-        } catch (Exception ignored) {
-            // table may not exist for some deployments; ignore safely
         }
     }
 

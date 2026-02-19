@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.model.StepTiming;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
@@ -46,7 +47,7 @@ public class PipelineEndGuardStep implements EngineStep {
         String payload = "{\"totalMs\":" + totalMs +
                 ",\"steps\":\"" + JsonUtil.escape(timingLine) + "\"}";
 
-        audit.audit("PIPELINE_TIMING", session.getConversationId(), payload);
+        audit.audit(ConvEngineAuditStage.PIPELINE_TIMING, session.getConversationId(), payload);
 
         return new StepResult.Continue();
     }

@@ -27,11 +27,11 @@ public class SetIntentActionResolver implements RuleActionResolver {
         session.setIntent(rule.getActionValue());
         session.getConversation().setIntentCode(rule.getActionValue());
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("ruleId", rule.getRuleId());
-        payload.put("fromIntent", previousIntent);
-        payload.put("toIntent", rule.getActionValue());
-        payload.put("state", session.getState());
-        payload.put("context", session.contextDict());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.FROM_INTENT, previousIntent);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TO_INTENT, rule.getActionValue());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
         audit.audit(RuleAction.SET_INTENT.name(), session.getConversationId(), payload);
     }
 }

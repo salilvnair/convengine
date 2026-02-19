@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
@@ -49,11 +50,11 @@ public class ResetConversationStep implements EngineStep {
         conversationRepository.save(session.getConversation());
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("reason", reason);
-        payload.put("intent", session.getIntent());
-        payload.put("state", session.getState());
-        payload.put("context", session.getContextJson());
-        audit.audit("CONVERSATION_RESET", session.getConversationId(), payload);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.REASON, reason);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.getContextJson());
+        audit.audit(ConvEngineAuditStage.CONVERSATION_RESET, session.getConversationId(), payload);
 
         return new StepResult.Continue();
     }

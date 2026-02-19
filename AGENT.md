@@ -6,7 +6,28 @@ ConvEngine is a deterministic, configuration-driven conversational workflow engi
 
 It is not an open-ended chatbot runtime. Business behavior is declared in `ce_*` tables and executed by an auditable step pipeline.
 
-Current library baseline: `1.0.13`.
+Current library baseline: `1.0.15`.
+
+## Release Notes (Latest)
+
+### 1.0.15
+- `SchemaExtractionStep` was refactored to a thin orchestrator; schema-heavy calculations moved to schema resolver provider contract.
+- Added provider-owned computation contract:
+  - `ConvEngineSchemaComputation`
+  - `ConvEngineSchemaResolver#compute(...)`
+  - `ConvEngineSchemaResolver#sanitizeExtractedJson(...)`
+  - `ConvEngineSchemaResolver#mergeContextJson(...)`
+- `DefaultConvEngineSchemaResolver` now owns sanitization, merge, completeness, missing-fields, and missing-field-options behavior.
+- Provider override model is now clean and explicit:
+  - consumers can register their own `ConvEngineSchemaResolver` bean
+  - higher precedence via Spring `@Order` is respected by resolver factory selection.
+- Centralized input param keys in `ConvEngineInputParamKey`; removed hardcoded `putInputParam("...")` keys across step/intent/rule flows.
+- Centralized fixed audit stages in `ConvEngineAuditStage`; migrated fixed literals across engine, MCP, response, and intent components.
+- Added centralized payload map keys in `ConvEnginePayloadKey`; replaced payload key string literals (`payload.put("...")`) across ConvEngine.
+
+### 1.0.14
+- Added `ce_rule.state_code` support (`NULL`, `ANY`, exact match) to scope rule execution by state and reduce unnecessary evaluations.
+- Audit persistence strategy split with synchronous conversation history persistence guarantees.
 
 ## Runtime Architecture
 

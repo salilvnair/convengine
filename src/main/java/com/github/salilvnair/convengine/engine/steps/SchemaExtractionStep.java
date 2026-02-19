@@ -1,12 +1,14 @@
 package com.github.salilvnair.convengine.engine.steps;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaComputation;
+import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolver;
+import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolverFactory;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.OutputType;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
@@ -21,19 +23,20 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RequiredArgsConstructor
 @Component
 @RequiresConversationPersisted
 public class SchemaExtractionStep implements EngineStep {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private final OutputSchemaRepository outputSchemaRepo;
     private final PromptTemplateRepository promptTemplateRepo;
     private final PromptTemplateRenderer renderer;
     private final LlmClient llm;
     private final AuditService audit;
+    private final ConvEngineSchemaResolverFactory schemaResolverFactory;
 
     @Override
     public StepResult execute(EngineSession session) {
@@ -57,10 +60,7 @@ public class SchemaExtractionStep implements EngineStep {
             session.setSchemaHasAnyValue(false);
             session.setMissingRequiredFields(new ArrayList<>());
             session.setMissingFieldOptions(new LinkedHashMap<>());
-            ensureSchemaPromptVars(session);
-            session.putInputParam("context", session.contextDict());
-            session.putInputParam("schema_json", session.schemaJson());
-            session.putInputParam("session", session.sessionDict());
+            session.addPromptTemplateVars();
         }
 
         session.syncFromConversation(true);
@@ -69,38 +69,43 @@ public class SchemaExtractionStep implements EngineStep {
 
     private void runExtraction(EngineSession session, CeOutputSchema schema) {
 
+        ConvEngineSchemaResolver schemaResolver = schemaResolverFactory.get(schema.getJsonSchema());
+
         Map<String, Object> startPayload = new LinkedHashMap<>();
-        startPayload.put("schemaId", schema.getSchemaId());
-        audit.audit("SCHEMA_EXTRACTION_START", session.getConversationId(), startPayload);
+        startPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_ID, schema.getSchemaId());
+        audit.audit(ConvEngineAuditStage.SCHEMA_EXTRACTION_START, session.getConversationId(), startPayload);
 
         CePromptTemplate template = resolvePromptTemplate(OutputType.SCHEMA_JSON.name(), session);
 
-        Map<String, Object> schemaFieldDetails = schemaFieldDetails(schema.getJsonSchema());
-        session.putInputParam("schema_field_details", schemaFieldDetails);
-        session.putInputParam("schema_description", schema.getDescription() == null ? "" : schema.getDescription());
-        session.putInputParam("schema_id", schema.getSchemaId());
-        String seededContextJson = seedContextFromInputParams(session, schema.getJsonSchema());
-        session.setContextJson(seededContextJson);
-        session.getConversation().setContextJson(seededContextJson);
-        ensureSchemaPromptVars(session);
+        Map<String, Object> schemaFieldDetails = schemaResolver.schemaFieldDetails(schema.getJsonSchema());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS, schemaFieldDetails);
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION, schema.getDescription() == null ? "" : schema.getDescription());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_ID, schema.getSchemaId());
+        session.setContextJson(schemaResolver.seedContextFromInputParams(
+                session.getContextJson(),
+                session.getInputParams(),
+                schema.getJsonSchema()
+        ));
+        session.getConversation().setContextJson(session.getContextJson());
+        session.addPromptTemplateVars();
 
         PromptTemplateContext promptTemplateContext = PromptTemplateContext
-                                                        .builder()
-                                                        .context(safeJson(session.getContextJson()))
-                                                        .userInput(session.getUserText())
-                                                        .schemaJson(schema.getJsonSchema())
-                                                        .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
-                                                        .extra(session.promptTemplateVars())
-                                                        .build();
+                .builder()
+                .context(safeJson(session.getContextJson()))
+                .userInput(session.getUserText())
+                .schemaJson(schema.getJsonSchema())
+                .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
+                .extra(session.promptTemplateVars())
+                .build();
         String systemPrompt = renderer.render(template.getSystemPrompt(), promptTemplateContext);
         String userPrompt = renderer.render(template.getUserPrompt(), promptTemplateContext);
 
         Map<String, Object> llmInputPayload = new LinkedHashMap<>();
-        llmInputPayload.put("system_prompt", systemPrompt);
-        llmInputPayload.put("user_prompt", userPrompt);
-        llmInputPayload.put("schema", schema.getJsonSchema());
-        llmInputPayload.put("userInput", session.getUserText());
-        audit.audit("SCHEMA_EXTRACTION_LLM_INPUT", session.getConversationId(), llmInputPayload);
+        llmInputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
+        llmInputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
+        llmInputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA, schema.getJsonSchema());
+        llmInputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_INPUT, session.getUserText());
+        audit.audit(ConvEngineAuditStage.SCHEMA_EXTRACTION_LLM_INPUT, session.getConversationId(), llmInputPayload);
 
         LlmInvocationContext.set(session.getConversationId(), session.getIntent(), session.getState());
 
@@ -113,48 +118,44 @@ public class SchemaExtractionStep implements EngineStep {
         session.setLastLlmStage("SCHEMA_EXTRACTION");
 
         Map<String, Object> llmOutputPayload = new LinkedHashMap<>();
-        llmOutputPayload.put("json", extractedJson);
-        audit.audit("SCHEMA_EXTRACTION_LLM_OUTPUT", session.getConversationId(), llmOutputPayload);
+        llmOutputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.JSON, extractedJson);
+        audit.audit(ConvEngineAuditStage.SCHEMA_EXTRACTION_LLM_OUTPUT, session.getConversationId(), llmOutputPayload);
 
-        String sanitizedExtractedJson = sanitizeExtractedJson(extractedJson);
-        String merged = JsonUtil.merge(safeJson(session.getContextJson()), sanitizedExtractedJson);
+        String merged = schemaResolver.mergeContextJson(session.getContextJson(), extractedJson);
         session.setContextJson(merged);
         session.getConversation().setContextJson(merged);
 
-        boolean complete = JsonUtil.isSchemaComplete(schema.getJsonSchema(), merged);
-        boolean hasAnySchemaValue = JsonUtil.hasAnySchemaValue(merged, schema.getJsonSchema());
-        List<String> missingFields = missingRequiredFields(schema.getJsonSchema(), merged);
-        Map<String, Object> missingFieldOptions = missingFieldOptions(missingFields, schemaFieldDetails);
-        session.setSchemaComplete(complete);
-        session.setSchemaHasAnyValue(hasAnySchemaValue);
-        session.setMissingRequiredFields(missingFields);
-        session.setMissingFieldOptions(missingFieldOptions);
+        ConvEngineSchemaComputation computation = schemaResolver.compute(schema.getJsonSchema(), merged, schemaFieldDetails);
+        session.setSchemaComplete(computation.schemaComplete());
+        session.setSchemaHasAnyValue(computation.hasAnySchemaValue());
+        session.setMissingRequiredFields(computation.missingFields());
+        session.setMissingFieldOptions(computation.missingFieldOptions());
         session.setResolvedSchema(schema);
-        if (complete) {
+        if (computation.schemaComplete()) {
             session.unlockIntent();
         } else {
             session.lockIntent("SCHEMA_INCOMPLETE");
         }
-        session.putInputParam("missing_fields", missingFields);
-        session.putInputParam("schema_field_details", schemaFieldDetails);
-        session.putInputParam("missing_field_options", missingFieldOptions);
-        session.putInputParam("schema_description", schema.getDescription() == null ? "" : schema.getDescription());
-        session.putInputParam("schema_id", schema.getSchemaId());
-        ensureSchemaPromptVars(session);
+        session.putInputParam(ConvEngineInputParamKey.MISSING_FIELDS, computation.missingFields());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS, schemaFieldDetails);
+        session.putInputParam(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS, computation.missingFieldOptions());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION, schema.getDescription() == null ? "" : schema.getDescription());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_ID, schema.getSchemaId());
+        session.addPromptTemplateVars();
 
         Map<String, Object> statusPayload = new LinkedHashMap<>();
-        statusPayload.put("schemaComplete", complete);
-        statusPayload.put("hasAnySchemaValue", hasAnySchemaValue);
-        statusPayload.put("missingRequiredFields", missingFields);
-        statusPayload.put("missingFieldOptions", missingFieldOptions);
-        statusPayload.put("schemaId", schema.getSchemaId());
-        statusPayload.put("intent", session.getIntent());
-        statusPayload.put("state", session.getState());
-        statusPayload.put("intentLocked", session.isIntentLocked());
-        statusPayload.put("intentLockReason", session.getIntentLockReason());
-        statusPayload.put("context", session.contextDict());
-        statusPayload.put("schemaJson", session.schemaJson());
-        audit.audit("SCHEMA_STATUS", session.getConversationId(), statusPayload);
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_COMPLETE, computation.schemaComplete());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.HAS_ANY_SCHEMA_VALUE, computation.hasAnySchemaValue());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MISSING_REQUIRED_FIELDS, computation.missingFields());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MISSING_FIELD_OPTIONS, computation.missingFieldOptions());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_ID, schema.getSchemaId());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT_LOCKED, session.isIntentLocked());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT_LOCK_REASON, session.getIntentLockReason());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
+        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_JSON, session.schemaJson());
+        audit.audit(ConvEngineAuditStage.SCHEMA_STATUS, session.getConversationId(), statusPayload);
     }
 
     private CePromptTemplate resolvePromptTemplate(String responseType, EngineSession session) {
@@ -163,82 +164,6 @@ public class SchemaExtractionStep implements EngineStep {
         return promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeAndStateCodeOrderByCreatedAtDesc(responseType, intentCode, stateCode)
                 .or(() -> promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(responseType, intentCode))
                 .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType=" + responseType + " and intent=" + intentCode));
-    }
-
-    private List<String> missingRequiredFields(String schemaJson, String contextJson) {
-        try {
-            JsonNode schema = JsonUtil.parseOrNull(schemaJson);
-            JsonNode required = schema.path("required");
-            JsonNode data = JsonUtil.parseOrNull(contextJson);
-            List<String> missing = new ArrayList<>();
-            if (!required.isArray()) {
-                return missing;
-            }
-            required.forEach(req -> {
-                String field = req.asText();
-                JsonNode value = data.path(field);
-                if (value.isMissingNode() || value.isNull()) {
-                    missing.add(field);
-                    return;
-                }
-                if (value.isTextual() && value.asText().isBlank()) {
-                    missing.add(field);
-                    return;
-                }
-                if (value.isArray() && value.isEmpty()) {
-                    missing.add(field);
-                }
-            });
-            return missing;
-        } catch (Exception e) {
-            return new ArrayList<>();
-        }
-    }
-
-    private Map<String, Object> schemaFieldDetails(String schemaJson) {
-        Map<String, Object> details = new LinkedHashMap<>();
-        try {
-            JsonNode schema = JsonUtil.parseOrNull(schemaJson);
-            JsonNode properties = schema.path("properties");
-            if (!properties.isObject()) {
-                return details;
-            }
-            properties.fieldNames().forEachRemaining(name -> {
-                JsonNode node = properties.path(name);
-                Map<String, Object> fieldDetails = new LinkedHashMap<>();
-                fieldDetails.put("description", node.path("description").isMissingNode() ? null : node.path("description").asText(null));
-                fieldDetails.put("type", node.path("type").isMissingNode() ? null : node.path("type"));
-                List<Object> enumValues = new ArrayList<>();
-                JsonNode enumNode = node.path("enum");
-                if (enumNode.isArray()) {
-                    enumNode.forEach(v -> {
-                        if (!v.isNull()) {
-                            enumValues.add(v.isTextual() ? v.asText() : v.toString());
-                        }
-                    });
-                }
-                fieldDetails.put("enumOptions", enumValues);
-                details.put(name, fieldDetails);
-            });
-            return details;
-        } catch (Exception e) {
-            return details;
-        }
-    }
-
-    private Map<String, Object> missingFieldOptions(List<String> missingFields, Map<String, Object> fieldDetails) {
-        Map<String, Object> options = new LinkedHashMap<>();
-        for (String field : missingFields) {
-            Object raw = fieldDetails.get(field);
-            if (!(raw instanceof Map<?, ?> rawMap)) {
-                continue;
-            }
-            Object enumOptions = rawMap.get("enumOptions");
-            if (enumOptions instanceof List<?> enumList && !enumList.isEmpty()) {
-                options.put(field, enumList);
-            }
-        }
-        return options;
     }
 
     private String safeJson(String json) {
@@ -254,106 +179,5 @@ public class SchemaExtractionStep implements EngineStep {
 
     private int priorityOf(CeOutputSchema schema) {
         return schema.getPriority() == null ? Integer.MAX_VALUE : schema.getPriority();
-    }
-
-    private String seedContextFromInputParams(EngineSession session, String schemaJson) {
-        try {
-            JsonNode schemaNode = JsonUtil.parseOrNull(schemaJson);
-            JsonNode properties = schemaNode.path("properties");
-            if (!properties.isObject()) {
-                return safeJson(session.getContextJson());
-            }
-            JsonNode existingContext = JsonUtil.parseOrNull(safeJson(session.getContextJson()));
-            ObjectNode contextNode = existingContext != null && existingContext.isObject()
-                    ? ((ObjectNode) existingContext.deepCopy())
-                    : MAPPER.createObjectNode();
-            for (Iterator<String> it = properties.fieldNames(); it.hasNext(); ) {
-                String field = it.next();
-                Object currentValue = jsonNodeToObject(contextNode.path(field));
-                Object inputValue = session.getInputParams().get(field);
-                if (!hasMeaningfulValue(currentValue) && hasMeaningfulValue(inputValue)) {
-                    contextNode.set(field, MAPPER.valueToTree(inputValue));
-                }
-            }
-            return MAPPER.writeValueAsString(contextNode);
-        } catch (Exception e) {
-            return safeJson(session.getContextJson());
-        }
-    }
-
-    private String sanitizeExtractedJson(String extractedJson) {
-        try {
-            JsonNode node = JsonUtil.parseOrNull(extractedJson);
-            if (!node.isObject()) {
-                return "{}";
-            }
-            ObjectNode cleaned = MAPPER.createObjectNode();
-            node.fields().forEachRemaining(entry -> {
-                JsonNode value = entry.getValue();
-                if (value == null || value.isNull()) {
-                    return;
-                }
-                if (value.isTextual() && value.asText().isBlank()) {
-                    return;
-                }
-                if (value.isArray() && value.isEmpty()) {
-                    return;
-                }
-                cleaned.set(entry.getKey(), value);
-            });
-            return MAPPER.writeValueAsString(cleaned);
-        } catch (Exception e) {
-            return "{}";
-        }
-    }
-
-    private Object jsonNodeToObject(JsonNode node) {
-        if (node == null || node.isMissingNode() || node.isNull()) {
-            return null;
-        }
-        if (node.isTextual()) {
-            return node.asText();
-        }
-        if (node.isNumber()) {
-            return node.numberValue();
-        }
-        if (node.isBoolean()) {
-            return node.asBoolean();
-        }
-        return MAPPER.convertValue(node, Object.class);
-    }
-
-    private boolean hasMeaningfulValue(Object value) {
-        if (value == null) {
-            return false;
-        }
-        if (value instanceof String s) {
-            return !s.isBlank();
-        }
-        if (value instanceof Collection<?> c) {
-            return !c.isEmpty();
-        }
-        if (value instanceof Map<?, ?> m) {
-            return !m.isEmpty();
-        }
-        return true;
-    }
-
-    private void ensureSchemaPromptVars(EngineSession session) {
-        if (session.getInputParams() == null) {
-            return;
-        }
-        if (!session.getInputParams().containsKey("missing_fields")) {
-            session.putInputParam("missing_fields", new ArrayList<>());
-        }
-        if (!session.getInputParams().containsKey("schema_field_details")) {
-            session.putInputParam("schema_field_details", new LinkedHashMap<>());
-        }
-        if (!session.getInputParams().containsKey("missing_field_options")) {
-            session.putInputParam("missing_field_options", new LinkedHashMap<>());
-        }
-        if (!session.getInputParams().containsKey("schema_description")) {
-            session.putInputParam("schema_description", "");
-        }
     }
 }

@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
@@ -55,10 +56,10 @@ public class IntentResolutionStep implements EngineStep {
         String previousIntent = session.getIntent();
 
         Map<String, Object> startPayload = new LinkedHashMap<>();
-        startPayload.put("previousIntent", previousIntent);
-        startPayload.put("intentLocked", session.isIntentLocked());
-        startPayload.put("intentLockReason", session.getIntentLockReason());
-        audit.audit("INTENT_RESOLVE_START", session.getConversationId(), startPayload);
+        startPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.PREVIOUS_INTENT, previousIntent);
+        startPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT_LOCKED, session.isIntentLocked());
+        startPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT_LOCK_REASON, session.getIntentLockReason());
+        audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_START, session.getConversationId(), startPayload);
 
         if (session.isIntentLocked() || isActiveSchemaCollection(session)) {
             if (!session.isIntentLocked()) {
@@ -70,11 +71,11 @@ public class IntentResolutionStep implements EngineStep {
                 session.getConversation().setStateCode(session.getState());
             }
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", session.getIntent());
-            payload.put("state", session.getState());
-            payload.put("intentLocked", session.isIntentLocked());
-            payload.put("intentLockReason", session.getIntentLockReason());
-            audit.audit("INTENT_RESOLVE_SKIPPED_SCHEMA_COLLECTION", session.getConversationId(), payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT_LOCKED, session.isIntentLocked());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT_LOCK_REASON, session.getIntentLockReason());
+            audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_SKIPPED_SCHEMA_COLLECTION, session.getConversationId(), payload);
             return new StepResult.Continue();
         }
 
@@ -84,18 +85,18 @@ public class IntentResolutionStep implements EngineStep {
                 session.getConversation().setStateCode(session.getState());
             }
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", session.getIntent());
-            payload.put("state", session.getState());
-            payload.put("stickyIntentEnabled", true);
-            payload.put("reason", "existing intent retained");
-            audit.audit("INTENT_RESOLVE_SKIPPED_STICKY_INTENT", session.getConversationId(), payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STICKY_INTENT_ENABLED, true);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.REASON, "existing intent retained");
+            audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_SKIPPED_STICKY_INTENT, session.getConversationId(), payload);
             return new StepResult.Continue();
         }
 
         CompositeIntentResolver.IntentResolutionResult result = intentResolver.resolveWithTrace(session);
 
         if (result == null || result.resolvedIntent() == null) {
-            audit.audit("INTENT_RESOLVE_NO_CHANGE", session.getConversationId(), Map.of());
+            audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_NO_CHANGE, session.getConversationId(), Map.of());
             return new StepResult.Continue();
         }
 
@@ -106,7 +107,7 @@ public class IntentResolutionStep implements EngineStep {
         session.getConversation().setStateCode(session.getState());
 
         audit.audit(
-                "INTENT_RESOLVED_BY_" + result.source().name(),
+                ConvEngineAuditStage.intentResolvedBy(result.source().name()),
                 session.getConversationId(),
                 result
         );

@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.rule.type.provider;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.rule.action.core.RuleActionResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.RuleAction;
@@ -24,13 +25,13 @@ public class GetSessionActionResolver implements RuleActionResolver {
     @Override
     public void resolve(EngineSession session, CeRule rule) {
         String key = (rule.getActionValue() == null || rule.getActionValue().isBlank())
-                ? "session"
+                ? ConvEngineInputParamKey.SESSION
                 : rule.getActionValue();
         session.putInputParam(key, session.sessionDict());
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("key", key);
-        payload.put("session", session.sessionDict());
-        payload.put("sessionInputParams", session.safeInputParams());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.KEY, key);
+        payload.put(ConvEngineInputParamKey.SESSION, session.sessionDict());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SESSION_INPUT_PARAMS, session.safeInputParams());
         audit.audit(RuleAction.GET_SESSION.name(), session.getConversationId(), payload);
     }
 }

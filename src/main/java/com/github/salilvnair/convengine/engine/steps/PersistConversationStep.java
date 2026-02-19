@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.engine.model.EngineResult;
@@ -58,10 +59,10 @@ public class PersistConversationStep implements EngineStep {
         session.setFinalResult(result);
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("intent", session.getIntent());
-        payload.put("state", session.getState());
-        payload.put("final_result", result);
-        audit.audit("ENGINE_RETURN", session.getConversationId(), payload);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.FINAL_RESULT, result);
+        audit.audit(ConvEngineAuditStage.ENGINE_RETURN, session.getConversationId(), payload);
 
         return new StepResult.Continue();
     }

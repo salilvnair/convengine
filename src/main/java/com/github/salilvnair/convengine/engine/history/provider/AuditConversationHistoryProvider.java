@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.history.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.history.core.ConversationHistoryProvider;
 import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.entity.CeConversationHistory;
@@ -17,7 +18,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuditConversationHistoryProvider implements ConversationHistoryProvider {
 
-    private static final String USER_ENTRY_TYPE = "USER_INPUT";
+    private static final String USER_ENTRY_TYPE = ConvEngineAuditStage.USER_INPUT.value();
     private static final List<String> AI_ENTRY_TYPES = List.of(
             "INTENT_AI_RESPONSE",
             "MCP_AI_RESPONSE",
@@ -30,7 +31,6 @@ public class AuditConversationHistoryProvider implements ConversationHistoryProv
 
     @Override
     public List<ConversationTurn> lastTurns(UUID conversationId, int limit) {
-
         List<CeConversationHistory> historyRows = conversationHistoryRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
 
         List<ConversationTurn> turns = new ArrayList<>();

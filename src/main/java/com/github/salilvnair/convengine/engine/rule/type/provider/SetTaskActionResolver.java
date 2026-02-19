@@ -28,13 +28,13 @@ public class SetTaskActionResolver implements RuleActionResolver {
         String[] beanTaskMetaData = parseRuleTasks(rule.getActionValue());
         ceRuleTaskExecutor.execute(beanTaskMetaData[0], beanTaskMetaData[1], session, rule);
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("ruleId", rule.getRuleId());
-        payload.put("beanName", beanTaskMetaData[0]);
-        payload.put("beanMethodNames", beanTaskMetaData[1]);
-        payload.put("intent", session.getIntent());
-        payload.put("state", session.getState());
-        payload.put("context", session.contextDict());
-        payload.put("inputParams", session.safeInputParams());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.BEAN_NAME, beanTaskMetaData[0]);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.BEAN_METHOD_NAMES, beanTaskMetaData[1]);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INPUT_PARAMS, session.safeInputParams());
         audit.audit(RuleAction.SET_TASK.name(), session.getConversationId(), payload);
     }
 

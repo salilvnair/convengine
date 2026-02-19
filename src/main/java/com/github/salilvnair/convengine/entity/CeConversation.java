@@ -1,9 +1,11 @@
 package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import com.github.salilvnair.convengine.entity.converter.OffsetDateTimeStringConverter;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -48,9 +50,11 @@ public class CeConversation {
     @Column(name = "last_assistant_json")
     private String lastAssistantJson;
 
+    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
 
+    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 }

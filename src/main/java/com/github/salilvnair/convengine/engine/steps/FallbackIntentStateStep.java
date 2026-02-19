@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
@@ -28,23 +29,23 @@ public class FallbackIntentStateStep implements EngineStep {
 
         if (session.getIntent() == null) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", session.getIntent());
-            payload.put("state", session.getState());
-            payload.put("context", session.contextDict());
-            payload.put("userText", session.getUserText());
-            payload.put("fallbackIntent", fallbackIntent);
-            audit.audit("INTENT_MISSING", session.getConversationId(), payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_TEXT, session.getUserText());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.FALLBACK_INTENT, fallbackIntent);
+            audit.audit(ConvEngineAuditStage.INTENT_MISSING, session.getConversationId(), payload);
             session.setIntent(fallbackIntent);
         }
 
         if (session.getState() == null) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", session.getIntent());
-            payload.put("state", session.getState());
-            payload.put("context", session.contextDict());
-            payload.put("userText", session.getUserText());
-            payload.put("fallbackState", fallbackState);
-            audit.audit("STATE_MISSING", session.getConversationId(), payload);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_TEXT, session.getUserText());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.FALLBACK_STATE, fallbackState);
+            audit.audit(ConvEngineAuditStage.STATE_MISSING, session.getConversationId(), payload);
             session.setState(fallbackState);
         }
 

@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.response.format.provider;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.response.format.core.OutputFormatResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
@@ -65,11 +66,11 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
         );
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put("system_prompt", systemPrompt);
-        inputPayload.put("user_prompt", userPrompt);
-        inputPayload.put("derivation_hint", safe(response.getDerivationHint()));
-        inputPayload.put("session", session.eject());
-        audit.audit("RESOLVE_RESPONSE_LLM_INPUT", session.getConversationId(), inputPayload);
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.DERIVATION_HINT, safe(response.getDerivationHint()));
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SESSION, session.eject());
+        audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_INPUT, session.getConversationId(), inputPayload);
 
         String text =
                 llm.generateText(
@@ -80,8 +81,8 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
         session.setLastLlmOutput(text);
         session.setLastLlmStage("RESPONSE_TEXT");
         Map<String, Object> outputPayload = new LinkedHashMap<>();
-        outputPayload.put("output", text);
-        audit.audit("RESOLVE_RESPONSE_LLM_OUTPUT", session.getConversationId(), outputPayload);
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.OUTPUT, text);
+        audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT, session.getConversationId(), outputPayload);
 
         session.setPayload(new TextPayload(text));
         session.getConversation().setLastAssistantJson(

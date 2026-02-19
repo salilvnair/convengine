@@ -6,7 +6,46 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## Version
 
-- Current library version: `1.0.14`
+- Current library version: `1.0.15`
+
+## What Changed In 1.0.15
+
+### Schema extraction refactor + provider-owned computation
+- Refactored `SchemaExtractionStep` to be orchestration-focused and delegated schema-heavy computation to provider contract.
+- Added resolver computation model:
+  - `engine.schema.ConvEngineSchemaComputation`
+  - `ConvEngineSchemaResolver#compute(...)`
+  - `ConvEngineSchemaResolver#sanitizeExtractedJson(...)`
+  - `ConvEngineSchemaResolver#mergeContextJson(...)`
+- Default provider (`DefaultConvEngineSchemaResolver`) now owns:
+  - extracted JSON sanitization
+  - context merge behavior
+  - schema completeness checks
+  - missing required field calculation
+  - missing field enum options derivation
+- This now makes provider override clean: consumers can supply their own `ConvEngineSchemaResolver` bean (higher precedence via `@Order`) and own all schema calc behavior end-to-end.
+
+### Input param key centralization
+- Added centralized runtime input param key constants:
+  - `engine.constants.ConvEngineInputParamKey`
+- Replaced hardcoded `session.putInputParam("...")` keys across engine/intent/rule flows with constants.
+
+### Audit stage centralization
+- Added centralized stage enum:
+  - `audit.ConvEngineAuditStage`
+- Migrated fixed audit stage literals to enum usage across:
+  - step pipeline stages
+  - response format/type resolvers
+  - MCP planner/tool stages
+  - intent resolver/collision/classifier stages
+  - audit history mapping points
+- Added helper for dynamic resolved-intent stage:
+  - `ConvEngineAuditStage.intentResolvedBy(...)`
+
+### Payload key centralization
+- Added centralized audit/payload map key constants:
+  - `engine.constants.ConvEnginePayloadKey`
+- Replaced `payload.put("...")` and related payload map key literals across ConvEngine with constants.
 
 ## What Changed In 1.0.14
 

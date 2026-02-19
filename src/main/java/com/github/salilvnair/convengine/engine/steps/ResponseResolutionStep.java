@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.engine.history.core.ConversationHistoryProvider;
@@ -45,10 +46,10 @@ public class ResponseResolutionStep implements EngineStep {
 
         if(AgentIntentResolver.INTENT_COLLISION_STATE.equals(session.getState())) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", session.getIntent());
-            payload.put("state", session.getState());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
             audit.audit(
-                    "INTENT_COLLISION_DETECTED",
+                    ConvEngineAuditStage.INTENT_COLLISION_DETECTED,
                     session.getConversationId(),
                     payload
             );
@@ -60,10 +61,10 @@ public class ResponseResolutionStep implements EngineStep {
 
         if(responseOptional.isEmpty()) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("intent", session.getIntent());
-            payload.put("state", session.getState());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
             audit.audit(
-                    "RESPONSE_MAPPING_NOT_FOUND",
+                    ConvEngineAuditStage.RESPONSE_MAPPING_NOT_FOUND,
                     session.getConversationId(),
                     payload
             );
@@ -78,11 +79,11 @@ public class ResponseResolutionStep implements EngineStep {
             session.getConversation().setStateCode(resp.getStateCode());
         }
         Map<String, Object> responsePayload = new LinkedHashMap<>();
-        responsePayload.put("responseId", resp.getResponseId());
-        responsePayload.put("intent", session.getIntent());
-        responsePayload.put("state", session.getState());
+        responsePayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RESPONSE_ID, resp.getResponseId());
+        responsePayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+        responsePayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
         audit.audit(
-                "RESOLVE_RESPONSE",
+                ConvEngineAuditStage.RESOLVE_RESPONSE,
                 session.getConversationId(),
                 responsePayload
         );
@@ -121,15 +122,15 @@ public class ResponseResolutionStep implements EngineStep {
         };
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
-        outputPayload.put("output", payloadValue);
-        outputPayload.put("outputFormat", resp.getOutputFormat());
-        outputPayload.put("responseType", resp.getResponseType());
-        outputPayload.put("responseId", resp.getResponseId());
-        outputPayload.put("intent", session.getIntent());
-        outputPayload.put("state", session.getState());
-        outputPayload.put("context", session.contextDict());
-        outputPayload.put("schemaJson", session.schemaJson());
-        audit.audit("ASSISTANT_OUTPUT", session.getConversationId(), outputPayload);
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.OUTPUT, payloadValue);
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.OUTPUT_FORMAT, resp.getOutputFormat());
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RESPONSE_TYPE, resp.getResponseType());
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RESPONSE_ID, resp.getResponseId());
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_JSON, session.schemaJson());
+        audit.audit(ConvEngineAuditStage.ASSISTANT_OUTPUT, session.getConversationId(), outputPayload);
 
         return new StepResult.Continue();
     }

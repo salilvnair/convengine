@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.mcp.model.McpPlan;
 import com.github.salilvnair.convengine.engine.mcp.model.McpObservation;
@@ -126,11 +127,11 @@ public class McpPlanner {
         """;
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put("templateFromCeConfig (McpPlanner)", "USER_PROMPT, SYSTEM_PROMPT");
-        inputPayload.put("system_prompt", systemPrompt);
-        inputPayload.put("user_prompt", userPrompt);
-        inputPayload.put("schema", schema);
-        audit.audit("MCP_PLAN_LLM_INPUT", session.getConversationId(), inputPayload);
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER, "USER_PROMPT, SYSTEM_PROMPT");
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA, schema);
+        audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_INPUT, session.getConversationId(), inputPayload);
 
         LlmInvocationContext.set(
                 session.getConversationId(),
@@ -141,8 +142,8 @@ public class McpPlanner {
         String out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
-        outputPayload.put("json", out);
-        audit.audit("MCP_PLAN_LLM_OUTPUT", session.getConversationId(), outputPayload);
+        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.JSON, out);
+        audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT, session.getConversationId(), outputPayload);
 
         try {
             return mapper.readValue(out, McpPlan.class);

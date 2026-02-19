@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.model.EngineResult;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
@@ -35,10 +36,10 @@ public class PolicyEnforcementStep implements EngineStep {
         for (CePolicy policy : policyRepo.findByEnabledTrueOrderByPriorityAsc()) {
             if (matches(policy.getRuleType(), policy.getPattern(), userText)) {
                 Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("policyId", policy.getPolicyId());
-                payload.put("ruleType", policy.getRuleType());
-                payload.put("pattern", policy.getPattern());
-                audit.audit("POLICY_BLOCK", session.getConversationId(), payload);
+                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.POLICY_ID, policy.getPolicyId());
+                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_TYPE, policy.getRuleType());
+                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.PATTERN, policy.getPattern());
+                audit.audit(ConvEngineAuditStage.POLICY_BLOCK, session.getConversationId(), payload);
 
                 session.getConversation().setStatus("BLOCKED");
                 session.getConversation().setLastAssistantJson(jsonText(policy.getResponseText()));

@@ -27,11 +27,11 @@ public class SetStateActionResolver implements RuleActionResolver {
         session.setState(rule.getActionValue());
         session.getConversation().setStateCode(rule.getActionValue());
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("ruleId", rule.getRuleId());
-        payload.put("fromState", previousState);
-        payload.put("toState", rule.getActionValue());
-        payload.put("intent", session.getIntent());
-        payload.put("context", session.contextDict());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.FROM_STATE, previousState);
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TO_STATE, rule.getActionValue());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
         audit.audit(RuleAction.SET_STATE.name(), session.getConversationId(), payload);
     }
 }
