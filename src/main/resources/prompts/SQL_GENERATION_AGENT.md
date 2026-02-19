@@ -106,7 +106,7 @@ Never generate inserts for runtime/transactional tables:
 - There is no `state_code` in `ce_intent`.
 
 ### `ce_rule`
-- Columns: `intent_code`, `rule_type`, `match_pattern`, `action`, `action_value`, `priority`, `enabled`, `description`
+- Columns: `intent_code`, `rule_type`, `match_pattern`, `action`, `action_value`, `phase`, `priority`, `enabled`, `description`
 - There is no `state_code` in `ce_rule`.
 
 ### `ce_prompt_template`
@@ -129,6 +129,7 @@ Never generate inserts for runtime/transactional tables:
 ### `ce_rule`
 - `rule_type`: `EXACT` | `REGEX` | `JSON_PATH`
 - `action`: `SET_INTENT` | `SET_STATE` | `SET_JSON` | `GET_CONTEXT` | `GET_SCHEMA_JSON` | `GET_SESSION` | `SET_TASK`
+- `phase`: `PIPELINE_RULES` | `AGENT_POST_INTENT`
 
 ### `ce_intent_classifier`
 - `rule_type`: `REGEX` | `CONTAINS` | `STARTS_WITH`

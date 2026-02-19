@@ -6,7 +6,64 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## Version
 
-- Current library version: `1.0.9`
+- Current library version: `1.0.11`
+
+## What Changed In 1.0.11
+
+### Cross-database persistence hardening (SQLite, Postgres, Oracle)
+- Fixed JSON column binding for Postgres `jsonb` fields by using Hibernate JSON JDBC typing in core entities.
+- Fixed timestamp write/read compatibility for audit persistence across dialects.
+- Added dialect-aware deferred audit JDBC inserts:
+  - Postgres: JSON payload cast to `jsonb`
+  - SQLite: parse-safe timestamp text write path
+  - Oracle: native timestamp object binding
+
+### SQLite legacy data normalization safeguards
+- Added startup-time normalization for legacy SQLite runtime rows:
+  - converts numeric epoch timestamp text to parse-safe datetime text
+  - converts legacy BLOB `conversation_id` values to canonical UUID text
+- Prevents `Error parsing time stamp` failures when reading older rows.
+
+### Sticky intent semantics refinement
+- `STICKY_INTENT` no longer acts as a global intent freeze.
+- Sticky skip is now constrained to active incomplete-schema collection flows.
+- New user turns outside schema collection can re-resolve intent normally (for example `GREETINGS -> FAQ`).
+
+## What Changed In 1.0.10
+
+### Rule phase model (`ce_rule.phase`)
+- Added `ce_rule.phase` with runtime contract:
+  - `PIPELINE_RULES`
+  - `AGENT_POST_INTENT`
+- Added `RulePhase` enum and normalized phase handling.
+- `RulesStep` now executes phase-filtered rule sets.
+- Agent post-intent rule execution now runs only `AGENT_POST_INTENT` rules.
+
+### Post-intent rule execution and metadata
+- Enabled immediate post-intent rule pass in `AgentIntentResolver` after accepted intent.
+- Added rule execution metadata in `EngineSession` and `inputParams`:
+  - `postIntentRule` / `post_intent_rule`
+  - `rule_phase`
+  - `rule_execution_source`
+  - `rule_execution_origin`
+- Added phase/source metadata into rule audit payloads (`RULE_MATCHED`, `RULE_APPLIED`, `RULE_NO_MATCH`).
+
+### Sticky intent continuity (`ce_config`)
+- Added `IntentResolutionStep.STICKY_INTENT` (default `true`) to keep resolved intent/state stable across turns.
+- `IntentResolutionStep` now skips unnecessary re-resolution when intent/state are already resolved.
+- Added audit stage `INTENT_RESOLVE_SKIPPED_STICKY_INTENT` for sticky-skip visibility.
+- Explicit reset/switch/force signals still trigger intent resolution.
+
+### Prompt variable exposure (`inputParams`)
+- `promptTemplateVars()` now exposes all keys present in `inputParams`.
+- This includes runtime/system-derived keys written via `session.putInputParam(...)` (for example `publish_result`).
+- `CONTROLLED_PROMPT_KEYS` is retained, and dynamic `USER_PROMPT_KEYS` now tracks keys merged into `inputParams`.
+
+### Streaming startup validation hardening
+- Removed fragile conditional gating from stream startup validator.
+- Validator now reads stream setting via `ObjectProvider<ConvEngineStreamSettings>` in `@PostConstruct`.
+- Hardened `ConvEngineStreamEnabledCondition` to evaluate in `REGISTER_BEAN` phase and support registry fallback.
+- Prevents false-positive stream validation failures caused by bean registration timing.
 
 ## What Changed In 1.0.9
 
@@ -112,6 +169,7 @@ Order is enforced by step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Requ
 
 ### `ce_rule`
 - `rule_type`: `EXACT`, `REGEX`, `JSON_PATH`
+- `phase`: `PIPELINE_RULES`, `AGENT_POST_INTENT`
 - `action`: `SET_INTENT`, `SET_STATE`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`
 
 ### `ce_intent_classifier`
@@ -133,6 +191,16 @@ VALUES (100, 'ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,STA
 ```
 
 Default reset intent code is `RESET_SESSION`.
+
+### Sticky intent config
+
+When sticky intent is enabled, ConvEngine keeps the current intent stable only while schema collection is incomplete.  
+Outside active schema collection, intent can be re-resolved on subsequent turns.
+
+```sql
+INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled)
+VALUES (101, 'IntentResolutionStep', 'STICKY_INTENT', 'true', true);
+```
 
 ## Consumer Bootstrapping
 
@@ -418,8 +486,10 @@ Safety constraints include forbidden statement detection and required-table cove
 
 - SQL generation reference guide lives at:
   - `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
-- Latest DDL lives at:
-  - `src/main/resources/sql/ddl.sql`
+- DDL by dialect lives at:
+  - `src/main/resources/sql/ddl_postgres.sql` (legacy: `src/main/resources/sql/ddl.sql`)
+  - `src/main/resources/sql/ddl_oracle.sql`
+  - `src/main/resources/sql/ddl_sqlite.sql`
 
 ## Design Principles
 

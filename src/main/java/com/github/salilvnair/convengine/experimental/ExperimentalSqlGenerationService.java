@@ -84,6 +84,7 @@ public class ExperimentalSqlGenerationService {
                   ce_response.output_format: TEXT | JSON
                   ce_prompt_template.response_type: TEXT | JSON | SCHEMA_JSON
                   ce_rule.rule_type: EXACT | REGEX | JSON_PATH
+                  ce_rule.phase: PIPELINE_RULES | AGENT_POST_INTENT
                   ce_intent_classifier.rule_type: REGEX | CONTAINS | STARTS_WITH
                   action: SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK
                 - Prefer uppercase for enum-like fields.

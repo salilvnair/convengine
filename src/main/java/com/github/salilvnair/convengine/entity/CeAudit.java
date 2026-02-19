@@ -44,8 +44,8 @@ public class CeAudit {
      * Arbitrary JSON payload describing
      * what happened at this stage.
      */
-    @Column(columnDefinition = "jsonb", nullable = false, name = "payload_json")
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false, name = "payload_json")
     private String payloadJson;
 
     @Column(nullable = false, name = "created_at")

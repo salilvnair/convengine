@@ -72,9 +72,13 @@ public class EngineSession {
     private final List<StepTiming> stepTimings = new ArrayList<>();
     private Map<String, Object> inputParams = new LinkedHashMap<>();
     private Map<String, Object> safeInputParamsForOutput = new LinkedHashMap<>();
+    private boolean postIntentRule;
+    private String ruleExecutionSource;
+    private String ruleExecutionOrigin;
     private Map<String, Object> systemExtensions = new LinkedHashMap<>();
     private Set<String> unknownSystemInputParamKeys = new LinkedHashSet<>();
     private Set<String> systemDerivedInputParamKeys = new LinkedHashSet<>();
+    private Set<String> USER_PROMPT_KEYS = new LinkedHashSet<>();
 
     private static final Set<String> CONTROLLED_PROMPT_KEYS = Set.of(
             "missing_fields",
@@ -141,6 +145,7 @@ public class EngineSession {
             return;
         }
         String normalizedKey = key.trim();
+        USER_PROMPT_KEYS.add(normalizedKey);
         if (fromSystemWrite && !isControlledPromptKey(normalizedKey)) {
             systemExtensions.put(normalizedKey, value);
             unknownSystemInputParamKeys.add(normalizedKey);
@@ -154,7 +159,7 @@ public class EngineSession {
     }
 
     private boolean isControlledPromptKey(String key) {
-        return CONTROLLED_PROMPT_KEYS.contains(key);
+        return CONTROLLED_PROMPT_KEYS.contains(key) || USER_PROMPT_KEYS.contains(key);
     }
 
     // -------------------------------------------------
@@ -370,6 +375,9 @@ public class EngineSession {
         sessionMap.put("userText", userText);
         sessionMap.put("pendingClarificationQuestion", pendingClarificationQuestion);
         sessionMap.put("lastLlmStage", lastLlmStage);
+        sessionMap.put("postIntentRule", postIntentRule);
+        sessionMap.put("ruleExecutionSource", ruleExecutionSource);
+        sessionMap.put("ruleExecutionOrigin", ruleExecutionOrigin);
         sessionMap.put("context", contextDict());
         sessionMap.put("schemaJson", schemaJson());
         sessionMap.put("lastLlmOutput", extractLastLlmOutputForSession());
@@ -422,16 +430,7 @@ public class EngineSession {
         if (key == null || key.isBlank()) {
             return false;
         }
-        if (!SAFE_INPUT_KEY_PATTERN.matcher(key).matches()) {
-            return false;
-        }
-        if (isControlledPromptKey(key)) {
-            return true;
-        }
-        if (systemDerivedInputParamKeys.contains(key)) {
-            return false;
-        }
-        return !key.startsWith("_");
+        return inputParams.containsKey(key);
     }
 
     public Map<String, Object> safeInputParams() {
@@ -555,6 +554,9 @@ public class EngineSession {
         this.awaitingClarification = false;
         this.clarificationTurn = 0;
         this.lastClarificationQuestion = null;
+        this.postIntentRule = false;
+        this.ruleExecutionSource = null;
+        this.ruleExecutionOrigin = null;
         this.pendingClarificationQuestionHistory = new ArrayList<>();
         this.pendingClarificationReasonsHistory = new ArrayList<>();
         clearClarification();
@@ -564,6 +566,7 @@ public class EngineSession {
         this.systemExtensions.clear();
         this.unknownSystemInputParamKeys.clear();
         this.systemDerivedInputParamKeys.clear();
+        this.USER_PROMPT_KEYS.clear();
         if (engineContext.getInputParams() != null) {
             Map<String, Object> requestParams = new LinkedHashMap<>();
             for (Map.Entry<String, Object> e : engineContext.getInputParams().entrySet()) {

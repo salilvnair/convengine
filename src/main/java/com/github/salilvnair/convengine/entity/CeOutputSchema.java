@@ -25,8 +25,8 @@ public class CeOutputSchema {
     @Column(name = "state_code", nullable = false)
     private String stateCode;
 
-    @Column(name = "json_schema", columnDefinition = "jsonb", nullable = false)
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "json_schema", nullable = false)
     private String jsonSchema;
 
     @Column(name = "description")

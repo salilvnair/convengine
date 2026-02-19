@@ -2,6 +2,8 @@ package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -32,7 +34,8 @@ public class CeValidationSnapshot {
     @Column(name = "schema_id")
     private Long schemaId;
 
-    @Column(name = "validation_tables", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "validation_tables")
     private String validationTables;
 
     @Column(name = "validation_decision", columnDefinition = "text")

@@ -1,6 +1,13 @@
 package com.github.salilvnair.convengine.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapsId;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -32,11 +39,11 @@ public class CeMcpDbTool {
     private String sqlTemplate;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "param_schema", nullable = false, columnDefinition = "jsonb")
+    @Column(name = "param_schema", nullable = false)
     private String paramSchema;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "allowed_identifiers", columnDefinition = "jsonb")
+    @Column(name = "allowed_identifiers")
     private Map<String, Set<String>> allowedIdentifiers;
 
     @Column(name = "safe_mode", nullable = false)

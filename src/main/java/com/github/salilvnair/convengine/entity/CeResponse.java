@@ -33,8 +33,8 @@ public class CeResponse {
     @Column(columnDefinition = "text", name = "derivation_hint")
     private String derivationHint;
 
-    @Column(columnDefinition = "jsonb", name = "json_schema")
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "json_schema")
     private String jsonSchema;
 
     @Column(name = "priority")
