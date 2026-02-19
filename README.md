@@ -6,7 +6,28 @@ It is designed for auditable, stateful flows where intent resolution, schema ext
 
 ## Version
 
-- Current library version: `1.0.10`
+- Current library version: `1.0.11`
+
+## What Changed In 1.0.11
+
+### Cross-database persistence hardening (SQLite, Postgres, Oracle)
+- Fixed JSON column binding for Postgres `jsonb` fields by using Hibernate JSON JDBC typing in core entities.
+- Fixed timestamp write/read compatibility for audit persistence across dialects.
+- Added dialect-aware deferred audit JDBC inserts:
+  - Postgres: JSON payload cast to `jsonb`
+  - SQLite: parse-safe timestamp text write path
+  - Oracle: native timestamp object binding
+
+### SQLite legacy data normalization safeguards
+- Added startup-time normalization for legacy SQLite runtime rows:
+  - converts numeric epoch timestamp text to parse-safe datetime text
+  - converts legacy BLOB `conversation_id` values to canonical UUID text
+- Prevents `Error parsing time stamp` failures when reading older rows.
+
+### Sticky intent semantics refinement
+- `STICKY_INTENT` no longer acts as a global intent freeze.
+- Sticky skip is now constrained to active incomplete-schema collection flows.
+- New user turns outside schema collection can re-resolve intent normally (for example `GREETINGS -> FAQ`).
 
 ## What Changed In 1.0.10
 
@@ -173,7 +194,8 @@ Default reset intent code is `RESET_SESSION`.
 
 ### Sticky intent config
 
-When sticky intent is enabled, ConvEngine keeps the currently resolved intent across turns and skips re-resolution unless an explicit switch/reset signal is present.
+When sticky intent is enabled, ConvEngine keeps the current intent stable only while schema collection is incomplete.  
+Outside active schema collection, intent can be re-resolved on subsequent turns.
 
 ```sql
 INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled)
