@@ -12,7 +12,6 @@ public class StepTiming {
     private long startedAtNs;
     private long endedAtNs;
     private long durationMs;
-
     private boolean success;
     private String error;
 }

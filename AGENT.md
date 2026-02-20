@@ -100,7 +100,6 @@ Order is enforced via step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Req
 - `ce_audit`
 - `ce_conversation_history`
 - `ce_llm_call_log`
-- `ce_validation_snapshot`
 
 ### Important schema truths
 

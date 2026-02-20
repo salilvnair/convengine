@@ -248,7 +248,6 @@ Order is enforced by step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Requ
 - `ce_audit`
 - `ce_conversation_history`
 - `ce_llm_call_log`
-- `ce_validation_snapshot`
 
 ## Enum / Value Matrix (Current)
 

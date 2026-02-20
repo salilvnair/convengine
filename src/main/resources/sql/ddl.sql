@@ -251,27 +251,6 @@ CREATE TABLE ce_rule (
 );
 CREATE INDEX idx_ce_rule_priority ON public.ce_rule USING btree (enabled, phase, state_code, priority);
 
-
--- public.ce_validation_snapshot definition
-
--- Drop table
-
--- DROP TABLE ce_validation_snapshot;
-
-CREATE TABLE ce_validation_snapshot (
-                                        snapshot_id bigserial NOT NULL,
-                                        conversation_id uuid NOT NULL,
-                                        intent_code varchar(64) NULL,
-                                        state_code varchar(64) NULL,
-                                        validation_tables jsonb NULL,
-                                        validation_decision text NULL,
-                                        created_at timestamptz DEFAULT now() NOT NULL,
-                                        schema_id int8 NULL,
-                                        CONSTRAINT ce_validation_snapshot_pkey PRIMARY KEY (snapshot_id)
-);
-CREATE INDEX idx_ce_validation_snapshot_conv ON public.ce_validation_snapshot USING btree (conversation_id);
-
-
 -- public.ce_audit definition
 
 -- Drop table

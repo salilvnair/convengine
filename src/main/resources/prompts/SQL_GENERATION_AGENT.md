@@ -88,7 +88,6 @@ Never generate inserts for runtime/transactional tables:
 - `ce_conversation`
 - `ce_audit`
 - `ce_llm_call_log`
-- `ce_validation_snapshot`
 
 ## 2) Hard SQL Constraints
 
