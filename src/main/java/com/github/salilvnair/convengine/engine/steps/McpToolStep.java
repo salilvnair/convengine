@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.mcp.McpDbExecutor;
 import com.github.salilvnair.convengine.engine.mcp.McpPlanner;
 import com.github.salilvnair.convengine.engine.mcp.McpToolRegistry;
@@ -41,7 +42,7 @@ public class McpToolStep implements EngineStep {
     public StepResult execute(EngineSession session) {
         if (session.hasPendingClarification()) {
             audit.audit(
-                    "MCP_SKIPPED_PENDING_CLARIFICATION",
+                    ConvEngineAuditStage.MCP_SKIPPED_PENDING_CLARIFICATION,
                     session.getConversationId(),
                     mapOf(
                             "intent", session.getIntent(),
@@ -54,7 +55,7 @@ public class McpToolStep implements EngineStep {
         List<CeMcpTool> tools = registry.listEnabledTools();
 
         if (CollectionUtils.isEmpty(tools)) {
-            audit.audit("MCP_NO_TOOLS_AVAILABLE", session.getConversationId(), Map.of());
+            audit.audit(ConvEngineAuditStage.MCP_NO_TOOLS_AVAILABLE, session.getConversationId(), Map.of());
             return new StepResult.Continue();
         }
 
@@ -69,7 +70,7 @@ public class McpToolStep implements EngineStep {
                 // store final answer in contextJson; your ResponseResolutionStep can use it via derivation_hint
                 writeFinalAnswerToContext(session, plan.answer());
                 audit.audit(
-                        "MCP_FINAL_ANSWER",
+                        ConvEngineAuditStage.MCP_FINAL_ANSWER,
                         session.getConversationId(),
                         mapOf("answer", plan.answer())
                 );
@@ -85,7 +86,7 @@ public class McpToolStep implements EngineStep {
             Map<String, Object> args = (plan.args() == null) ? Map.of() : plan.args();
 
             audit.audit(
-                    "MCP_TOOL_CALL",
+                    ConvEngineAuditStage.MCP_TOOL_CALL,
                     session.getConversationId(),
                     mapOf("tool_code", toolCode, "args", args)
             );
@@ -100,14 +101,14 @@ public class McpToolStep implements EngineStep {
                 writeObservationsToContext(session, observations);
 
                 audit.audit(
-                        "MCP_TOOL_RESULT",
+                        ConvEngineAuditStage.MCP_TOOL_RESULT,
                         session.getConversationId(),
                         mapOf("tool_code", toolCode, "rows", rowsJson)
                 );
 
             } catch (Exception e) {
                 audit.audit(
-                        "MCP_TOOL_ERROR",
+                        ConvEngineAuditStage.MCP_TOOL_ERROR,
                         session.getConversationId(),
                         mapOf("tool_code", toolCode, "error", String.valueOf(e.getMessage()))
                 );

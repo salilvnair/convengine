@@ -8,6 +8,7 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.core.ConversationalEngine;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
+import com.github.salilvnair.convengine.engine.helper.InputParamsHelper;
 import com.github.salilvnair.convengine.engine.model.EngineResult;
 import com.github.salilvnair.convengine.entity.CeAudit;
 import com.github.salilvnair.convengine.model.JsonPayload;
@@ -16,6 +17,7 @@ import com.github.salilvnair.convengine.repo.AuditRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,8 +42,10 @@ public class ConversationController {
                         : UUID.randomUUID();
 
         Map<String, Object> inputParams = new LinkedHashMap<>();
+        Map<String, Object> userInputParams = Collections.emptyMap();
         if (request.getInputParams() != null) {
             inputParams.putAll(request.getInputParams());
+            userInputParams = InputParamsHelper.deepCopy(request.getInputParams());
         }
         if (Boolean.TRUE.equals(request.getReset())) {
             inputParams.put("reset", true);
@@ -52,6 +56,7 @@ public class ConversationController {
                         .conversationId(conversationId.toString())
                         .userText(request.getMessage())
                         .inputParams(inputParams)
+                        .userInputParams(userInputParams)
                         .build();
 
         try {
@@ -79,9 +84,9 @@ public class ConversationController {
         }
         catch (ConversationEngineException ex) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("errorCode", ex.getErrorCode());
-            payload.put("message", ex.getMessage());
-            payload.put("recoverable", ex.isRecoverable());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.ERROR_CODE, ex.getErrorCode());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MESSAGE, ex.getMessage());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RECOVERABLE, ex.isRecoverable());
             audit.audit(
                     "ENGINE_KNOWN_FAILURE",
                     conversationId,
@@ -108,9 +113,9 @@ public class ConversationController {
         }
         catch (Exception ex) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("exception", String.valueOf(ex));
-            payload.put("message", ex.getMessage());
-            payload.put("recoverable", false);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.EXCEPTION, String.valueOf(ex));
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MESSAGE, ex.getMessage());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RECOVERABLE, false);
             audit.audit(
                     "ENGINE_UNKNOWN_FAILURE",
                     conversationId,

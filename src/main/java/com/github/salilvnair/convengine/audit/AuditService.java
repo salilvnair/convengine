@@ -8,8 +8,16 @@ import java.util.UUID;
 public interface AuditService {
     void audit(String stage, UUID conversationId, String payloadJson);
 
+    default void audit(ConvEngineAuditStage stage, UUID conversationId, String payloadJson) {
+        audit(stage.value(), conversationId, payloadJson);
+    }
+
     default void audit(String stage, UUID conversationId, Map<String, ?> payload) {
         audit(stage, conversationId, JsonUtil.toJson(payload == null ? Map.of() : payload));
+    }
+
+    default void audit(ConvEngineAuditStage stage, UUID conversationId, Map<String, ?> payload) {
+        audit(stage.value(), conversationId, payload);
     }
 
     default void audit(String stage, UUID conversationId, Object payload) {
@@ -28,6 +36,10 @@ public interface AuditService {
             return;
         }
         audit(stage, conversationId, JsonUtil.toJson(payload));
+    }
+
+    default void audit(ConvEngineAuditStage stage, UUID conversationId, Object payload) {
+        audit(stage.value(), conversationId, payload);
     }
 
     default void flushPending(UUID conversationId) {

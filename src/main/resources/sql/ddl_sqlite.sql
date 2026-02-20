@@ -143,6 +143,7 @@ CREATE TABLE ce_rule (
   rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
   phase TEXT NOT NULL DEFAULT 'PIPELINE_RULES',
   intent_code TEXT,
+  state_code TEXT,
   rule_type TEXT NOT NULL,
   match_pattern TEXT NOT NULL,
   action TEXT NOT NULL,
@@ -152,7 +153,7 @@ CREATE TABLE ce_rule (
   description TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_ce_rule_priority ON ce_rule (enabled, phase, priority);
+CREATE INDEX idx_ce_rule_priority ON ce_rule (enabled, phase, state_code, priority);
 
 CREATE TABLE ce_validation_snapshot (
   snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -175,6 +176,19 @@ CREATE TABLE ce_audit (
   FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_ce_audit_conversation ON ce_audit (conversation_id, created_at DESC);
+
+CREATE TABLE ce_conversation_history (
+  history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id TEXT NOT NULL,
+  entry_type TEXT NOT NULL,
+  role TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  content_text TEXT,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ce_conversation_history_conv ON ce_conversation_history (conversation_id, created_at DESC);
 
 CREATE TABLE ce_mcp_db_tool (
   tool_id INTEGER NOT NULL PRIMARY KEY,

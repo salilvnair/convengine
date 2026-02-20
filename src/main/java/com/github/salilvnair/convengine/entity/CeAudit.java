@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
+import com.github.salilvnair.convengine.entity.converter.OffsetDateTimeStringConverter;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -48,6 +49,7 @@ public class CeAudit {
     @Column(nullable = false, name = "payload_json")
     private String payloadJson;
 
+    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(nullable = false, name = "created_at")
     private OffsetDateTime createdAt;
 }

@@ -6,7 +6,28 @@ ConvEngine is a deterministic, configuration-driven conversational workflow engi
 
 It is not an open-ended chatbot runtime. Business behavior is declared in `ce_*` tables and executed by an auditable step pipeline.
 
-Current library baseline: `1.0.8`.
+Current library baseline: `1.0.15`.
+
+## Release Notes (Latest)
+
+### 1.0.15
+- `SchemaExtractionStep` was refactored to a thin orchestrator; schema-heavy calculations moved to schema resolver provider contract.
+- Added provider-owned computation contract:
+  - `ConvEngineSchemaComputation`
+  - `ConvEngineSchemaResolver#compute(...)`
+  - `ConvEngineSchemaResolver#sanitizeExtractedJson(...)`
+  - `ConvEngineSchemaResolver#mergeContextJson(...)`
+- `DefaultConvEngineSchemaResolver` now owns sanitization, merge, completeness, missing-fields, and missing-field-options behavior.
+- Provider override model is now clean and explicit:
+  - consumers can register their own `ConvEngineSchemaResolver` bean
+  - higher precedence via Spring `@Order` is respected by resolver factory selection.
+- Centralized input param keys in `ConvEngineInputParamKey`; removed hardcoded `putInputParam("...")` keys across step/intent/rule flows.
+- Centralized fixed audit stages in `ConvEngineAuditStage`; migrated fixed literals across engine, MCP, response, and intent components.
+- Added centralized payload map keys in `ConvEnginePayloadKey`; replaced payload key string literals (`payload.put("...")`) across ConvEngine.
+
+### 1.0.14
+- Added `ce_rule.state_code` support (`NULL`, `ANY`, exact match) to scope rule execution by state and reduce unnecessary evaluations.
+- Audit persistence strategy split with synchronous conversation history persistence guarantees.
 
 ## Runtime Architecture
 
@@ -77,6 +98,7 @@ Order is enforced via step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Req
 ### Runtime/transactional tables
 - `ce_conversation`
 - `ce_audit`
+- `ce_conversation_history`
 - `ce_llm_call_log`
 - `ce_validation_snapshot`
 
@@ -119,6 +141,7 @@ There is no `prompt_template_code` in current DDL.
 
 ### `ce_rule`
 - `rule_type`: `EXACT | REGEX | JSON_PATH`
+- `state_code`: `NULL` (all states), `ANY` (all states), or a specific `state_code`
 - `action`: `SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK`
 
 ### `ce_intent_classifier`
@@ -166,6 +189,11 @@ VALUES ('ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,START_OV
 
 `RulesStep` loads enabled rules ordered by priority and applies multi-pass execution (up to bounded passes) when intent/state changes.
 
+State scoping contract for `ce_rule.state_code`:
+- `NULL` -> rule is eligible for all states.
+- `ANY` -> rule is eligible for all states.
+- Specific value -> rule is eligible only when session state equals that value (case-insensitive).
+
 ### Action value formats
 - `SET_TASK`: `beanName:methodName` or `beanName:methodA,methodB`
 - `SET_JSON`: `targetKey:jsonPath`
@@ -203,8 +231,11 @@ These are intended for consumer-specific intervention without forking core engin
 
 ### Core behavior
 - `ce_audit` is the source of truth for execution timeline.
+- `ce_conversation_history` is the source for conversation-turn reconstruction used by prompt history providers.
 - Step lifecycle emits `STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`.
 - Audit metadata should track runtime session `intent` and `state`.
+- `_meta` persistence in DB payloads is controlled by `convengine.audit.persist-meta`.
+- `ce_conversation_history` writes are synchronous; `ce_audit` persistence can run in `IMMEDIATE` or `DEFERRED_BULK` strategy mode.
 
 ### Trace API
 - `GET /api/v1/conversation/audit/{conversationId}/trace`
@@ -218,6 +249,10 @@ These are intended for consumer-specific intervention without forking core engin
 - persistence mode:
   - `IMMEDIATE`
   - `DEFERRED_BULK` with flush conditions
+
+### Configuration ownership
+- ConvEngine does not ship framework-level `application.yaml` defaults.
+- Consumer applications own all `convengine.*` property configuration.
 
 ## Streaming and Transport
 

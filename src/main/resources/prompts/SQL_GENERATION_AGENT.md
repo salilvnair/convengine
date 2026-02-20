@@ -106,8 +106,11 @@ Never generate inserts for runtime/transactional tables:
 - There is no `state_code` in `ce_intent`.
 
 ### `ce_rule`
-- Columns: `intent_code`, `rule_type`, `match_pattern`, `action`, `action_value`, `phase`, `priority`, `enabled`, `description`
-- There is no `state_code` in `ce_rule`.
+- Columns: `intent_code`, `state_code`, `rule_type`, `match_pattern`, `action`, `action_value`, `phase`, `priority`, `enabled`, `description`
+- `state_code` is optional and can be:
+  - `NULL` (all states)
+  - `ANY` (all states)
+  - a specific state code
 
 ### `ce_prompt_template`
 - Columns: `template_id`, `intent_code`, `state_code`, `response_type`, `system_prompt`, `user_prompt`, `temperature`, `enabled`
@@ -130,6 +133,7 @@ Never generate inserts for runtime/transactional tables:
 - `rule_type`: `EXACT` | `REGEX` | `JSON_PATH`
 - `action`: `SET_INTENT` | `SET_STATE` | `SET_JSON` | `GET_CONTEXT` | `GET_SCHEMA_JSON` | `GET_SESSION` | `SET_TASK`
 - `phase`: `PIPELINE_RULES` | `AGENT_POST_INTENT`
+- `state_code`: `NULL` | `ANY` | `<STATE_CODE>`
 
 ### `ce_intent_classifier`
 - `rule_type`: `REGEX` | `CONTAINS` | `STARTS_WITH`
@@ -198,7 +202,6 @@ For each intent scenario, generated SQL should include:
 - Do not add non-existing columns:
   - `ce_prompt_template.template_code`
   - `ce_response.prompt_template_code`
-  - `ce_rule.state_code`
   - `ce_intent.state_code`
 - Do not create `DERIVED` response rows without a useful `derivation_hint`.
 - Do not generate only terminal state rows; include initial or fallback response rows so first turn can resolve.
@@ -312,9 +315,9 @@ INSERT INTO ce_response (intent_code, state_code, output_format, response_type, 
 VALUES ('LOG_ANALYSIS', 'ANALYZE', 'TEXT', 'DERIVED', 'Summarize probable root cause, impact, and 2-3 remediation steps.', 2, true, 'Derived RCA output');
 
 -- Rules
-INSERT INTO ce_rule (intent_code, rule_type, match_pattern, action, action_value, priority, enabled, description)
-VALUES ('LOG_ANALYSIS', 'JSON_PATH', '$.schemaJson.errorCode != null && $.schemaJson.component != null && $.schemaJson.severity != null', 'SET_STATE', 'ANALYZE', 1, true, 'Advance when required schema fields are present');
+INSERT INTO ce_rule (intent_code, state_code, rule_type, match_pattern, action, action_value, priority, enabled, description)
+VALUES ('LOG_ANALYSIS', 'UNKNOWN', 'JSON_PATH', '$.schemaJson.errorCode != null && $.schemaJson.component != null && $.schemaJson.severity != null', 'SET_STATE', 'ANALYZE', 1, true, 'Advance when required schema fields are present');
 
-INSERT INTO ce_rule (intent_code, rule_type, match_pattern, action, action_value, priority, enabled, description)
-VALUES ('LOG_ANALYSIS', 'JSON_PATH', '$.schemaJson.errorCode != null', 'GET_SCHEMA_JSON', 'schema_json', 2, true, 'Expose extracted schema fields for downstream prompt usage');
+INSERT INTO ce_rule (intent_code, state_code, rule_type, match_pattern, action, action_value, priority, enabled, description)
+VALUES ('LOG_ANALYSIS', 'ANY', 'JSON_PATH', '$.schemaJson.errorCode != null', 'GET_SCHEMA_JSON', 'schema_json', 2, true, 'Expose extracted schema fields for downstream prompt usage');
 ```

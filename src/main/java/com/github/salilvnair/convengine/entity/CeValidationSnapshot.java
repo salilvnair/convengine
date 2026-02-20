@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
+import com.github.salilvnair.convengine.entity.converter.OffsetDateTimeStringConverter;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -41,6 +42,7 @@ public class CeValidationSnapshot {
     @Column(name = "validation_decision", columnDefinition = "text")
     private String validationDecision;
 
+    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
 }

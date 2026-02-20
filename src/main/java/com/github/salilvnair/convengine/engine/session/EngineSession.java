@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.engine.model.EngineResult;
@@ -81,19 +82,19 @@ public class EngineSession {
     private Set<String> USER_PROMPT_KEYS = new LinkedHashSet<>();
 
     private static final Set<String> CONTROLLED_PROMPT_KEYS = Set.of(
-            "missing_fields",
-            "missing_field_options",
-            "schema_description",
-            "schema_field_details",
-            "schema_id",
-            "schema_json",
-            "context",
-            "session",
-            "intent_scores",
-            "intent_top3",
-            "intent_collision_candidates",
-            "followups",
-            "agentResolver"
+            ConvEngineInputParamKey.MISSING_FIELDS,
+            ConvEngineInputParamKey.MISSING_FIELD_OPTIONS,
+            ConvEngineInputParamKey.SCHEMA_DESCRIPTION,
+            ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS,
+            ConvEngineInputParamKey.SCHEMA_ID,
+            ConvEngineInputParamKey.SCHEMA_JSON,
+            ConvEngineInputParamKey.CONTEXT,
+            ConvEngineInputParamKey.SESSION,
+            ConvEngineInputParamKey.INTENT_SCORES,
+            ConvEngineInputParamKey.INTENT_TOP3,
+            ConvEngineInputParamKey.INTENT_COLLISION_CANDIDATES,
+            ConvEngineInputParamKey.FOLLOWUPS,
+            ConvEngineInputParamKey.AGENT_RESOLVER
     );
     private static final Pattern SAFE_INPUT_KEY_PATTERN = Pattern.compile("^[a-zA-Z0-9_.-]{1,120}$");
     private static final Set<String> RESET_CONTROL_KEYS = Set.of("reset", "restart", "conversation_reset");
@@ -438,7 +439,7 @@ public class EngineSession {
 
         for (Map.Entry<String, Object> e : safeInputParamsForOutput.entrySet()) {
             Object v = e.getValue();
-            if("session".equalsIgnoreCase(e.getKey())) {
+            if (ConvEngineInputParamKey.SESSION.equalsIgnoreCase(e.getKey())) {
                 continue;
             }
             out.put(e.getKey(), v);
@@ -513,14 +514,14 @@ public class EngineSession {
     }
 
     public void addPromptTemplateVars() {
-        putInputParam("missing_fields", valueOrDefaultList(inputParams.get("missing_fields")));
-        putInputParam("missing_field_options", valueOrDefaultMap(inputParams.get("missing_field_options")));
-        putInputParam("schema_description", valueOrDefaultString(inputParams.get("schema_description")));
-        putInputParam("schema_field_details", valueOrDefaultMap(inputParams.get("schema_field_details")));
-        putInputParam("schema_id", inputParams.getOrDefault("schema_id", null));
-        putInputParam("schema_json", schemaJson());
-        putInputParam("context", contextDict());
-        putInputParam("session", sessionDict());
+        putInputParam(ConvEngineInputParamKey.MISSING_FIELDS, valueOrDefaultList(inputParams.get(ConvEngineInputParamKey.MISSING_FIELDS)));
+        putInputParam(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS, valueOrDefaultMap(inputParams.get(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS)));
+        putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION, valueOrDefaultString(inputParams.get(ConvEngineInputParamKey.SCHEMA_DESCRIPTION)));
+        putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS, valueOrDefaultMap(inputParams.get(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS)));
+        putInputParam(ConvEngineInputParamKey.SCHEMA_ID, inputParams.getOrDefault(ConvEngineInputParamKey.SCHEMA_ID, null));
+        putInputParam(ConvEngineInputParamKey.SCHEMA_JSON, schemaJson());
+        putInputParam(ConvEngineInputParamKey.CONTEXT, contextDict());
+        putInputParam(ConvEngineInputParamKey.SESSION, sessionDict());
     }
 
     public void lockIntent(String reason) {

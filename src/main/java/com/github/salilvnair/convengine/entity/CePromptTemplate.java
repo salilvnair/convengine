@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
+import com.github.salilvnair.convengine.entity.converter.OffsetDateTimeStringConverter;
 import lombok.Data;
 
 import java.time.OffsetDateTime;
@@ -28,6 +29,7 @@ public class CePromptTemplate {
     private Double temperature;
     @Column(name = "enabled")
     private Boolean enabled;
+    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 }

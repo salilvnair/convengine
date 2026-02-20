@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
+import com.github.salilvnair.convengine.entity.converter.OffsetDateTimeStringConverter;
 import lombok.*;
 
 import java.time.OffsetDateTime;
@@ -46,6 +47,7 @@ public class CeContainerConfig {
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
 
+    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 }

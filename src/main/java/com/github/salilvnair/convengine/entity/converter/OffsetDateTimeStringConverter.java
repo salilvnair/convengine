@@ -13,7 +13,7 @@ import java.time.format.DateTimeParseException;
 @Converter
 public class OffsetDateTimeStringConverter implements AttributeConverter<OffsetDateTime, String> {
 
-    private static final DateTimeFormatter WRITE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS XXX");
+    private static final DateTimeFormatter WRITE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private static final DateTimeFormatter READ_WITH_OFFSET = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS XXX");
     private static final DateTimeFormatter READ_WITH_ZONE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS Z");
     private static final DateTimeFormatter READ_MILLIS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
@@ -24,7 +24,7 @@ public class OffsetDateTimeStringConverter implements AttributeConverter<OffsetD
         if (attribute == null) {
             return null;
         }
-        return WRITE_FMT.format(attribute);
+        return WRITE_FMT.format(attribute.withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime());
     }
 
     @Override

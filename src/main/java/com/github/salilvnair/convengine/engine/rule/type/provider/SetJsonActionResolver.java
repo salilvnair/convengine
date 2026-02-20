@@ -38,13 +38,13 @@ public class SetJsonActionResolver implements RuleActionResolver {
             Object value = search.getFirst();
             session.putInputParam(key, value);
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("ruleId", rule.getRuleId());
-            payload.put("key", key);
-            payload.put("path", path);
-            payload.put("intent", session.getIntent());
-            payload.put("state", session.getState());
-            payload.put("value", value);
-            payload.put("sessionInputParams", session.safeInputParams());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.KEY, key);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.PATH, path);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.VALUE, value);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SESSION_INPUT_PARAMS, session.safeInputParams());
             audit.audit(RuleAction.SET_JSON.name(), session.getConversationId(), payload);
         }
     }

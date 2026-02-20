@@ -394,15 +394,15 @@ public class EnginePipelineFactory {
                 Map<String, Object> extra
         ) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("step", stepName);
-            payload.put("stepClass", stepClass);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STEP, stepName);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STEP_CLASS, stepClass);
             payload.putAll(extra);
 
             // Add intent/state inside payload _meta so they are visible with stage metadata.
             Map<String, Object> stepMeta = new LinkedHashMap<>();
             stepMeta.put("intent", session.getIntent());
             stepMeta.put("state", session.getState());
-            payload.put("_meta", stepMeta);
+            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.META, stepMeta);
 
             return payload;
         }

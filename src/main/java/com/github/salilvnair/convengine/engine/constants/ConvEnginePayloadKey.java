@@ -1,0 +1,80 @@
+package com.github.salilvnair.convengine.engine.constants;
+
+public final class ConvEnginePayloadKey {
+
+    private ConvEnginePayloadKey() {
+    }
+
+    public static final String META = "_meta";
+    public static final String ACTION = "action";
+    public static final String ACTION_VALUE = "actionValue";
+    public static final String BEAN_METHOD_NAMES = "beanMethodNames";
+    public static final String BEAN_NAME = "beanName";
+    public static final String CANDIDATES = "candidates";
+    public static final String CONFIDENCE = "confidence";
+    public static final String CONTEXT = "context";
+    public static final String DERIVATION_HINT = "derivation_hint";
+    public static final String ERROR_CODE = "errorCode";
+    public static final String EXCEPTION = "exception";
+    public static final String FALLBACK_INTENT = "fallbackIntent";
+    public static final String FALLBACK_STATE = "fallbackState";
+    public static final String FINAL_RESULT = "final_result";
+    public static final String FOLLOWUPS = "followups";
+    public static final String FROM_INTENT = "fromIntent";
+    public static final String FROM_STATE = "fromState";
+    public static final String HAS_ANY_SCHEMA_VALUE = "hasAnySchemaValue";
+    public static final String INPUT_PARAMS = "inputParams";
+    public static final String INTENT = "intent";
+    public static final String INTENT_LOCK_REASON = "intentLockReason";
+    public static final String INTENT_LOCKED = "intentLocked";
+    public static final String JSON = "json";
+    public static final String KEY = "key";
+    public static final String MATCHED_BY_RULE = "matchedByRule";
+    public static final String MATCHED_INTENTS = "matchedIntents";
+    public static final String MATCHED_RESET_INTENT_CODES = "matchedResetIntentCodes";
+    public static final String MESSAGE = "message";
+    public static final String MISSING_FIELD_OPTIONS = "missingFieldOptions";
+    public static final String MISSING_REQUIRED_FIELDS = "missingRequiredFields";
+    public static final String OUTPUT = "output";
+    public static final String OUTPUT_FORMAT = "outputFormat";
+    public static final String PATH = "path";
+    public static final String PATTERN = "pattern";
+    public static final String POLICY_ID = "policyId";
+    public static final String PREVIOUS_INTENT = "previousIntent";
+    public static final String QUESTION = "question";
+    public static final String REASON = "reason";
+    public static final String RECOVERABLE = "recoverable";
+    public static final String RESOLVER = "resolver";
+    public static final String RESPONSE_ID = "responseId";
+    public static final String RESPONSE_TYPE = "responseType";
+    public static final String RULE_AGENT_POST_INTENT = "ruleAgentPostIntent";
+    public static final String RULE_EXECUTION_ORIGIN = "ruleExecutionOrigin";
+    public static final String RULE_EXECUTION_SOURCE = "ruleExecutionSource";
+    public static final String RULE_ID = "ruleId";
+    public static final String RULE_PHASE = "rulePhase";
+    public static final String RULE_STATE_CODE = "ruleStateCode";
+    public static final String RULE_TYPE = "ruleType";
+    public static final String SCHEMA = "schema";
+    public static final String SCHEMA_COMPLETE = "schemaComplete";
+    public static final String SCHEMA_ID = "schemaId";
+    public static final String SCHEMA_JSON = "schemaJson";
+    public static final String SCORES = "scores";
+    public static final String SESSION = "session";
+    public static final String SESSION_INPUT_PARAMS = "sessionInputParams";
+    public static final String STATE = "state";
+    public static final String STEP = "step";
+    public static final String STEP_CLASS = "stepClass";
+    public static final String STICKY_INTENT_ENABLED = "stickyIntentEnabled";
+    public static final String SYSTEM_PROMPT = "system_prompt";
+    public static final String TEMPLATE_DESC = "templateDesc";
+    public static final String TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER = "templateFromCeConfig (McpPlanner)";
+    public static final String TEMPLATE_ID = "templateId";
+    public static final String TEXT = "text";
+    public static final String TO_INTENT = "toIntent";
+    public static final String TO_STATE = "toState";
+    public static final String TYPE = "type";
+    public static final String USER_INPUT = "userInput";
+    public static final String USER_TEXT = "userText";
+    public static final String USER_PROMPT = "user_prompt";
+    public static final String VALUE = "value";
+}
