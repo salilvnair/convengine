@@ -1,7 +1,6 @@
 package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
-import com.github.salilvnair.convengine.entity.converter.OffsetDateTimeStringConverter;
 import lombok.*;
 
 import java.time.OffsetDateTime;
@@ -54,7 +53,6 @@ public class CeLlmCallLog {
     @Column(name = "error_message")
     private String errorMessage;
 
-    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 }

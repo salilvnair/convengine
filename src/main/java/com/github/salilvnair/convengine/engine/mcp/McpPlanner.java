@@ -31,15 +31,15 @@ public class McpPlanner {
     private final PromptTemplateRenderer renderer;
     private final LlmClient llm;
     private final AuditService audit;
-    private String SYSTEM_PROMPT;
-    private String USER_PROMPT;
+    private String DB_SYSTEM_PROMPT;
+    private String DB_USER_PROMPT;
     private final CeConfigResolver configResolver;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
     @PostConstruct
     public void init() {
-        SYSTEM_PROMPT = configResolver.resolveString(this, "SYSTEM_PROMPT", """
+        String defaultDbSystemPrompt = """
 
                     You are an MCP planning agent inside ConvEngine.
                
@@ -64,8 +64,8 @@ public class McpPlanner {
                     Return JSON ONLY.
 
                 
-                """);
-        USER_PROMPT = configResolver.resolveString(this, "USER_PROMPT", """
+                """;
+        String defaultDbUserPrompt = """
                 
                 
                 User input:
@@ -89,7 +89,10 @@ public class McpPlanner {
                 }
                 
                 
-                """);
+                """;
+
+        DB_SYSTEM_PROMPT = resolvePlannerPrompt("DB_SYSTEM_PROMPT", "SYSTEM_PROMPT", defaultDbSystemPrompt);
+        DB_USER_PROMPT = resolvePlannerPrompt("DB_USER_PROMPT", "USER_PROMPT", defaultDbUserPrompt);
     }
 
     public McpPlan plan(EngineSession session, List<CeMcpTool> tools, List<McpObservation> observations) {
@@ -109,8 +112,8 @@ public class McpPlanner {
                                     .extra(session.promptTemplateVars())
                                     .build();
 
-        String systemPrompt = renderer.render(SYSTEM_PROMPT, ctx);
-        String userPrompt = renderer.render(USER_PROMPT, ctx);
+        String systemPrompt = renderer.render(DB_SYSTEM_PROMPT, ctx);
+        String userPrompt = renderer.render(DB_USER_PROMPT, ctx);
 
         String schema = """
         {
@@ -127,7 +130,7 @@ public class McpPlanner {
         """;
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER, "USER_PROMPT, SYSTEM_PROMPT");
+        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER, "DB_USER_PROMPT, DB_SYSTEM_PROMPT (fallback: USER_PROMPT, SYSTEM_PROMPT)");
         inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
         inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
         inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA, schema);
@@ -154,4 +157,12 @@ public class McpPlanner {
     }
 
     private record ToolView(String tool_code, String tool_group, String description) {}
+
+    private String resolvePlannerPrompt(String primaryKey, String legacyKey, String defaultValue) {
+        String primary = configResolver.resolveString(this, primaryKey, defaultValue);
+        if (primary != null && !primary.isBlank() && !defaultValue.equals(primary)) {
+            return primary;
+        }
+        return configResolver.resolveString(this, legacyKey, defaultValue);
+    }
 }

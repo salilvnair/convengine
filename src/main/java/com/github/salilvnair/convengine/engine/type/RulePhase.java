@@ -2,7 +2,9 @@ package com.github.salilvnair.convengine.engine.type;
 
 public enum RulePhase {
     PIPELINE_RULES,
-    AGENT_POST_INTENT;
+    AGENT_POST_INTENT,
+    MCP_POST_LLM,
+    TOOL_POST_EXECUTION;
 
     public static String normalize(String raw) {
         if (raw == null || raw.isBlank()) {

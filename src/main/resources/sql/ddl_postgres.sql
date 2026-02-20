@@ -252,6 +252,28 @@ CREATE TABLE ce_rule (
 CREATE INDEX idx_ce_rule_priority ON public.ce_rule USING btree (enabled, phase, state_code, priority);
 
 
+-- public.ce_pending_action definition
+
+-- Drop table
+
+-- DROP TABLE ce_pending_action;
+
+CREATE TABLE ce_pending_action (
+                                  pending_action_id bigserial NOT NULL,
+                                  intent_code text NULL,
+                                  state_code text NULL,
+                                  action_key text NOT NULL,
+                                  bean_name text NOT NULL,
+                                  method_names text NOT NULL,
+                                  priority int4 DEFAULT 100 NOT NULL,
+                                  enabled bool DEFAULT true NOT NULL,
+                                  description text NULL,
+                                  created_at timestamptz DEFAULT now() NOT NULL,
+                                  CONSTRAINT ce_pending_action_pkey PRIMARY KEY (pending_action_id)
+);
+CREATE INDEX idx_ce_pending_action_lookup ON public.ce_pending_action USING btree (enabled, action_key, intent_code, state_code, priority);
+
+
 -- public.ce_validation_snapshot definition
 
 -- Drop table

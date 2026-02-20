@@ -355,7 +355,11 @@ public class AgentIntentResolver implements IntentResolver {
                 if (code == null || code.isBlank() || !allowedCodes.contains(code.toUpperCase())) {
                     continue;
                 }
+                // Accept both keys because some models emit "score" instead of "confidence".
                 double confidence = number(item, "confidence");
+                if (confidence <= 0.0d) {
+                    confidence = number(item, "score");
+                }
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("intent", code);
                 row.put("confidence", clamp01(confidence));

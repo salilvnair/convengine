@@ -7,13 +7,18 @@ public final class ConvEnginePayloadKey {
 
     public static final String META = "_meta";
     public static final String ACTION = "action";
+    public static final String ACTION_KEYS = "action_keys";
     public static final String ACTION_VALUE = "actionValue";
     public static final String BEAN_METHOD_NAMES = "beanMethodNames";
     public static final String BEAN_NAME = "beanName";
     public static final String CANDIDATES = "candidates";
+    public static final String CANDIDATE_COUNT = "candidateCount";
     public static final String CONFIDENCE = "confidence";
     public static final String CONTEXT = "context";
     public static final String DERIVATION_HINT = "derivation_hint";
+    public static final String DIALOGUE_ACT = "dialogueAct";
+    public static final String DIALOGUE_ACT_CONFIDENCE = "dialogueActConfidence";
+    public static final String DIALOGUE_ACT_SOURCE = "dialogueActSource";
     public static final String ERROR_CODE = "errorCode";
     public static final String EXCEPTION = "exception";
     public static final String FALLBACK_INTENT = "fallbackIntent";
@@ -37,11 +42,16 @@ public final class ConvEnginePayloadKey {
     public static final String MISSING_REQUIRED_FIELDS = "missingRequiredFields";
     public static final String OUTPUT = "output";
     public static final String OUTPUT_FORMAT = "outputFormat";
+    public static final String OPTIONS = "options";
     public static final String PATH = "path";
     public static final String PATTERN = "pattern";
+    public static final String PENDING_ACTION_REF = "pendingActionRef";
+    public static final String PENDING_ACTION_RESULT = "pendingActionResult";
+    public static final String POLICY_DECISION = "policyDecision";
     public static final String POLICY_ID = "policyId";
     public static final String PREVIOUS_INTENT = "previousIntent";
     public static final String QUESTION = "question";
+    public static final String QUESTION_SOURCE = "questionSource";
     public static final String REASON = "reason";
     public static final String RECOVERABLE = "recoverable";
     public static final String RESOLVER = "resolver";
@@ -51,6 +61,8 @@ public final class ConvEnginePayloadKey {
     public static final String RULE_EXECUTION_ORIGIN = "ruleExecutionOrigin";
     public static final String RULE_EXECUTION_SOURCE = "ruleExecutionSource";
     public static final String RULE_ID = "ruleId";
+    public static final String RULE_MCP_POST_LLM = "ruleMcpPostLlm";
+    public static final String RULE_TOOL_POST_EXECUTION = "ruleToolPostExecution";
     public static final String RULE_PHASE = "rulePhase";
     public static final String RULE_STATE_CODE = "ruleStateCode";
     public static final String RULE_TYPE = "ruleType";
@@ -65,6 +77,7 @@ public final class ConvEnginePayloadKey {
     public static final String STEP = "step";
     public static final String STEP_CLASS = "stepClass";
     public static final String STICKY_INTENT_ENABLED = "stickyIntentEnabled";
+    public static final String SKIP_INTENT_RESOLUTION = "skipIntentResolution";
     public static final String SYSTEM_PROMPT = "system_prompt";
     public static final String TEMPLATE_DESC = "templateDesc";
     public static final String TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER = "templateFromCeConfig (McpPlanner)";

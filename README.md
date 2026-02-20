@@ -1,381 +1,147 @@
 # ConvEngine Java
 
-ConvEngine is a deterministic, database-driven conversational workflow engine for enterprise use-cases.
+ConvEngine is a deterministic, database-driven conversational workflow engine.
 
-It is designed for auditable, stateful flows where intent resolution, schema extraction, rule transitions, and response generation must be explicit and traceable.
+It is designed for auditable state machines, not free-form assistant behavior. Runtime behavior is declared in `ce_*` configuration tables and executed by an ordered step pipeline.
 
 ## Version
 
 - Current library version: `1.0.15`
 
-## What Changed In 1.0.15
+## Core Capabilities
 
-Release commit: `c820cf6`
+- Deterministic intent + state progression
+- Schema-driven data collection and slot completion
+- Rule engine with ordered priorities and execution phases
+- Configurable response resolution (`EXACT` and `DERIVED`)
+- MCP tool planning + execution loop
+- Full audit timeline and trace API
+- SSE and STOMP streaming support
 
-### Schema extraction refactor + provider-owned computation
-- Refactored `SchemaExtractionStep` to be orchestration-focused and delegated schema-heavy computation to provider contract.
-- Added resolver computation model:
-  - `engine.schema.ConvEngineSchemaComputation`
-  - `ConvEngineSchemaResolver#compute(...)`
-  - `ConvEngineSchemaResolver#sanitizeExtractedJson(...)`
-  - `ConvEngineSchemaResolver#mergeContextJson(...)`
-- Default provider (`DefaultConvEngineSchemaResolver`) now owns:
-  - extracted JSON sanitization
-  - context merge behavior
-  - schema completeness checks
-  - missing required field calculation
-  - missing field enum options derivation
-- This now makes provider override clean: consumers can supply their own `ConvEngineSchemaResolver` bean (higher precedence via `@Order`) and own all schema calc behavior end-to-end.
+## API Endpoints
 
-### Input param key centralization
-- Added centralized runtime input param key constants:
-  - `engine.constants.ConvEngineInputParamKey`
-- Replaced hardcoded `session.putInputParam("...")` keys across engine/intent/rule flows with constants.
-
-### Audit stage centralization
-- Added centralized stage enum:
-  - `audit.ConvEngineAuditStage`
-- Migrated fixed audit stage literals to enum usage across:
-  - step pipeline stages
-  - response format/type resolvers
-  - MCP planner/tool stages
-  - intent resolver/collision/classifier stages
-  - audit history mapping points
-- Added helper for dynamic resolved-intent stage:
-  - `ConvEngineAuditStage.intentResolvedBy(...)`
-
-### Payload key centralization
-- Added centralized audit/payload map key constants:
-  - `engine.constants.ConvEnginePayloadKey`
-- Replaced `payload.put("...")` and related payload map key literals across ConvEngine with constants.
-
-## What Changed In 1.0.14
-
-### Rule state scope (`ce_rule.state_code`)
-- Added optional `ce_rule.state_code` to scope a rule by state.
-- Matching contract:
-  - `NULL` -> applies to all states
-  - `ANY` -> applies to all states
-  - exact value -> applies only when session state matches that value (case-insensitive)
-- This reduces unnecessary rule evaluations in unrelated states.
-
-## What Changed In 1.0.13
-
-### Audit persistence split (sync history + async/deferred audit)
-- Refactored audit persistence into strategy-based components:
-  - `audit.persistence.ImmediateAuditPersistenceStrategy`
-  - `audit.persistence.DeferredBulkAuditPersistenceStrategy`
-  - `audit.persistence.AuditPersistenceStrategyFactory`
-  - `audit.persistence.AuditDbWriter`
-- `DbAuditService` now acts as a thin orchestrator.
-
-### Conversation history guarantee for prompt templates
-- `ce_conversation_history` is now persisted synchronously on every eligible stage before `ce_audit` strategy persistence.
-- This guarantees `{{conversation_history}}` availability even when:
-  - `convengine.audit.persistence.mode=DEFERRED_BULK`
-  - `convengine.audit.dispatch.async-enabled=true`
-
-### Consumer-owned configuration
-- Removed framework-level default `application.yaml` from ConvEngine jar.
-- Consumers must define their own `convengine.*` properties in host app config.
-
-## What Changed In 1.0.12
-
-### Audit metadata enrichment for input params
-- Added normalized runtime `inputParams` into audit stage metadata (`_meta.inputParams`) across emitted audit events.
-- Added API-origin-only `userInputParams` into audit stage metadata (`_meta.userInputParams`) to preserve raw request parameters separately from framework-mutated/runtime params.
-- Added `contextDict` and `session` snapshots in `_meta` for richer runtime troubleshooting.
-- Added config toggle `convengine.audit.persist-meta` to store/drop `_meta` in persisted `ce_audit.payload_json`.
-
-### Conversation history storage
-- Added dedicated runtime table `ce_conversation_history` for prompt history usage.
-- Conversation history now stores user entries and AI entries per conversation (`USER_INPUT`, `INTENT_AI_RESPONSE`, `MCP_AI_RESPONSE`, `RESOLVE_RESPONSE_AI_RESPONSE`).
-- History provider now reads from `ce_conversation_history` instead of reconstructing from raw `ce_audit`.
-
-### API parameter isolation hardening
-- `userInputParams` is now deep-copied from request payload at controller ingress to avoid shared nested object references and later mutation bleed-through.
-- This keeps audit traces stable and deterministic even when runtime steps enrich `inputParams`.
-
-### Helper extraction for controller cleanliness
-- Moved deep-copy utility into `engine.helper.InputParamsHelper` to keep controller code thin and reusable.
-
-## What Changed In 1.0.11
-
-### Cross-database persistence hardening (SQLite, Postgres, Oracle)
-- Fixed JSON column binding for Postgres `jsonb` fields by using Hibernate JSON JDBC typing in core entities.
-- Fixed timestamp write/read compatibility for audit persistence across dialects.
-- Added dialect-aware deferred audit JDBC inserts:
-  - Postgres: JSON payload cast to `jsonb`
-  - SQLite: parse-safe timestamp text write path
-  - Oracle: native timestamp object binding
-
-### SQLite legacy data normalization safeguards
-- Added startup-time normalization for legacy SQLite runtime rows:
-  - converts numeric epoch timestamp text to parse-safe datetime text
-  - converts legacy BLOB `conversation_id` values to canonical UUID text
-- Prevents `Error parsing time stamp` failures when reading older rows.
-
-### Sticky intent semantics refinement
-- `STICKY_INTENT` no longer acts as a global intent freeze.
-- Sticky skip is now constrained to active incomplete-schema collection flows.
-- New user turns outside schema collection can re-resolve intent normally (for example `GREETINGS -> FAQ`).
-
-## What Changed In 1.0.10
-
-### Rule phase model (`ce_rule.phase`)
-- Added `ce_rule.phase` with runtime contract:
-  - `PIPELINE_RULES`
-  - `AGENT_POST_INTENT`
-- Added `RulePhase` enum and normalized phase handling.
-- `RulesStep` now executes phase-filtered rule sets.
-- Agent post-intent rule execution now runs only `AGENT_POST_INTENT` rules.
-
-### Post-intent rule execution and metadata
-- Enabled immediate post-intent rule pass in `AgentIntentResolver` after accepted intent.
-- Added rule execution metadata in `EngineSession` and `inputParams`:
-  - `postIntentRule` / `post_intent_rule`
-  - `rule_phase`
-  - `rule_execution_source`
-  - `rule_execution_origin`
-- Added phase/source metadata into rule audit payloads (`RULE_MATCHED`, `RULE_APPLIED`, `RULE_NO_MATCH`).
-
-### Sticky intent continuity (`ce_config`)
-- Added `IntentResolutionStep.STICKY_INTENT` (default `true`) to keep resolved intent/state stable across turns.
-- `IntentResolutionStep` now skips unnecessary re-resolution when intent/state are already resolved.
-- Added audit stage `INTENT_RESOLVE_SKIPPED_STICKY_INTENT` for sticky-skip visibility.
-- Explicit reset/switch/force signals still trigger intent resolution.
-
-### Prompt variable exposure (`inputParams`)
-- `promptTemplateVars()` now exposes all keys present in `inputParams`.
-- This includes runtime/system-derived keys written via `session.putInputParam(...)` (for example `publish_result`).
-- `CONTROLLED_PROMPT_KEYS` is retained, and dynamic `USER_PROMPT_KEYS` now tracks keys merged into `inputParams`.
-
-### Streaming startup validation hardening
-- Removed fragile conditional gating from stream startup validator.
-- Validator now reads stream setting via `ObjectProvider<ConvEngineStreamSettings>` in `@PostConstruct`.
-- Hardened `ConvEngineStreamEnabledCondition` to evaluate in `REGISTER_BEAN` phase and support registry fallback.
-- Prevents false-positive stream validation failures caused by bean registration timing.
-
-## What Changed In 1.0.9
-
-### Experimental SQL generation
-- Extended experimental SQL generation to return SQL grouped by table and downloadable ZIP output.
-- Added combined `seed.sql` plus per-table SQL files (`<table>.sql`) in zip payload flow.
-- Improved SQL generation response model for consumer tooling and import workflows.
-- Tightened SQL generation documentation and prompt guidance to keep output aligned with latest DDL and runtime enums.
-
-## What Changed In 1.0.8 (Revamp Summary)
-
-### Engine and pipeline
-- Added full step lifecycle audit stages: `STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`.
-- Added `EngineStepHook` extension point for before/after/error step intervention.
-- Added typed step matching using `EngineStep.Name` enum (string fallback retained for compatibility).
-- Added `ResetConversationStep` (input/message driven reset).
-- Added `ResetResolvedIntentStep` (intent-driven reset via `ce_config`).
-- Added `PipelineEndGuardStep` protection and broader pipeline consistency checks.
-
-### Session and intent continuity
-- `EngineSession` hardened for controlled prompt variable exposure (`promptTemplateVars()`).
-- Added intent-lock lifecycle so incomplete schema collection does not repeatedly re-resolve intent.
-- Added full restart/reset state cleanup via `resetForConversationRestart()`.
-- Added persisted conversation bootstrap safety in `EngineSessionFactory`.
-
-### Audit, trace, streaming
-- Added normalized trace API: `GET /api/v1/conversation/audit/{conversationId}/trace`.
-- Added stage filtering/verbosity/rate limiting (`convengine.audit.*`).
-- Added configurable audit dispatch modes with backpressure controls.
-- Added configurable persistence mode for audit: `IMMEDIATE` or `DEFERRED_BULK`.
-- Added SSE transport and STOMP/WebSocket transport as pluggable audit streams.
-- Added optional STOMP broker relay mode (`SIMPLE` or `RELAY`).
-
-### Experimental capabilities
-- Added experimental SQL generation endpoint:
-  - `POST /api/v1/conversation/experimental/generate-sql`
-- Added SQL generation guide in classpath prompt resource:
-  - `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
-- SQL generator covers non-transactional `ce_*` tables and excludes runtime tables.
-
-### Rule/action naming updates
-- Rule action `GET_SCHEMA_EXTRACTED_DATA` migrated to `GET_SCHEMA_JSON`.
-
-## Core API
-
-### Endpoints
 - `POST /api/v1/conversation/message`
 - `GET /api/v1/conversation/audit/{conversationId}`
 - `GET /api/v1/conversation/audit/{conversationId}/trace`
-- `GET /api/v1/conversation/stream/{conversationId}` (SSE)
+- `GET /api/v1/conversation/stream/{conversationId}`
 - `POST /api/v1/conversation/experimental/generate-sql` (feature-flagged)
 
-## Runtime Step Set (Canonical)
+## Runtime Step Pipeline
 
-1. `LoadOrCreateConversationStep`
-2. `ResetConversationStep`
-3. `PersistConversationBootstrapStep`
-4. `AuditUserInputStep`
-5. `PolicyEnforcementStep`
-6. `IntentResolutionStep`
-7. `ResetResolvedIntentStep`
-8. `FallbackIntentStateStep`
-9. `AddContainerDataStep`
-10. `McpToolStep`
-11. `SchemaExtractionStep`
-12. `AutoAdvanceStep`
-13. `RulesStep`
-14. `ResponseResolutionStep`
-15. `PersistConversationStep`
-16. `PipelineEndGuardStep`
+Step order is DAG-resolved from annotations (`@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`) and validated at startup.
 
-Order is enforced by step annotations (`@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`) and pipeline DAG validation.
+Main runtime stages:
 
-## Control Plane Data Model
+1. Conversation bootstrap/load/reset
+2. User input audit + policy checks
+3. Dialogue-act classification
+4. Interaction policy decision
+5. Action lifecycle/disambiguation/guardrail
+6. Intent resolution + fallback/reset handling
+7. Container data and MCP/tool orchestration
+8. Schema extraction + auto-advance facts
+9. Rules execution (multi-pass)
+10. State graph validation (validate mode)
+11. Response resolution
+12. Memory update
+13. Persist + pipeline end guard
 
-### Non-transactional configuration tables
+## Data Model
+
+### Control-plane (configuration) tables
+
 - `ce_config`
 - `ce_container_config`
 - `ce_intent`
 - `ce_intent_classifier`
-- `ce_mcp_tool`
 - `ce_output_schema`
-- `ce_policy`
 - `ce_prompt_template`
 - `ce_response`
 - `ce_rule`
+- `ce_policy`
+- `ce_mcp_tool`
 - `ce_mcp_db_tool`
+- `ce_pending_action`
 
 ### Runtime/transactional tables
+
 - `ce_conversation`
 - `ce_audit`
 - `ce_conversation_history`
 - `ce_llm_call_log`
 - `ce_validation_snapshot`
 
-## Enum / Value Matrix (Current)
+## Enum Contracts
 
 ### `ce_response`
+
 - `response_type`: `EXACT`, `DERIVED`
 - `output_format`: `TEXT`, `JSON`
 
 ### `ce_prompt_template`
+
 - `response_type`: `TEXT`, `JSON`, `SCHEMA_JSON`
 
 ### `ce_rule`
+
 - `rule_type`: `EXACT`, `REGEX`, `JSON_PATH`
-- `phase`: `PIPELINE_RULES`, `AGENT_POST_INTENT`
-- `state_code`: `NULL` (all states), `ANY` (all states), or a specific `state_code`
+- `phase`: `PIPELINE_RULES`, `AGENT_POST_INTENT`, `MCP_POST_LLM`, `TOOL_POST_EXECUTION`
 - `action`: `SET_INTENT`, `SET_STATE`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`
+- `state_code`: `NULL`, `ANY`, or exact state
 
 ### `ce_intent_classifier`
+
 - `rule_type`: `REGEX`, `CONTAINS`, `STARTS_WITH`
 
-## Reset Semantics
+## Flow Configuration (application.yml)
 
-Conversation reset can be triggered by:
-- request body: `reset=true`
-- input params: `reset=true` or `restart=true` or `conversation_reset=true`
-- message commands: `reset`, `restart`, `/reset`, `/restart`
-- resolved intent code matched by config key `RESET_INTENT_CODES`
+Flow behavior is file-configured from consumer app config.
 
-### Intent-driven reset config
-
-```sql
-INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled)
-VALUES (100, 'ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,START_OVER', true);
+```yaml
+convengine:
+  flow:
+    dialogue-act:
+      resolute: REGEX_THEN_LLM # REGEX_ONLY | REGEX_THEN_LLM | LLM_ONLY
+      llm-threshold: 0.90
+    interaction-policy:
+      execute-pending-on-affirm: true
+      reject-pending-on-negate: true
+      fill-pending-slot-on-non-new-request: true
+      require-resolved-intent-and-state: true
+      matrix:
+        "PENDING_ACTION:AFFIRM": EXECUTE_PENDING_ACTION
+        "PENDING_ACTION:NEGATE": REJECT_PENDING_ACTION
+        "PENDING_SLOT:QUESTION": FILL_PENDING_SLOT
+    action-lifecycle:
+      enabled: true
+      ttl-turns: 3
+      ttl-minutes: 30
+    disambiguation:
+      enabled: true
+      max-options: 5
+    guardrail:
+      enabled: true
+      sanitize-input: true
+      require-approval-for-sensitive-actions: false
+      approval-gate-fail-closed: false
+      sensitive-patterns: []
+    state-graph:
+      enabled: true
+      soft-block-on-violation: false
+      allowed-transitions: {}
+    tool-orchestration:
+      enabled: true
+    memory:
+      enabled: true
+      summary-max-chars: 1200
+      recent-turns-for-summary: 3
 ```
 
-Default reset intent code is `RESET_SESSION`.
+Consumer contract details:
 
-### Sticky intent config
+- `docs/consumer-contract-v2.md`
 
-When sticky intent is enabled, ConvEngine keeps the current intent stable only while schema collection is incomplete.  
-Outside active schema collection, intent can be re-resolved on subsequent turns.
-
-```sql
-INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled)
-VALUES (101, 'IntentResolutionStep', 'STICKY_INTENT', 'true', true);
-```
-
-## Consumer Bootstrapping
-
-```java
-import com.github.salilvnair.convengine.annotation.EnableConvEngine;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-@EnableConvEngine(stream = true)
-@SpringBootApplication
-public class MyApplication {
-  public static void main(String[] args) {
-    SpringApplication.run(MyApplication.class, args);
-  }
-}
-```
-
-### Optional feature annotations
-
-```java
-import com.github.salilvnair.convengine.annotation.EnableConvEngineAsyncAuditDispatch;
-import com.github.salilvnair.convengine.annotation.EnableConvEngineStompBrokerRelay;
-
-@EnableConvEngineAsyncAuditDispatch
-@EnableConvEngineStompBrokerRelay
-```
-
-## Required Consumer Bean
-
-Provide an `LlmClient` implementation from consumer app.
-
-```java
-public interface LlmClient {
-  String generateText(String hint, String contextJson);
-  String generateJson(String hint, String jsonSchema, String contextJson);
-  float[] generateEmbedding(String input);
-}
-```
-
-## Engine Extension Points
-
-### 1) Step hooks (`EngineStepHook`)
-
-```java
-import com.github.salilvnair.convengine.engine.hook.EngineStepHook;
-import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
-import com.github.salilvnair.convengine.engine.session.EngineSession;
-import org.springframework.stereotype.Component;
-
-@Component
-public class SchemaHintHook implements EngineStepHook {
-  @Override
-  public boolean supports(EngineStep.Name stepName, EngineSession session) {
-    return EngineStep.Name.SchemaExtractionStep == stepName;
-  }
-
-  @Override
-  public void beforeStep(EngineStep.Name stepName, EngineSession session) {
-    session.putInputParam("consumer_hint", "compact");
-  }
-}
-```
-
-### 2) Response transformation
-- `@ResponseTransformer` + `ResponseTransformerHandler`
-
-### 3) Container transformation/interception
-- `@ContainerDataTransformer` + `ContainerDataTransformerHandler`
-- `@ContainerDataInterceptor`
-
-## Streaming Transport
-
-### `@EnableConvEngine(stream = true)` behavior
-- Startup fails if both transports are disabled:
-  - `convengine.transport.sse.enabled=false`
-  - `convengine.transport.stomp.enabled=false`
-
-### `@EnableConvEngine(stream = false)` behavior
-- Streaming transport checks are skipped.
-- Core REST flow remains active.
-
-### Transport configuration
+## Streaming Configuration
 
 ```yaml
 convengine:
@@ -393,21 +159,9 @@ convengine:
       sock-js: true
       broker:
         mode: SIMPLE # SIMPLE | RELAY
-        relay-destination-prefixes: /topic,/queue
-        relay-host: localhost
-        relay-port: 61613
-        client-login: ""
-        client-passcode: ""
-        system-login: ""
-        system-passcode: ""
-        virtual-host: ""
-        system-heartbeat-send-interval-ms: 10000
-        system-heartbeat-receive-interval-ms: 10000
 ```
 
-## Audit Controls
-
-Define these properties in your consumer application config (`application.yml` or `application.properties`).
+## Audit Configuration
 
 ```yaml
 convengine:
@@ -424,173 +178,62 @@ convengine:
       flush-stages: ENGINE_KNOWN_FAILURE,ENGINE_UNKNOWN_FAILURE
       final-step-names: PipelineEndGuardStep
       flush-on-stop-outcome: true
-    dispatch:
-      async-enabled: false
-      worker-threads: 2
-      queue-capacity: 2000
-      rejection-policy: CALLER_RUNS # CALLER_RUNS | DROP_NEWEST | DROP_OLDEST | ABORT
-      keep-alive-seconds: 60
-    rate-limit:
-      enabled: false
-      max-events: 200
-      window-ms: 1000
-      per-conversation: true
-      per-stage: true
-      max-tracked-buckets: 20000
 ```
 
-## Audit Flow (REST + Stream)
+## Consumer Setup
 
-1. Client calls `POST /message`.
-2. Engine executes pipeline.
-3. Conversation history entries are persisted to `ce_conversation_history` synchronously.
-4. Stages are persisted to `ce_audit` using configured persistence mode.
-5. Audit listeners publish to enabled SSE/STOMP channels.
-6. Client can consume:
-   - `GET /audit/{conversationId}`
-   - `GET /audit/{conversationId}/trace`
-   - live SSE/STOMP events
+```java
+import com.github.salilvnair.convengine.annotation.EnableConvEngine;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-## Frontend Integration (TypeScript SSE Helper)
-
-Use this from a Vite/React client (or any TS frontend) to call REST `/message` and subscribe to stream events.
-
-```ts
-const API_BASE = "/api/v1/conversation";
-
-export type SseStage =
-  | "CONNECTED"
-  | "USER_INPUT"
-  | "STEP_ENTER"
-  | "STEP_EXIT"
-  | "STEP_ERROR"
-  | "ASSISTANT_OUTPUT"
-  | "ENGINE_RETURN";
-
-export interface ConversationEvent<T = unknown> {
-  stage: SseStage;
-  data: T | null;
-  raw: MessageEvent;
-}
-
-export interface StreamHandlers<T = unknown> {
-  onConnected?: () => void;
-  onEvent?: (event: ConversationEvent<T>) => void;
-  onError?: (error: Event) => void;
-  onClosed?: () => void;
-}
-
-export async function sendMessage(
-  conversationId: string,
-  message: string,
-  inputParams: Record<string, unknown> = {},
-  reset = false
-) {
-  const res = await fetch(`${API_BASE}/message`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ conversationId, message, inputParams, reset })
-  });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
-}
-
-export function subscribeConversationSse<T = unknown>(
-  conversationId: string,
-  handlers: StreamHandlers<T> = {}
-) {
-  const source = new EventSource(`${API_BASE}/stream/${conversationId}`);
-  const stages: SseStage[] = [
-    "CONNECTED",
-    "USER_INPUT",
-    "STEP_ENTER",
-    "STEP_EXIT",
-    "STEP_ERROR",
-    "ASSISTANT_OUTPUT",
-    "ENGINE_RETURN"
-  ];
-
-  source.onopen = () => handlers.onConnected?.();
-  source.onerror = (error) => handlers.onError?.(error);
-
-  stages.forEach((stage) => {
-    source.addEventListener(stage, (event) => {
-      let data: T | null = null;
-      try {
-        data = (event as MessageEvent).data ? JSON.parse((event as MessageEvent).data) as T : null;
-      }
-      catch {
-        data = null;
-      }
-      handlers.onEvent?.({ stage, data, raw: event as MessageEvent });
-    });
-  });
-
-  return {
-    close() {
-      source.close();
-      handlers.onClosed?.();
-    }
-  };
+@EnableConvEngine(stream = true)
+@SpringBootApplication
+public class MyApplication {
+  public static void main(String[] args) {
+    SpringApplication.run(MyApplication.class, args);
+  }
 }
 ```
 
-## Audit and Trace APIs
+Required consumer bean:
 
-### Raw audit
-- `GET /api/v1/conversation/audit/{conversationId}`
-
-### Normalized trace
-- `GET /api/v1/conversation/audit/{conversationId}/trace`
-- Includes:
-  - step timeline (`STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`)
-  - stage stream in order
-  - source class metadata
-
-## Experimental SQL Generation
-
-Enable flag:
-
-```yaml
-convengine:
-  experimental:
-    enabled: true
-```
-
-Endpoint:
-- `POST /api/v1/conversation/experimental/generate-sql`
-
-Request:
-
-```json
-{
-  "scenario": "Disconnect electricity for account",
-  "domain": "utilities",
-  "constraints": "Collect accountNumber and disconnectDate first",
-  "includeMcp": true
+```java
+public interface LlmClient {
+  String generateText(String hint, String contextJson);
+  String generateJson(String hint, String jsonSchema, String contextJson);
+  float[] generateEmbedding(String input);
 }
 ```
 
-Response fields:
-- `success`
-- `sql`
-- `warnings`
-- `note`
+## Extension Points
 
-Safety constraints include forbidden statement detection and required-table coverage checks.
+- `EngineStepHook`
+- `RuleActionResolver` (custom rule actions)
+- `CeRuleTask`/`CeTask` task beans for `SET_TASK`
+- `ResponseTransformer` / container interceptors
+- MCP tool executors/adapters by tool group
 
-## Notes
+## Reset Semantics
 
-- SQL generation reference guide lives at:
-  - `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
-- DDL by dialect lives at:
-  - `src/main/resources/sql/ddl_postgres.sql` (legacy: `src/main/resources/sql/ddl.sql`)
-  - `src/main/resources/sql/ddl_oracle.sql`
-  - `src/main/resources/sql/ddl_sqlite.sql`
+Reset can be triggered by:
 
-## Design Principles
+- request `reset=true`
+- input params `reset=true`, `restart=true`, `conversation_reset=true`
+- user text commands (`reset`, `restart`, `/reset`, `/restart`)
+- configured reset intents (`ResetResolvedIntentStep.RESET_INTENT_CODES`)
 
-- Keep behavior in DB config first.
-- Keep runtime deterministic and auditable.
-- Use LLM only in constrained, schema-bound paths.
-- Prefer explicit `ce_rule` transitions over hidden branching logic.
+## SQL Generation
+
+See:
+
+- `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
+
+This is the authoritative guide for generating `INSERT`-only control-plane seed SQL aligned to current DDL and runtime contracts.
+
+## Engineering Notes
+
+- Prefer behavior changes in tables/config before code changes.
+- Keep rule transitions explicit and auditable.
+- Keep prompts schema-aware and constrained.
+- Validate with audit trace before rollout.
