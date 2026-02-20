@@ -14,7 +14,7 @@ Do not treat ConvEngine as an unconstrained chatbot runtime.
 
 ## Current Baseline
 
-- Library version: `1.0.15`
+- Library version: `2.0.0`
 - Property namespace for flow tuning: `convengine.flow.*`
 
 ## Core Operating Model
@@ -65,6 +65,9 @@ No `prompt_template_code`.
 
 Catalog of action candidates by intent/state/action key.
 
+Catalog of action candidates by intent/state/action key. 
+When creating `CePendingAction` rows, ensure they are paired with a corresponding Tool/Task executing the logic, and ensure `InteractionPolicy` configuration accurately maps `PENDING_ACTION:AFFIRM` to execution.
+
 Runtime lifecycle (`OPEN`, `IN_PROGRESS`, `EXECUTED`, `REJECTED`, `EXPIRED`) is maintained in context (`pending_action_runtime`), not in this table.
 
 ## Step Design Rules
@@ -98,7 +101,8 @@ At minimum ensure visibility for:
 
 ## MCP + Tooling
 
-Tool routing is by `tool_group` with executor adapters.
+Tool routing is by `tool_group` with executor adapters. 
+**CRITICAL**: As of v2.0.0, ALL Tools *must* respect conversational scope. Tools should specify an `intent_code` and `state_code` to restrict when the planner is allowed to call them. Avoid creating "global" tools where `intent_code` IS NULL unless absolutely required (e.g., FAQ searching).
 
 Supported canonical groups:
 

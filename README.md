@@ -6,7 +6,52 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `1.0.15`
+- Current library version: `2.0.0`
+
+## Detailed Architecture Upgrades (v2.0.0)
+
+### 1. Robust Pending Action & Task Execution Lifecycle
+- **Introduction of `ce_pending_action`**: A new core configuration table used to catalog multi-turn action candidates by intent, state, and `action_key`. Features indexed lookups `idx_ce_pending_action_lookup` across `enabled`, `action_key`, `intent_code`, and `state_code`.
+- **`PendingActionRepository`**: Added Spring Data JPA queries focused on filtering eligible actions by phase, intent (`intentCode IS NULL OR ...`), state (`stateCode IS NULL OR ...`), and enabled status, ordering strictly by integer `priority`.
+- **`CePendingAction` Entity**: A JPA entity mapping to `ce_pending_action` with `bean_name`, `method_names`, `priority`, `intent_code`, and `state_code` enabling highly parameterized late-binding invocations.
+- **`ActionLifecycleStep`**: A top-level orchestration step responsible for managing the state transitions of modular pending actions within the conversation. Actions are stored in the session context as `IN_PROGRESS` pending definitive confirmation from the user. It evaluates configurable Time-To-Live parameters (`convengine.flow.action-lifecycle.ttl-turns` and `ttl-minutes`).
+- **`PendingActionStep`**: A core execution step designed to finalize these actions. It routes the action to the corresponding `bean_name` and `method_names` if the user successfully confirms the action sequence.
+- **`CeTaskExecutor`**: A specialized executor pattern designed to securely evaluate and invoke pending tasks synchronously within the strict temporal limits of the conversational turn.
+- **Context Lifecycle Persistence**: The engine tracks the holistic lifecycle of these actions (`OPEN`, `IN_PROGRESS`, `EXECUTED`, `REJECTED`, `EXPIRED`) purely in the stringified JSON memory context map (`pending_action_runtime`), meticulously decoupled from the static table definition.
+- **Disambiguation Matrix Controls**: Pending actions that are ambiguous or require explicit missing slot inputs before execution dynamically trigger the new disambiguation mechanisms to halt execution, stash the context, and query the user.
+
+### 2. Deterministic Interaction Policies & Dialogue Acts
+- **`DialogueActStep`**: A brand new classification pipeline step heavily augmenting the traditional NLP pass. Instead of relying purely on heavy LLM intent classification for simple operational conversational shifts, this step evaluates the user's raw input against fast strict Pattern Regex patterns (`AFFIRM`, `NEGATE`, `EDIT`, `RESET`) before triggering fallback heuristic LLM logic.
+- **Dialogue Act Taxonomy**: Standardized ENUM classification integrated precisely into `ConvEngineInputParamKey.DIALOGUE_ACT` including `AFFIRM` (yes, proceed), `NEGATE` (no, cancel), `EDIT` (change something), `RESET` (start over), `QUESTION` (inquiry), and `NEW_REQUEST` (topic switch).
+- **`DialogueActResolveMode` Enum**: Explicit execution evaluation modes (`REGEX_ONLY`, `REGEX_THEN_LLM`, `LLM_ONLY`) allowing the system to rapidly identify acts using extremely fast regex thresholds prior to paying LLM generation costs.
+- **`InteractionPolicyStep` & `InteractionPolicyDecision`**: The primary "brain" of the v2 matrix routing implementation. This step evaluates the `DialogueAct` alongside the current discrete `SessionState`. For instance, if a pending action is marked `IN_PROGRESS` in memory, and the new turn evaluates to the act `AFFIRM`, it makes an instantaneous deterministic policy decision `EXECUTE_PENDING_ACTION`. If it evaluates to `NEGATE`, it selects `REJECT_PENDING_ACTION`. If it's `QUESTION`, it evaluates to `FILL_PENDING_SLOT`. This massive enhancement completely bypasses stochastic LLM generative behaviors for discrete boolean pathing.
+
+### 3. Strict MCP Tool Management and Orchestration Scoping
+- **`CeMcpTool` Scope Isolation**: The `intent_code` and `state_code` columns were physically integrated into the `ce_mcp_tool` table architecture to formally mandate extreme compartmentalization of tool access limits. Tools are strictly bound to domains and are no longer assumed "global by default."
+- **`McpToolRepository` Refactoring**: Updated JPQL definitions in the repository (`findEnabledByIntentAndState`, `findByToolCodeEnabledAndIntentAndState`) leveraging the Spring Data `@Param` annotation to guarantee tools are flawlessly filtered. The internal `McpPlanner` is logically isolated from discovering tools sitting externally to the current active conversational domain intent scope.
+- **`McpToolRegistry` Improvements**: A hardened centralized registry mechanism uniquely responsible for standardizing `tool_group` domains and resolving perfectly legal tools for a given conversation cycle loop, mathematically preventing hallucinations where an LLM invokes an unbound tool.
+- **`McpToolExecutor` Interface Expansion**: Designed a formalized executor functional contract natively implemented by a vast array of specialized business adapters for standardized output structures.
+- **New Executor Adapter Implementations**: Delivered fully mocked execution wrappers capable of expanding to live implementations:
+  - `McpDbToolExecutor`: For parsing database querying and modification parameter mapping tools.
+  - `McpHttpApiToolExecutor`: For serializing outbound REST/SOAP API tool integrations.
+  - `McpWorkflowActionToolExecutor`: For complex cross-system async workflow pipeline triggers.
+  - `McpDocumentRetrievalToolExecutor`: For executing dynamic RAG (Retrieval-Augmented Generation) Knowledge Base queries.
+  - `McpCalculatorTransformToolExecutor`: For executing deterministic programmatic mathematical transformations.
+  - `McpFileToolExecutor`: For OS-level file parsing, reading, generation, and file management tools.
+  - `McpNotificationToolExecutor`: For serializing logic aimed at SMS/Email/Push notification gateways.
+- **Early-Exit Execution Guardrails**: `ToolOrchestrationStep` and `McpToolStep` logic matrices were fortified to immediately halt and bypass tool discovery planning on simple conversational greetings (e.g., regex checks against `hi`, `hello`, `good morning`) or explicit internal dialogue acts (`AFFIRM`, `NEGATE`) to drastically curb overhead computational latency and expensive LLM generative token expenditures.
+
+### 4. Advanced Pipeline Governance: Memory, Guardrails, and Graphs
+- **`GuardrailStep` Framework**: A foundational preventative pipeline step strategically positioned to screen dynamic inputs against hardcoded blocked configuration patterns or sanitize output payload injections before advancing. Generates robust metrics to soft-block or strictly hard-block the `ConvEngineInputParamKey.STATE_GRAPH_VALID` control parameter.
+- **`DisambiguationStep` Integration**: An autonomous discrete evaluation system boundary. If multiple valid intents or competing multi-turn pending actions exhibit mathematically adjacent probabilities (Confidence score collisions), this step halts the internal execution state transitions and forces a deterministic query back to the end user for explicit disambiguation.
+- **`StateGraphStep` Validation**: Built an internal compliance enforcement algorithm explicitly assessing whether the current proposed transition route from `State A -> State B` functionally complies with the statically mapped topologies inside the `convengine.flow.state-graph.allowed-transitions` logic limits.
+- **`MemoryStep` and `ConversationMemoryStore` Context Modeling**: Engineered a long-term conversation compression service layer. The orchestration engine dynamically aggregates rolling conversation turns bounded by the `recent-turns-for-summary` threshold and compresses them into a highly compact `ConvEngineInputParamKey.MEMORY_SESSION_SUMMARY`. This drastically scales up context capacities, permitting the underlying LLM to seamlessly address sliding-window follow-up questions without wasting tokens continuously re-parsing huge historical payload stacks.
+
+### 5. Deterministic Evaluation and Replay CI/CD Logics
+- **`ConversationReplayService` Orchestration**: Wrote advanced system test capabilities modeled exclusively for deep auditing metrics and automated CI/CD gating strategies. It fundamentally enables developers to parse a target `conversation_id` string into the service to perfectly replay historical conversational turns sequentially across the precise state parameters to test robustness over time.
+- **`TraceExpectation` Object Structure**: Represents the mathematical and contextual logical assertions required during a turn replay scenario (e.g., `Assert Intent == X`, `Assert Dialogue Act == Y`).
+- **`TraceReplayResult` & `TraceTurnResult` Analytics**: Deployed overarching replay evaluation metrics classes designed to empower automated pipelines with the tooling necessary to validate whether newly submitted behavior rules applied directly within `ce_rule` or `ce_policy` unexpectedly fractured long-standing static historically recorded conversation progression structures.
+- **SQL Initialization DDL Enhancements**: Segmented and significantly refactored database procedural seeding generation structures intended for clean, error-free automated platform tests. Explicitly divided the sprawling monolithic `ddl.sql` logic into dedicated dialect-specific SQL instances (`seed_sqlite.sql`, `seed_postgres.sql`, `seed_oracle.sql`). Spliced all auto-generated DBeaver boilerplate syntax elements and strategically configured dependency-oriented `DROP TABLE` definitions to ensure identically idempotent and stateless automated unit test deployment loops continuously without breaking consistency schemas.
 
 ## Core Capabilities
 
