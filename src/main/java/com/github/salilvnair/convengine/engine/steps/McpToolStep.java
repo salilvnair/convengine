@@ -51,22 +51,38 @@ public class McpToolStep implements EngineStep {
             return new StepResult.Continue();
         }
 
+        String dAct = String.valueOf(session.getInputParams().get(ConvEngineInputParamKey.DIALOGUE_ACT));
+        if (dAct != null && !dAct.isBlank() && !"null".equalsIgnoreCase(dAct)) {
+            if ("AFFIRM".equalsIgnoreCase(dAct) || "NEGATE".equalsIgnoreCase(dAct)
+                    || "EDIT".equalsIgnoreCase(dAct) || "RESET".equalsIgnoreCase(dAct)) {
+                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, "SKIPPED_DIALOGUE_ACT");
+                return new StepResult.Continue();
+            }
+        }
+
+        String userText = session.getUserText();
+        if (userText != null && userText.trim().toLowerCase()
+                .matches("^(hi|hello|hey|greetings|good morning|good afternoon|good evening)\\b.*")) {
+            session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, "SKIPPED_GREETING");
+            return new StepResult.Continue();
+        }
+
         if (session.hasPendingClarification()) {
             audit.audit(
                     ConvEngineAuditStage.MCP_SKIPPED_PENDING_CLARIFICATION,
                     session.getConversationId(),
                     mapOf(
                             "intent", session.getIntent(),
-                            "state", session.getState()
-                    )
-            );
+                            "state", session.getState()));
             return new StepResult.Continue();
         }
 
-        List<CeMcpTool> tools = registry.listEnabledTools();
+        List<CeMcpTool> tools = registry.listEnabledTools(session.getIntent(), session.getState());
 
         if (CollectionUtils.isEmpty(tools)) {
-            audit.audit(ConvEngineAuditStage.MCP_NO_TOOLS_AVAILABLE, session.getConversationId(), Map.of());
+            session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, "NO_TOOLS_FOR_SCOPE");
+            audit.audit(ConvEngineAuditStage.MCP_NO_TOOLS_AVAILABLE, session.getConversationId(),
+                    mapOf("intent", session.getIntent(), "state", session.getState()));
             return new StepResult.Continue();
         }
 
@@ -83,21 +99,23 @@ public class McpToolStep implements EngineStep {
             session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_ARGS, plan.args() == null ? Map.of() : plan.args());
 
             if ("ANSWER".equalsIgnoreCase(plan.action())) {
-                // store final answer in contextJson; your ResponseResolutionStep can use it via derivation_hint
+                // store final answer in contextJson; your ResponseResolutionStep can use it via
+                // derivation_hint
                 writeFinalAnswerToContext(session, plan.answer());
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, plan.answer() == null ? "" : plan.answer());
+                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
+                        plan.answer() == null ? "" : plan.answer());
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, "ANSWER");
                 audit.audit(
                         ConvEngineAuditStage.MCP_FINAL_ANSWER,
                         session.getConversationId(),
-                        mapOf("answer", plan.answer())
-                );
+                        mapOf("answer", plan.answer()));
                 break;
             }
 
             if (!"CALL_TOOL".equalsIgnoreCase(plan.action())) {
                 writeFinalAnswerToContext(session, "I couldn't decide the next tool step safely.");
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, "I couldn't decide the next tool step safely.");
+                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
+                        "I couldn't decide the next tool step safely.");
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, "FALLBACK");
                 break;
             }
@@ -108,10 +126,9 @@ public class McpToolStep implements EngineStep {
             audit.audit(
                     ConvEngineAuditStage.MCP_TOOL_CALL,
                     session.getConversationId(),
-                    mapOf("tool_code", toolCode, "args", args)
-            );
+                    mapOf("tool_code", toolCode, "args", args));
 
-            CeMcpTool tool = registry.requireTool(toolCode);
+            CeMcpTool tool = registry.requireTool(toolCode, session.getIntent(), session.getState());
             String toolGroup = registry.normalizeToolGroup(tool.getToolGroup());
             session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_GROUP, toolGroup);
 
@@ -125,19 +142,18 @@ public class McpToolStep implements EngineStep {
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, "TOOL_RESULT");
 
                 audit.audit(
-                    ConvEngineAuditStage.MCP_TOOL_RESULT,
-                    session.getConversationId(),
-                    mapOf("tool_code", toolCode, "tool_group", toolGroup, "rows", rowsJson)
-                );
+                        ConvEngineAuditStage.MCP_TOOL_RESULT,
+                        session.getConversationId(),
+                        mapOf("tool_code", toolCode, "tool_group", toolGroup, "rows", rowsJson));
 
             } catch (Exception e) {
                 audit.audit(
                         ConvEngineAuditStage.MCP_TOOL_ERROR,
                         session.getConversationId(),
-                        mapOf("tool_code", toolCode, "tool_group", toolGroup, "error", String.valueOf(e.getMessage()))
-                );
+                        mapOf("tool_code", toolCode, "tool_group", toolGroup, "error", String.valueOf(e.getMessage())));
                 writeFinalAnswerToContext(session, "Tool execution failed safely. Can you narrow the request?");
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, "Tool execution failed safely. Can you narrow the request?");
+                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
+                        "Tool execution failed safely. Can you narrow the request?");
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, "TOOL_ERROR");
                 break;
             }
@@ -162,7 +178,8 @@ public class McpToolStep implements EngineStep {
     }
 
     // -------------------------------------------------
-    // contextJson storage: { "mcp": { "observations": [...], "finalAnswer": "..." } }
+    // contextJson storage: { "mcp": { "observations": [...], "finalAnswer": "..." }
+    // }
     // -------------------------------------------------
 
     private List<McpObservation> readObservationsFromContext(EngineSession session) {
@@ -170,13 +187,15 @@ public class McpToolStep implements EngineStep {
             ObjectNode root = ensureContextObject(session);
             JsonNode mcp = root.path("mcp");
             JsonNode obs = mcp.path("observations");
-            if (!obs.isArray()) return new ArrayList<>();
+            if (!obs.isArray())
+                return new ArrayList<>();
 
             List<McpObservation> list = new ArrayList<>();
             for (JsonNode n : obs) {
                 String tool = n.path("toolCode").asText(null);
                 String json = n.path("json").asText(null);
-                if (tool != null && json != null) list.add(new McpObservation(tool, json));
+                if (tool != null && json != null)
+                    list.add(new McpObservation(tool, json));
             }
             return list;
         } catch (Exception e) {
@@ -199,7 +218,8 @@ public class McpToolStep implements EngineStep {
             mcp.set("observations", arr);
 
             session.setContextJson(mapper.writeValueAsString(root));
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private void writeFinalAnswerToContext(EngineSession session, String answer) {
@@ -208,14 +228,17 @@ public class McpToolStep implements EngineStep {
             ObjectNode mcp = root.withObject("mcp");
             mcp.put("finalAnswer", answer == null ? "" : answer);
             session.setContextJson(mapper.writeValueAsString(root));
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private ObjectNode ensureContextObject(EngineSession session) throws Exception {
         String ctx = session.getContextJson();
-        if (ctx == null || ctx.isBlank()) return mapper.createObjectNode();
+        if (ctx == null || ctx.isBlank())
+            return mapper.createObjectNode();
         JsonNode n = mapper.readTree(ctx);
-        if (n instanceof ObjectNode o) return o;
+        if (n instanceof ObjectNode o)
+            return o;
         return mapper.createObjectNode();
     }
 
@@ -234,9 +257,9 @@ public class McpToolStep implements EngineStep {
             audit.audit(
                     "MCP_CONTEXT_CLEARED",
                     session.getConversationId(),
-                    Map.of()
-            );
-        } catch (Exception ignored) {}
+                    Map.of());
+        } catch (Exception ignored) {
+        }
     }
 
     private Map<String, Object> mapOf(Object... kvPairs) {

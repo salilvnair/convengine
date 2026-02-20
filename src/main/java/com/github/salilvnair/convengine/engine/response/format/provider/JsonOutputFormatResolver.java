@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.response.format.core.OutputFormatResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
@@ -66,11 +67,11 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
         );
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.DERIVATION_HINT, safe(response.getDerivationHint()));
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA, response.getJsonSchema());
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SESSION, session.eject());
+        inputPayload.put(ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
+        inputPayload.put(ConvEnginePayloadKey.USER_PROMPT, userPrompt);
+        inputPayload.put(ConvEnginePayloadKey.DERIVATION_HINT, safe(response.getDerivationHint()));
+        inputPayload.put(ConvEnginePayloadKey.SCHEMA, response.getJsonSchema());
+        inputPayload.put(ConvEnginePayloadKey.SESSION, session.eject());
         audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_INPUT, session.getConversationId(), inputPayload);
 
         String json =
@@ -84,7 +85,7 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
         session.setLastLlmStage("RESPONSE_JSON");
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.OUTPUT, json);
+        outputPayload.put(ConvEnginePayloadKey.OUTPUT, json);
         audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT, session.getConversationId(), outputPayload);
 
         applyIntentAndStateOverride(json, session);

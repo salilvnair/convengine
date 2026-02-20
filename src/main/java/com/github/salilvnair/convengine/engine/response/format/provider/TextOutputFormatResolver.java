@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.response.format.provider;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.response.format.core.OutputFormatResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
@@ -66,10 +67,10 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
         );
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.DERIVATION_HINT, safe(response.getDerivationHint()));
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SESSION, session.eject());
+        inputPayload.put(ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
+        inputPayload.put(ConvEnginePayloadKey.USER_PROMPT, userPrompt);
+        inputPayload.put(ConvEnginePayloadKey.DERIVATION_HINT, safe(response.getDerivationHint()));
+        inputPayload.put(ConvEnginePayloadKey.SESSION, session.eject());
         audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_INPUT, session.getConversationId(), inputPayload);
 
         String text =
@@ -81,7 +82,7 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
         session.setLastLlmOutput(text);
         session.setLastLlmStage("RESPONSE_TEXT");
         Map<String, Object> outputPayload = new LinkedHashMap<>();
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.OUTPUT, text);
+        outputPayload.put(ConvEnginePayloadKey.OUTPUT, text);
         audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT, session.getConversationId(), outputPayload);
 
         session.setPayload(new TextPayload(text));

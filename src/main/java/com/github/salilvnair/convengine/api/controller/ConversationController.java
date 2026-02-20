@@ -5,6 +5,7 @@ import com.github.salilvnair.convengine.api.dto.ConversationResponse;
 import com.github.salilvnair.convengine.api.dto.AuditTraceResponse;
 import com.github.salilvnair.convengine.audit.AuditTraceService;
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.core.ConversationalEngine;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
@@ -84,9 +85,9 @@ public class ConversationController {
         }
         catch (ConversationEngineException ex) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.ERROR_CODE, ex.getErrorCode());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MESSAGE, ex.getMessage());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RECOVERABLE, ex.isRecoverable());
+            payload.put(ConvEnginePayloadKey.ERROR_CODE, ex.getErrorCode());
+            payload.put(ConvEnginePayloadKey.MESSAGE, ex.getMessage());
+            payload.put(ConvEnginePayloadKey.RECOVERABLE, ex.isRecoverable());
             audit.audit(
                     "ENGINE_KNOWN_FAILURE",
                     conversationId,
@@ -113,9 +114,9 @@ public class ConversationController {
         }
         catch (Exception ex) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.EXCEPTION, String.valueOf(ex));
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MESSAGE, ex.getMessage());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RECOVERABLE, false);
+            payload.put(ConvEnginePayloadKey.EXCEPTION, String.valueOf(ex));
+            payload.put(ConvEnginePayloadKey.MESSAGE, ex.getMessage());
+            payload.put(ConvEnginePayloadKey.RECOVERABLE, false);
             audit.audit(
                     "ENGINE_UNKNOWN_FAILURE",
                     conversationId,

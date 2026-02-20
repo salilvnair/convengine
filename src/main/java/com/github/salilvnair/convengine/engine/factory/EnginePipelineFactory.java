@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.factory;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.AuditSessionContext;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.engine.hook.EngineStepHook;
@@ -394,15 +395,15 @@ public class EnginePipelineFactory {
                 Map<String, Object> extra
         ) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STEP, stepName);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STEP_CLASS, stepClass);
+            payload.put(ConvEnginePayloadKey.STEP, stepName);
+            payload.put(ConvEnginePayloadKey.STEP_CLASS, stepClass);
             payload.putAll(extra);
 
             // Add intent/state inside payload _meta so they are visible with stage metadata.
             Map<String, Object> stepMeta = new LinkedHashMap<>();
             stepMeta.put("intent", session.getIntent());
             stepMeta.put("state", session.getState());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.META, stepMeta);
+            payload.put(ConvEnginePayloadKey.META, stepMeta);
 
             return payload;
         }

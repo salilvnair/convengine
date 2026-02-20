@@ -1,3 +1,20 @@
+DROP TABLE IF EXISTS ce_mcp_db_tool;
+DROP TABLE IF EXISTS ce_conversation_history;
+DROP TABLE IF EXISTS ce_audit;
+DROP TABLE IF EXISTS ce_pending_action;
+DROP TABLE IF EXISTS ce_rule;
+DROP TABLE IF EXISTS ce_response;
+DROP TABLE IF EXISTS ce_prompt_template;
+DROP TABLE IF EXISTS ce_policy;
+DROP TABLE IF EXISTS ce_output_schema;
+DROP TABLE IF EXISTS ce_mcp_tool;
+DROP TABLE IF EXISTS ce_llm_call_log;
+DROP TABLE IF EXISTS ce_intent_classifier;
+DROP TABLE IF EXISTS ce_intent;
+DROP TABLE IF EXISTS ce_conversation;
+DROP TABLE IF EXISTS ce_container_config;
+DROP TABLE IF EXISTS ce_config;
+
 CREATE TABLE ce_config (
   config_id INTEGER NOT NULL PRIMARY KEY,
   config_type TEXT NOT NULL,
@@ -80,11 +97,13 @@ CREATE TABLE ce_mcp_tool (
   tool_id INTEGER PRIMARY KEY AUTOINCREMENT,
   tool_code TEXT NOT NULL UNIQUE,
   tool_group TEXT NOT NULL,
+  intent_code TEXT,
+  state_code TEXT,
   enabled BOOLEAN NOT NULL DEFAULT 1,
   description TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_ce_mcp_tool_enabled ON ce_mcp_tool (enabled, tool_group, tool_code);
+CREATE INDEX idx_ce_mcp_tool_enabled ON ce_mcp_tool (enabled, intent_code, state_code, tool_group, tool_code);
 
 CREATE TABLE ce_output_schema (
   schema_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,18 +187,6 @@ CREATE TABLE ce_pending_action (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_ce_pending_action_lookup ON ce_pending_action (enabled, action_key, intent_code, state_code, priority);
-
-CREATE TABLE ce_validation_snapshot (
-  snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  conversation_id TEXT NOT NULL,
-  intent_code TEXT,
-  state_code TEXT,
-  validation_tables TEXT,
-  validation_decision TEXT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  schema_id INTEGER
-);
-CREATE INDEX idx_ce_validation_snapshot_conv ON ce_validation_snapshot (conversation_id);
 
 CREATE TABLE ce_audit (
   audit_id INTEGER PRIMARY KEY AUTOINCREMENT,

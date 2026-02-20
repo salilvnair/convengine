@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
@@ -34,7 +35,7 @@ public class AutoAdvanceStep implements EngineStep {
 
         if (session.getResolvedSchema() == null) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.REASON, "no schema resolved");
+            payload.put(ConvEnginePayloadKey.REASON, "no schema resolved");
             audit.audit(ConvEngineAuditStage.AUTO_ADVANCE_SKIPPED_NO_SCHEMA, session.getConversationId(), payload);
             return new StepResult.Continue();
         }
@@ -48,10 +49,10 @@ public class AutoAdvanceStep implements EngineStep {
         session.setSchemaComplete(schemaComplete);
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_COMPLETE, schemaComplete);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.HAS_ANY_SCHEMA_VALUE, hasAnySchemaValue);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        payload.put(ConvEnginePayloadKey.SCHEMA_COMPLETE, schemaComplete);
+        payload.put(ConvEnginePayloadKey.HAS_ANY_SCHEMA_VALUE, hasAnySchemaValue);
+        payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(ConvEnginePayloadKey.STATE, session.getState());
         audit.audit(ConvEngineAuditStage.AUTO_ADVANCE_FACTS, session.getConversationId(), payload);
         return new StepResult.Continue();
     }

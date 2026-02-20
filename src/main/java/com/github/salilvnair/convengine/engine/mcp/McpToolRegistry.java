@@ -17,13 +17,15 @@ public class McpToolRegistry {
     private final McpToolRepository toolRepo;
     private final McpDbToolRepository dbToolRepo;
 
-    public List<CeMcpTool> listEnabledTools() {
-        return toolRepo.findByEnabledTrueOrderByToolGroupAscToolCodeAsc();
+    public List<CeMcpTool> listEnabledTools(String intentCode, String stateCode) {
+        return toolRepo.findEnabledByIntentAndState(intentCode, stateCode);
     }
 
-    public CeMcpTool requireTool(String toolCode) {
-        return toolRepo.findByToolCodeAndEnabledTrue(toolCode)
-                .orElseThrow(() -> new IllegalStateException("Missing enabled MCP tool: " + toolCode));
+    public CeMcpTool requireTool(String toolCode, String intentCode, String stateCode) {
+        return toolRepo.findByToolCodeEnabledAndIntentAndState(toolCode, intentCode, stateCode)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Missing enabled MCP tool for current intent/state: " + toolCode
+                ));
     }
 
     public CeMcpDbTool requireDbTool(String toolCode) {

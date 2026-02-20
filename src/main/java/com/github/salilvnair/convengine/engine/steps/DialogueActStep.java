@@ -15,6 +15,8 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
+import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -33,38 +35,63 @@ public class DialogueActStep implements EngineStep {
 
     private static final Pattern AFFIRM = Pattern.compile(
             "^(\\s)*(yes|yep|yeah|ok|okay|sure|go ahead|do that|please do|confirm|approved?)(\\s)*$",
-            Pattern.CASE_INSENSITIVE
-    );
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern NEGATE = Pattern.compile(
             "^(\\s)*(no|nope|nah|cancel|stop|don't|do not)(\\s)*$",
-            Pattern.CASE_INSENSITIVE
-    );
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern EDIT = Pattern.compile(
             "^(\\s)*(edit|revise|change|modify|update)(\\s)*$",
-            Pattern.CASE_INSENSITIVE
-    );
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern RESET = Pattern.compile(
             "^(\\s)*(reset|restart|start over)(\\s)*$",
-            Pattern.CASE_INSENSITIVE
-    );
+            Pattern.CASE_INSENSITIVE);
 
     private final AuditService audit;
     private final ConvEngineFlowConfig flowConfig;
     private final LlmClient llm;
+    private final CeConfigResolver configResolver;
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    private String SYSTEM_PROMPT;
+    private String USER_PROMPT;
+    private String SCHEMA_JSON;
+
+    @PostConstruct
+    public void init() {
+        SYSTEM_PROMPT = configResolver.resolveString(this, "SYSTEM_PROMPT", """
+                You are a dialogue-act classifier.
+                Return JSON only with:
+                {"dialogueAct":"AFFIRM|NEGATE|EDIT|RESET|QUESTION|NEW_REQUEST","confidence":0.0}
+                """);
+        USER_PROMPT = configResolver.resolveString(this, "USER_PROMPT", """
+                User text:
+                %s
+                """);
+        SCHEMA_JSON = configResolver.resolveString(this, "SCHEMA_PROMPT", """
+                {
+                  "type":"object",
+                  "required":["dialogueAct","confidence"],
+                  "properties":{
+                    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
+                    "confidence":{"type":"number"}
+                  },
+                  "additionalProperties":false
+                }
+                """);
+    }
 
     @Override
     public StepResult execute(EngineSession session) {
         DialogueActResolveMode resolveMode = DialogueActResolveMode.from(
                 flowConfig.getDialogueAct().getResolute(),
-                DialogueActResolveMode.REGEX_THEN_LLM
-        );
+                DialogueActResolveMode.REGEX_THEN_LLM);
         double regexConfidenceThresholdForLlm = flowConfig.getDialogueAct().getLlmThreshold();
         String userText = session.getUserText() == null ? "" : session.getUserText().trim();
 
         DialogueActResult regexResult = classifyByRegex(userText);
-        DialogueActResult resolved = resolveByMode(session, userText, regexResult, resolveMode, regexConfidenceThresholdForLlm);
+        DialogueActResult resolved = resolveByMode(session, userText, regexResult, resolveMode,
+                regexConfidenceThresholdForLlm);
 
         session.putInputParam(ConvEngineInputParamKey.DIALOGUE_ACT, resolved.act().name());
         session.putInputParam(ConvEngineInputParamKey.DIALOGUE_ACT_CONFIDENCE, resolved.confidence());
@@ -88,8 +115,7 @@ public class DialogueActStep implements EngineStep {
             String userText,
             DialogueActResult regexResult,
             DialogueActResolveMode resolveMode,
-            double regexConfidenceThresholdForLlm
-    ) {
+            double regexConfidenceThresholdForLlm) {
         return switch (resolveMode) {
             case REGEX_ONLY -> regexResult.withSource("REGEX");
             case LLM_ONLY -> {
@@ -146,26 +172,9 @@ public class DialogueActStep implements EngineStep {
 
     private DialogueActResult classifyByLlm(EngineSession session, String userText) {
         try {
-            String systemPrompt = """
-                    You are a dialogue-act classifier.
-                    Return JSON only with:
-                    {"dialogueAct":"AFFIRM|NEGATE|EDIT|RESET|QUESTION|NEW_REQUEST","confidence":0.0}
-                    """;
-            String userPrompt = """
-                    User text:
-                    %s
-                    """.formatted(userText == null ? "" : userText);
-            String schema = """
-                    {
-                      "type":"object",
-                      "required":["dialogueAct","confidence"],
-                      "properties":{
-                        "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
-                        "confidence":{"type":"number"}
-                      },
-                      "additionalProperties":false
-                    }
-                    """;
+            String systemPrompt = SYSTEM_PROMPT;
+            String userPrompt = USER_PROMPT.formatted(userText == null ? "" : userText);
+            String schema = SCHEMA_JSON;
 
             LlmInvocationContext.set(session.getConversationId(), session.getIntent(), session.getState());
             String out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());

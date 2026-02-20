@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.engine.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.mcp.model.McpPlan;
 import com.github.salilvnair.convengine.engine.mcp.model.McpObservation;
@@ -130,10 +131,10 @@ public class McpPlanner {
         """;
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER, "DB_USER_PROMPT, DB_SYSTEM_PROMPT (fallback: USER_PROMPT, SYSTEM_PROMPT)");
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA, schema);
+        inputPayload.put(ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER, "DB_USER_PROMPT, DB_SYSTEM_PROMPT (fallback: USER_PROMPT, SYSTEM_PROMPT)");
+        inputPayload.put(ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
+        inputPayload.put(ConvEnginePayloadKey.USER_PROMPT, userPrompt);
+        inputPayload.put(ConvEnginePayloadKey.SCHEMA, schema);
         audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_INPUT, session.getConversationId(), inputPayload);
 
         LlmInvocationContext.set(
@@ -145,7 +146,7 @@ public class McpPlanner {
         String out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.JSON, out);
+        outputPayload.put(ConvEnginePayloadKey.JSON, out);
         audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT, session.getConversationId(), outputPayload);
 
         try {

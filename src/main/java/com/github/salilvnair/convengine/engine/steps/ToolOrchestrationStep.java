@@ -58,7 +58,7 @@ public class ToolOrchestrationStep implements EngineStep {
         try {
             CeMcpTool tool = request.toolCode() == null || request.toolCode().isBlank()
                     ? null
-                    : registry.requireTool(request.toolCode());
+                    : registry.requireTool(request.toolCode(), session.getIntent(), session.getState());
             String group = request.toolGroup();
             if ((group == null || group.isBlank()) && tool != null) {
                 group = registry.normalizeToolGroup(tool.getToolGroup());
@@ -80,6 +80,28 @@ public class ToolOrchestrationStep implements EngineStep {
             audit.audit(ConvEngineAuditStage.TOOL_ORCHESTRATION_RESULT, session.getConversationId(), result);
 
             rulesStep.applyRules(session, "ToolOrchestrationStep PostTool", RulePhase.TOOL_POST_EXECUTION.name());
+        } catch (IllegalStateException e) {
+            if (e.getMessage() != null
+                    && e.getMessage().contains("Missing enabled MCP tool for current intent/state")) {
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("status", "SKIPPED_SCOPE_MISMATCH");
+                result.put("tool_code", request.toolCode());
+                result.put("tool_group", request.toolGroup());
+                result.put("intent", session.getIntent());
+                result.put("state", session.getState());
+                session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
+                session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, "SKIPPED_SCOPE_MISMATCH");
+                audit.audit(ConvEngineAuditStage.TOOL_ORCHESTRATION_RESULT, session.getConversationId(), result);
+                return new StepResult.Continue();
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("status", "ERROR");
+            result.put("tool_code", request.toolCode());
+            result.put("tool_group", request.toolGroup());
+            result.put("error", String.valueOf(e.getMessage()));
+            session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
+            session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, "ERROR");
+            audit.audit(ConvEngineAuditStage.TOOL_ORCHESTRATION_ERROR, session.getConversationId(), result);
         } catch (Exception e) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ERROR");
@@ -104,7 +126,8 @@ public class ToolOrchestrationStep implements EngineStep {
         if (raw instanceof Map<?, ?> map) {
             String code = text(map.get("tool_code"));
             String group = text(map.get("tool_group"));
-            Map<String, Object> args = map.get("args") instanceof Map<?, ?> argsMap ? toStringObjectMap(argsMap) : Map.of();
+            Map<String, Object> args = map.get("args") instanceof Map<?, ?> argsMap ? toStringObjectMap(argsMap)
+                    : Map.of();
             return new ToolRequest(code, group == null ? null : registry.normalizeToolGroup(group), args);
         }
         if (raw instanceof String s && !s.isBlank()) {
@@ -169,4 +192,3 @@ public class ToolOrchestrationStep implements EngineStep {
         }
     }
 }
-
