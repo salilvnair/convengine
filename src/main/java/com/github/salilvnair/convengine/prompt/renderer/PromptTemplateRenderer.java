@@ -1,18 +1,26 @@
 package com.github.salilvnair.convengine.prompt.renderer;
 
+import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.prompt.annotation.PromptVar;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.util.JsonUtil;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+@RequiredArgsConstructor
+@Component
 public class PromptTemplateRenderer {
+
+    private final AuditService audit;
 
     public String render(String template, PromptTemplateContext ctx) {
 
@@ -23,6 +31,11 @@ public class PromptTemplateRenderer {
         for (Map.Entry<String, String> e : resolvedVars.entrySet()) {
             out = out.replace("{{" + e.getKey() + "}}", e.getValue());
         }
+
+        Map<String, Object> auditData = new LinkedHashMap<>();
+        auditData.put(ConvEnginePayloadKey.RENDERED_TEMPLATE, out);
+        auditData.put(ConvEnginePayloadKey.PROMPT_VARS, resolvedVars);
+        audit.audit(ConvEngineAuditStage.PROMPT_RENDERING, ctx.getSession().getConversationId(), auditData);
 
         if (out.contains("{{")) {
             Map<String, Object> meta = new LinkedHashMap<>();

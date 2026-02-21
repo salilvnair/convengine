@@ -66,7 +66,10 @@ public enum ConvEngineAuditStage {
     ENGINE_RETURN,
     RULE_MATCHED,
     RULE_APPLIED,
-    RULE_NO_MATCH;
+    RULE_NO_MATCH,
+    PROMPT_RENDERING
+
+    ;
 
     public String value() {
         return name();

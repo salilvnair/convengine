@@ -339,16 +339,22 @@ public class EnginePipelineFactory {
                         }
                     }, hook, "onStepError", stepName, session);
                 }
+                Map<String, Object> errorPayload = new LinkedHashMap<>();
+                errorPayload.put("step", stepName);
+                errorPayload.put("stepClass", stepClass);
+                errorPayload.put("durationMs", timing.getDurationMs());
+                errorPayload.put("errorType", e.getClass().getSimpleName());
+                errorPayload.put("errorMessage", String.valueOf(e.getMessage()));
+                if(e instanceof ConversationEngineException) {
+                    Map<String, Object> metaData = ((ConversationEngineException) e).getMetaData();
+                    if (metaData != null) {
+                        errorPayload.put("_errorMeta", metaData);
+                    }
+                }
                 audit.audit(
                         "STEP_ERROR",
                         session.getConversationId(),
-                        Map.of(
-                                "step", stepName,
-                                "stepClass", stepClass,
-                                "durationMs", timing.getDurationMs(),
-                                "errorType", e.getClass().getSimpleName(),
-                                "errorMessage", String.valueOf(e.getMessage())
-                        )
+                        errorPayload
                 );
                 throw e;
             } finally {

@@ -92,4 +92,5 @@ public final class ConvEnginePayloadKey {
     public static final String USER_TEXT = "userText";
     public static final String USER_PROMPT = "user_prompt";
     public static final String VALUE = "value";
+    public static final String RENDERED_TEMPLATE = "rendered_template";
 }

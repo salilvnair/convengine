@@ -77,7 +77,8 @@ public class ConversationController {
                         }
 
                         return res;
-                } catch (ConversationEngineException ex) {
+                }
+                catch (ConversationEngineException ex) {
                         Map<String, Object> payload = new LinkedHashMap<>();
                         payload.put(ConvEnginePayloadKey.ERROR_CODE, ex.getErrorCode());
                         payload.put(ConvEnginePayloadKey.MESSAGE, ex.getMessage());
@@ -103,7 +104,8 @@ public class ConversationController {
                                                                                         ex.getMessage(),
                                                                                         ex.isRecoverable()))));
                         return error;
-                } catch (Exception ex) {
+                }
+                catch (Exception ex) {
                         Map<String, Object> payload = new LinkedHashMap<>();
                         payload.put(ConvEnginePayloadKey.EXCEPTION, String.valueOf(ex));
                         payload.put(ConvEnginePayloadKey.MESSAGE, ex.getMessage());
