@@ -32,7 +32,6 @@ Never generate runtime table data:
 - `ce_audit`
 - `ce_conversation_history`
 - `ce_llm_call_log`
-- `ce_validation_snapshot`
 
 ## Hard SQL Rules
 

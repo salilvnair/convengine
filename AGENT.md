@@ -1,4 +1,136 @@
-# ConvEngine - Agent Guide
+
+# ConvEngine (Java) - AGENT.md
+
+## Overview
+
+ConvEngine is a deterministic, configuration-driven conversational workflow engine.
+
+It is not an open-ended chatbot runtime. Business behavior is declared in `ce_*` tables and executed by an auditable step pipeline.
+
+Current library baseline: `1.0.15`.
+
+## Release Notes (Latest)
+
+### 1.0.15
+- `SchemaExtractionStep` was refactored to a thin orchestrator; schema-heavy calculations moved to schema resolver provider contract.
+- Added provider-owned computation contract:
+  - `ConvEngineSchemaComputation`
+  - `ConvEngineSchemaResolver#compute(...)`
+  - `ConvEngineSchemaResolver#sanitizeExtractedJson(...)`
+  - `ConvEngineSchemaResolver#mergeContextJson(...)`
+- `DefaultConvEngineSchemaResolver` now owns sanitization, merge, completeness, missing-fields, and missing-field-options behavior.
+- Provider override model is now clean and explicit:
+  - consumers can register their own `ConvEngineSchemaResolver` bean
+  - higher precedence via Spring `@Order` is respected by resolver factory selection.
+- Centralized input param keys in `ConvEngineInputParamKey`; removed hardcoded `putInputParam("...")` keys across step/intent/rule flows.
+- Centralized fixed audit stages in `ConvEngineAuditStage`; migrated fixed literals across engine, MCP, response, and intent components.
+- Added centralized payload map keys in `ConvEnginePayloadKey`; replaced payload key string literals (`payload.put("...")`) across ConvEngine.
+
+### 1.0.14
+- Added `ce_rule.state_code` support (`NULL`, `ANY`, exact match) to scope rule execution by state and reduce unnecessary evaluations.
+- Audit persistence strategy split with synchronous conversation history persistence guarantees.
+
+## Runtime Architecture
+
+### Request entry and engine flow
+1. `ConversationController.message(...)` receives request and builds `EngineContext`.
+2. `DefaultConversationalEngine.process(...)` opens `EngineSession` from `EngineSessionFactory`.
+3. `EnginePipelineFactory` builds a DAG-ordered pipeline.
+4. Pipeline executes steps in order.
+5. `PersistConversationStep` and `PipelineEndGuardStep` finalize output and timings.
+6. Controller maps `EngineResult` to API DTO and returns.
+
+### Canonical pipeline (current)
+1. `LoadOrCreateConversationStep`
+2. `ResetConversationStep`
+3. `PersistConversationBootstrapStep`
+4. `AuditUserInputStep`
+5. `PolicyEnforcementStep`
+6. `IntentResolutionStep`
+7. `ResetResolvedIntentStep`
+8. `FallbackIntentStateStep`
+9. `AddContainerDataStep`
+10. `McpToolStep`
+11. `SchemaExtractionStep`
+12. `AutoAdvanceStep`
+13. `RulesStep`
+14. `ResponseResolutionStep`
+15. `PersistConversationStep`
+16. `PipelineEndGuardStep`
+
+Order is enforced via step annotations (`@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`) and DAG validation.
+
+## API Surface
+
+### REST APIs
+- `POST /api/v1/conversation/message`
+- `GET /api/v1/conversation/audit/{conversationId}`
+- `GET /api/v1/conversation/audit/{conversationId}/trace`
+- `POST /api/v1/conversation/experimental/generate-sql` (feature-flagged)
+
+### SSE stream API
+- `GET /api/v1/conversation/stream/{conversationId}`
+- Emits event name = audit stage (plus `CONNECTED` on subscribe).
+
+### Typical stream stages
+- `CONNECTED`
+- `USER_INPUT`
+- `STEP_ENTER`
+- `STEP_EXIT`
+- `STEP_ERROR`
+- `ASSISTANT_OUTPUT`
+- `ENGINE_RETURN`
+
+## Data Model Contracts
+
+### Non-transactional behavior tables
+- `ce_config`
+- `ce_container_config`
+- `ce_intent`
+- `ce_intent_classifier`
+- `ce_output_schema`
+- `ce_policy`
+- `ce_prompt_template`
+- `ce_response`
+- `ce_rule`
+- `ce_mcp_tool`
+- `ce_mcp_db_tool`
+
+### Runtime/transactional tables
+- `ce_conversation`
+- `ce_audit`
+- `ce_conversation_history`
+- `ce_llm_call_log`
+
+### Important schema truths
+
+`ce_prompt_template` uses:
+- `template_id` (PK)
+- `intent_code`
+- `state_code`
+- `response_type`
+- `system_prompt`
+- `user_prompt`
+- `temperature`
+- `enabled`
+
+There is no `template_code` in current DDL.
+
+`ce_response` uses:
+- `response_id` (PK)
+- `intent_code`
+- `state_code`
+- `output_format`
+- `response_type`
+- `exact_text`
+- `derivation_hint`
+- `json_schema`
+- `priority`
+- `enabled`
+
+There is no `prompt_template_code` in current DDL.
+
+## Enum / Value Matrix (Current)
 
 This file is for contributors and internal agents working on ConvEngine.
 

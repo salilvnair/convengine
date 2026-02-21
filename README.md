@@ -114,7 +114,6 @@ Main runtime stages:
 - `ce_audit`
 - `ce_conversation_history`
 - `ce_llm_call_log`
-- `ce_validation_snapshot`
 
 ## Enum Contracts
 
