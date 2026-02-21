@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.engine.steps;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
@@ -72,39 +73,43 @@ public class SchemaExtractionStep implements EngineStep {
         ConvEngineSchemaResolver schemaResolver = schemaResolverFactory.get(schema.getJsonSchema());
 
         Map<String, Object> startPayload = new LinkedHashMap<>();
-        startPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_ID, schema.getSchemaId());
+        startPayload.put(ConvEnginePayloadKey.SCHEMA_ID, schema.getSchemaId());
         audit.audit(ConvEngineAuditStage.SCHEMA_EXTRACTION_START, session.getConversationId(), startPayload);
 
         CePromptTemplate template = resolvePromptTemplate(OutputType.SCHEMA_JSON.name(), session);
 
         Map<String, Object> schemaFieldDetails = schemaResolver.schemaFieldDetails(schema.getJsonSchema());
         session.putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS, schemaFieldDetails);
-        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION, schema.getDescription() == null ? "" : schema.getDescription());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION,
+                schema.getDescription() == null ? "" : schema.getDescription());
         session.putInputParam(ConvEngineInputParamKey.SCHEMA_ID, schema.getSchemaId());
         session.setContextJson(schemaResolver.seedContextFromInputParams(
                 session.getContextJson(),
                 session.getInputParams(),
-                schema.getJsonSchema()
-        ));
+                schema.getJsonSchema()));
         session.getConversation().setContextJson(session.getContextJson());
         session.addPromptTemplateVars();
 
         PromptTemplateContext promptTemplateContext = PromptTemplateContext
                 .builder()
+                .templateName("SchemaExtraction")
+                .systemPrompt(template.getSystemPrompt())
+                .userPrompt(template.getUserPrompt())
                 .context(safeJson(session.getContextJson()))
                 .userInput(session.getUserText())
                 .schemaJson(schema.getJsonSchema())
                 .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
                 .extra(session.promptTemplateVars())
+                .session(session)
                 .build();
         String systemPrompt = renderer.render(template.getSystemPrompt(), promptTemplateContext);
         String userPrompt = renderer.render(template.getUserPrompt(), promptTemplateContext);
 
         Map<String, Object> llmInputPayload = new LinkedHashMap<>();
-        llmInputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
-        llmInputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
-        llmInputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA, schema.getJsonSchema());
-        llmInputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_INPUT, session.getUserText());
+        llmInputPayload.put(ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
+        llmInputPayload.put(ConvEnginePayloadKey.USER_PROMPT, userPrompt);
+        llmInputPayload.put(ConvEnginePayloadKey.SCHEMA, schema.getJsonSchema());
+        llmInputPayload.put(ConvEnginePayloadKey.USER_INPUT, session.getUserText());
         audit.audit(ConvEngineAuditStage.SCHEMA_EXTRACTION_LLM_INPUT, session.getConversationId(), llmInputPayload);
 
         LlmInvocationContext.set(session.getConversationId(), session.getIntent(), session.getState());
@@ -112,20 +117,20 @@ public class SchemaExtractionStep implements EngineStep {
         String extractedJson = llm.generateJson(
                 systemPrompt + "\n\n" + userPrompt,
                 schema.getJsonSchema(),
-                safeJson(session.getContextJson())
-        );
+                safeJson(session.getContextJson()));
         session.setLastLlmOutput(extractedJson);
         session.setLastLlmStage("SCHEMA_EXTRACTION");
 
         Map<String, Object> llmOutputPayload = new LinkedHashMap<>();
-        llmOutputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.JSON, extractedJson);
+        llmOutputPayload.put(ConvEnginePayloadKey.JSON, extractedJson);
         audit.audit(ConvEngineAuditStage.SCHEMA_EXTRACTION_LLM_OUTPUT, session.getConversationId(), llmOutputPayload);
 
         String merged = schemaResolver.mergeContextJson(session.getContextJson(), extractedJson);
         session.setContextJson(merged);
         session.getConversation().setContextJson(merged);
 
-        ConvEngineSchemaComputation computation = schemaResolver.compute(schema.getJsonSchema(), merged, schemaFieldDetails);
+        ConvEngineSchemaComputation computation = schemaResolver.compute(schema.getJsonSchema(), merged,
+                schemaFieldDetails);
         session.setSchemaComplete(computation.schemaComplete());
         session.setSchemaHasAnyValue(computation.hasAnySchemaValue());
         session.setMissingRequiredFields(computation.missingFields());
@@ -139,31 +144,36 @@ public class SchemaExtractionStep implements EngineStep {
         session.putInputParam(ConvEngineInputParamKey.MISSING_FIELDS, computation.missingFields());
         session.putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS, schemaFieldDetails);
         session.putInputParam(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS, computation.missingFieldOptions());
-        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION, schema.getDescription() == null ? "" : schema.getDescription());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION,
+                schema.getDescription() == null ? "" : schema.getDescription());
         session.putInputParam(ConvEngineInputParamKey.SCHEMA_ID, schema.getSchemaId());
         session.addPromptTemplateVars();
 
         Map<String, Object> statusPayload = new LinkedHashMap<>();
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_COMPLETE, computation.schemaComplete());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.HAS_ANY_SCHEMA_VALUE, computation.hasAnySchemaValue());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MISSING_REQUIRED_FIELDS, computation.missingFields());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.MISSING_FIELD_OPTIONS, computation.missingFieldOptions());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_ID, schema.getSchemaId());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT_LOCKED, session.isIntentLocked());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT_LOCK_REASON, session.getIntentLockReason());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
-        statusPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_JSON, session.schemaJson());
+        statusPayload.put(ConvEnginePayloadKey.SCHEMA_COMPLETE, computation.schemaComplete());
+        statusPayload.put(ConvEnginePayloadKey.HAS_ANY_SCHEMA_VALUE, computation.hasAnySchemaValue());
+        statusPayload.put(ConvEnginePayloadKey.MISSING_REQUIRED_FIELDS, computation.missingFields());
+        statusPayload.put(ConvEnginePayloadKey.MISSING_FIELD_OPTIONS, computation.missingFieldOptions());
+        statusPayload.put(ConvEnginePayloadKey.SCHEMA_ID, schema.getSchemaId());
+        statusPayload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+        statusPayload.put(ConvEnginePayloadKey.STATE, session.getState());
+        statusPayload.put(ConvEnginePayloadKey.INTENT_LOCKED, session.isIntentLocked());
+        statusPayload.put(ConvEnginePayloadKey.INTENT_LOCK_REASON, session.getIntentLockReason());
+        statusPayload.put(ConvEnginePayloadKey.CONTEXT, session.contextDict());
+        statusPayload.put(ConvEnginePayloadKey.SCHEMA_JSON, session.schemaJson());
         audit.audit(ConvEngineAuditStage.SCHEMA_STATUS, session.getConversationId(), statusPayload);
     }
 
     private CePromptTemplate resolvePromptTemplate(String responseType, EngineSession session) {
         String intentCode = session.getIntent();
         String stateCode = session.getState();
-        return promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeAndStateCodeOrderByCreatedAtDesc(responseType, intentCode, stateCode)
-                .or(() -> promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(responseType, intentCode))
-                .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType=" + responseType + " and intent=" + intentCode));
+        return promptTemplateRepo
+                .findFirstByEnabledTrueAndResponseTypeAndIntentCodeAndStateCodeOrderByCreatedAtDesc(responseType,
+                        intentCode, stateCode)
+                .or(() -> promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(
+                        responseType, intentCode))
+                .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType="
+                        + responseType + " and intent=" + intentCode));
     }
 
     private String safeJson(String json) {

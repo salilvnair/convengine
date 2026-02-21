@@ -417,6 +417,14 @@ public class EngineSession {
         mergeInputParam(key, value, true, true);
     }
 
+    public void add(String key, Object value) {
+        mergeInputParam(key, value, true, true);
+    }
+
+    public void put(String key, Object value) {
+        mergeInputParam(key, value, true, true);
+    }
+
     public Map<String, Object> promptTemplateVars() {
         Map<String, Object> vars = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : inputParams.entrySet()) {

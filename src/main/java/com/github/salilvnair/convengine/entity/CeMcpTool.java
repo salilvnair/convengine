@@ -1,7 +1,6 @@
 package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.*;
-import com.github.salilvnair.convengine.entity.converter.OffsetDateTimeStringConverter;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,13 +23,18 @@ public class CeMcpTool {
     @Column(name = "tool_group", nullable = false)
     private String toolGroup;
 
+    @Column(name = "intent_code")
+    private String intentCode;
+
+    @Column(name = "state_code")
+    private String stateCode;
+
     @Column(name = "enabled", nullable = false)
     private boolean enabled = true;
 
     @Column(name = "description")
     private String description;
 
-    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 }

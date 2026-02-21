@@ -1,13 +1,11 @@
 package com.github.salilvnair.convengine.entity;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import com.github.salilvnair.convengine.entity.converter.OffsetDateTimeStringConverter;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -52,7 +50,6 @@ public class CeConversationHistory {
     @Column(name = "payload_json")
     private String payloadJson;
 
-    @Convert(converter = OffsetDateTimeStringConverter.class)
     @Column(nullable = false, name = "created_at")
     private OffsetDateTime createdAt;
 }

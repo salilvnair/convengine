@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.rule.type.provider;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.rule.action.core.RuleActionResolver;
 import com.github.salilvnair.convengine.engine.rule.task.CeRuleTaskExecutor;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
@@ -28,13 +29,13 @@ public class SetTaskActionResolver implements RuleActionResolver {
         String[] beanTaskMetaData = parseRuleTasks(rule.getActionValue());
         ceRuleTaskExecutor.execute(beanTaskMetaData[0], beanTaskMetaData[1], session, rule);
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.BEAN_NAME, beanTaskMetaData[0]);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.BEAN_METHOD_NAMES, beanTaskMetaData[1]);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INPUT_PARAMS, session.safeInputParams());
+        payload.put(ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+        payload.put(ConvEnginePayloadKey.BEAN_NAME, beanTaskMetaData[0]);
+        payload.put(ConvEnginePayloadKey.BEAN_METHOD_NAMES, beanTaskMetaData[1]);
+        payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(ConvEnginePayloadKey.STATE, session.getState());
+        payload.put(ConvEnginePayloadKey.CONTEXT, session.contextDict());
+        payload.put(ConvEnginePayloadKey.INPUT_PARAMS, session.safeInputParams());
         audit.audit(RuleAction.SET_TASK.name(), session.getConversationId(), payload);
     }
 

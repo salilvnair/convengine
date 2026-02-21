@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
@@ -44,63 +45,62 @@ public class AgentIntentResolver implements IntentResolver {
     private final RulesStep rulesStep;
     private final ObjectMapper mapper = new ObjectMapper();
 
-
-
     @PostConstruct
     public void init() {
         MIN_CONFIDENCE = configResolver.resolveDouble(this, "MIN_CONFIDENCE", 0.55d);
         COLLISION_GAP_THRESHOLD = configResolver.resolveDouble(this, "COLLISION_GAP_THRESHOLD", 0.1d);
-        SYSTEM_PROMPT = configResolver.resolveString(this, "SYSTEM_PROMPT", """
-                You are an intent resolution agent for a conversational engine.
-                
-                 Return JSON ONLY with fields:
-                 {
-                   "intent": "<INTENT_CODE_OR_NULL>",
-                   "state": "INTENT_COLLISION | IDLE",
-                   "confidence": 0.0,
-                   "needsClarification": false,
-                   "clarificationResolved": false,
-                   "clarificationQuestion": "",
-                   "intentScores": [{"intent":"<INTENT_CODE>","confidence":0.0}],
-                   "followups": []
-                 }
-                
-                 Rules:
-                 - Score all plausible intents and return them in intentScores sorted by confidence descending.
-                 - If top intents are close and ambiguous, set state to INTENT_COLLISION and needsClarification=true.
-                 - For INTENT_COLLISION, add one follow-up disambiguation question in followups.
-                 - If top intent is clear, set intent to best intent and confidence to best confidence.
-                 - If user input is question-like (what/where/when/why/how/which/who/help/details/required/needed),
-                   keep informational intents (like FAQ-style intents) in intentScores unless clearly impossible.
-                 - When a domain/task intent and informational intent are both plausible for a question, keep both with close scores;
-                   prefer INTENT_COLLISION instead of collapsing too early.
-                 - Use only allowed intents.
-                 - Do not hallucinate missing identifiers or facts.
-                 - Keep state non-null when possible.
-                
-                """);
+        SYSTEM_PROMPT = configResolver.resolveString(this, "SYSTEM_PROMPT",
+                """
+                        You are an intent resolution agent for a conversational engine.
+
+                         Return JSON ONLY with fields:
+                         {
+                           "intent": "<INTENT_CODE_OR_NULL>",
+                           "state": "INTENT_COLLISION | IDLE",
+                           "confidence": 0.0,
+                           "needsClarification": false,
+                           "clarificationResolved": false,
+                           "clarificationQuestion": "",
+                           "intentScores": [{"intent":"<INTENT_CODE>","confidence":0.0}],
+                           "followups": []
+                         }
+
+                         Rules:
+                         - Score all plausible intents and return them in intentScores sorted by confidence descending.
+                         - If top intents are close and ambiguous, set state to INTENT_COLLISION and needsClarification=true.
+                         - For INTENT_COLLISION, add one follow-up disambiguation question in followups.
+                         - If top intent is clear, set intent to best intent and confidence to best confidence.
+                         - If user input is question-like (what/where/when/why/how/which/who/help/details/required/needed),
+                           keep informational intents (like FAQ-style intents) in intentScores unless clearly impossible.
+                         - When a domain/task intent and informational intent are both plausible for a question, keep both with close scores;
+                           prefer INTENT_COLLISION instead of collapsing too early.
+                         - Use only allowed intents.
+                         - Do not hallucinate missing identifiers or facts.
+                         - Keep state non-null when possible.
+
+                        """);
         USER_PROMPT = configResolver.resolveString(this, "USER_PROMPT", """
-                
+
                 Context:
                 {{context}}
-                
+
                 Allowed intents:
                 {{allowed_intents}}
-                
+
                 Potential intent collisions:
                 {{intent_collision_candidates}}
-                
+
                 Current intent scores:
                 {{intent_scores}}
-                
+
                 Previous clarification question (if any):
                 {{pending_clarification}}
-                
+
                 User input:
                 {{user_input}}
-                
+
                 Return JSON in the required schema only.
-                
+
                 """);
     }
 
@@ -117,7 +117,8 @@ public class AgentIntentResolver implements IntentResolver {
         List<AllowedIntent> allowedIntents = allowedIntentService.allowedIntents();
 
         if (allowedIntents.isEmpty()) {
-            audit.audit(ConvEngineAuditStage.INTENT_AGENT_SKIPPED, conversationId, Map.of("reason", "no allowed intents"));
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_SKIPPED, conversationId,
+                    Map.of("reason", "no allowed intents"));
             return null;
         }
 
@@ -130,15 +131,18 @@ public class AgentIntentResolver implements IntentResolver {
                 ? session.getPendingClarificationQuestion()
                 : null;
 
-        PromptTemplateContext promptTemplateContext =
-                PromptTemplateContext.builder()
-                        .context(session.getContextJson())
-                        .userInput(session.getUserText())
-                        .allowedIntents(allowedIntents)
-                        .pendingClarification(pendingClarification)
-                        .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
-                        .extra(session.promptTemplateVars())
-                        .build();
+        PromptTemplateContext promptTemplateContext = PromptTemplateContext.builder()
+                .templateName("AgentIntentResolver")
+                .systemPrompt(SYSTEM_PROMPT)
+                .userPrompt(USER_PROMPT)
+                .context(session.getContextJson())
+                .userInput(session.getUserText())
+                .allowedIntents(allowedIntents)
+                .pendingClarification(pendingClarification)
+                .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
+                .extra(session.promptTemplateVars())
+                .session(session)
+                .build();
 
         String systemPrompt = renderer.render(SYSTEM_PROMPT, promptTemplateContext);
         String userPrompt = renderer.render(USER_PROMPT, promptTemplateContext);
@@ -153,8 +157,7 @@ public class AgentIntentResolver implements IntentResolver {
         String output = llm.generateJson(
                 systemPrompt + "\n\n" + userPrompt,
                 null,
-                session.getContextJson()
-        );
+                session.getContextJson());
 
         session.setLastLlmOutput(output);
         session.setLastLlmStage("INTENT_AGENT");
@@ -179,7 +182,8 @@ public class AgentIntentResolver implements IntentResolver {
         session.putInputParam(ConvEngineInputParamKey.INTENT_SCORES, scores);
         session.putInputParam(ConvEngineInputParamKey.INTENT_TOP3, scores.stream().limit(3).toList());
         session.putInputParam(ConvEngineInputParamKey.FOLLOWUPS, followups);
-        audit.audit(ConvEngineAuditStage.INTENT_AGENT_SCORES, conversationId, Map.of("scores", scores, "followups", followups));
+        audit.audit(ConvEngineAuditStage.INTENT_AGENT_SCORES, conversationId,
+                Map.of("scores", scores, "followups", followups));
 
         if ((intent == null || intent.isBlank()) && !scores.isEmpty()) {
             intent = str(scores.getFirst().get("intent"));
@@ -201,27 +205,29 @@ public class AgentIntentResolver implements IntentResolver {
                         : buildCollisionQuestion(collisionCandidates);
             }
             Map<String, Object> collisionPayload = new LinkedHashMap<>();
-            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
-            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, state);
-            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.QUESTION, clarificationQuestion);
-            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CANDIDATES, collisionCandidates);
-            collisionPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCORES, scores.stream().limit(3).toList());
+            collisionPayload.put(ConvEnginePayloadKey.INTENT, intent);
+            collisionPayload.put(ConvEnginePayloadKey.STATE, state);
+            collisionPayload.put(ConvEnginePayloadKey.QUESTION, clarificationQuestion);
+            collisionPayload.put(ConvEnginePayloadKey.CANDIDATES, collisionCandidates);
+            collisionPayload.put(ConvEnginePayloadKey.SCORES, scores.stream().limit(3).toList());
             audit.audit(ConvEngineAuditStage.INTENT_AGENT_COLLISION, conversationId, collisionPayload);
         }
 
         if (needsClarification) {
             if (isSchemaDrivenIntent(intent)) {
                 Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, state);
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.QUESTION, clarificationQuestion);
-                audit.audit(ConvEngineAuditStage.INTENT_AGENT_CLARIFICATION_SUPPRESSED_SCHEMA_FLOW, conversationId, payload);
+                payload.put(ConvEnginePayloadKey.INTENT, intent);
+                payload.put(ConvEnginePayloadKey.STATE, state);
+                payload.put(ConvEnginePayloadKey.QUESTION, clarificationQuestion);
+                audit.audit(ConvEngineAuditStage.INTENT_AGENT_CLARIFICATION_SUPPRESSED_SCHEMA_FLOW, conversationId,
+                        payload);
                 needsClarification = false;
                 clarificationQuestion = null;
             }
         }
 
-        // Treat followups as valid clarification questions when the model flags clarification/collision.
+        // Treat followups as valid clarification questions when the model flags
+        // clarification/collision.
         if ((needsClarification || INTENT_COLLISION_STATE.equalsIgnoreCase(state))
                 && (clarificationQuestion == null || clarificationQuestion.isBlank())
                 && !followups.isEmpty()) {
@@ -247,33 +253,37 @@ public class AgentIntentResolver implements IntentResolver {
             }
 
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.QUESTION, clarificationQuestion);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.FOLLOWUPS, session.getInputParams().get(ConvEngineInputParamKey.FOLLOWUPS));
+            payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(ConvEnginePayloadKey.QUESTION, clarificationQuestion);
+            payload.put(ConvEnginePayloadKey.FOLLOWUPS,
+                    session.getInputParams().get(ConvEngineInputParamKey.FOLLOWUPS));
             audit.audit(ConvEngineAuditStage.INTENT_AGENT_NEEDS_CLARIFICATION, conversationId, payload);
             return session.getIntent();
         }
 
         if (intent == null || intent.isBlank()) {
-            audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId, Map.of("reason", "Intent could not be determined with sufficient confidence, allowed intents and scores", "allowedIntents", allowedIntents, "scores", scores));
+            audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId,
+                    Map.of("reason",
+                            "Intent could not be determined with sufficient confidence, allowed intents and scores",
+                            "allowedIntents", allowedIntents, "scores", scores));
             return null;
         }
 
         if (!allowedIntentService.isAllowed(intent)) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, state);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.REASON, "Intent not in allowed intents");
+            payload.put(ConvEnginePayloadKey.INTENT, intent);
+            payload.put(ConvEnginePayloadKey.STATE, state);
+            payload.put(ConvEnginePayloadKey.REASON, "Intent not in allowed intents");
             audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId, payload);
             return null;
         }
 
         if (confidence < MIN_CONFIDENCE) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, intent);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, state);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONFIDENCE, confidence);
+            payload.put(ConvEnginePayloadKey.INTENT, intent);
+            payload.put(ConvEnginePayloadKey.STATE, state);
+            payload.put(ConvEnginePayloadKey.CONFIDENCE, confidence);
             audit.audit(ConvEngineAuditStage.INTENT_AGENT_REJECTED, conversationId, payload);
             return null;
         }
@@ -355,7 +365,11 @@ public class AgentIntentResolver implements IntentResolver {
                 if (code == null || code.isBlank() || !allowedCodes.contains(code.toUpperCase())) {
                     continue;
                 }
+                // Accept both keys because some models emit "score" instead of "confidence".
                 double confidence = number(item, "confidence");
+                if (confidence <= 0.0d) {
+                    confidence = number(item, "score");
+                }
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("intent", code);
                 row.put("confidence", clamp01(confidence));
@@ -366,9 +380,9 @@ public class AgentIntentResolver implements IntentResolver {
         scores.sort((a, b) -> {
             int byConfidence = Double.compare(
                     number(b.get("confidence")),
-                    number(a.get("confidence"))
-            );
-            if (byConfidence != 0) return byConfidence;
+                    number(a.get("confidence")));
+            if (byConfidence != 0)
+                return byConfidence;
             return str(a.get("intent")).compareToIgnoreCase(str(b.get("intent")));
         });
         return scores;
@@ -382,7 +396,8 @@ public class AgentIntentResolver implements IntentResolver {
         List<String> out = new ArrayList<>();
         if (followups.isTextual()) {
             String text = followups.asText("").trim();
-            if (!text.isBlank()) out.add(text);
+            if (!text.isBlank())
+                out.add(text);
             return out;
         }
         if (!followups.isArray()) {
@@ -429,14 +444,18 @@ public class AgentIntentResolver implements IntentResolver {
     }
 
     private String labelForCode(String code) {
-        if (code == null || code.isBlank()) return "that request";
+        if (code == null || code.isBlank())
+            return "that request";
         String[] parts = code.toLowerCase().replace("_", " ").trim().split("\\s+");
         StringBuilder sb = new StringBuilder();
         for (String part : parts) {
-            if (part.isBlank()) continue;
-            if (!sb.isEmpty()) sb.append(' ');
+            if (part.isBlank())
+                continue;
+            if (!sb.isEmpty())
+                sb.append(' ');
             sb.append(Character.toUpperCase(part.charAt(0)));
-            if (part.length() > 1) sb.append(part.substring(1));
+            if (part.length() > 1)
+                sb.append(part.substring(1));
         }
         return sb.toString();
     }
@@ -450,18 +469,21 @@ public class AgentIntentResolver implements IntentResolver {
     }
 
     private String text(JsonNode node, String field) {
-        if (node == null || field == null) return null;
+        if (node == null || field == null)
+            return null;
         JsonNode child = node.path(field);
         return child.isTextual() ? child.asText() : null;
     }
 
     private boolean bool(JsonNode node, String field) {
-        if (node == null || field == null) return false;
+        if (node == null || field == null)
+            return false;
         return node.path(field).asBoolean(false);
     }
 
     private double number(JsonNode node, String field) {
-        if (node == null || field == null) return 0.0d;
+        if (node == null || field == null)
+            return 0.0d;
         return node.path(field).asDouble(0.0d);
     }
 
@@ -481,7 +503,8 @@ public class AgentIntentResolver implements IntentResolver {
     }
 
     private double clamp01(double x) {
-        if (x < 0.0d) return 0.0d;
+        if (x < 0.0d)
+            return 0.0d;
         return Math.min(x, 1.0d);
     }
 }

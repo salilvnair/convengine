@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.response.type.provider;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.response.type.core.ResponseTypeResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeResponse;
@@ -33,7 +34,7 @@ public class ExactTextResponseTypeResolver implements ResponseTypeResolver {
         String text = response.getExactText() == null ? "" : response.getExactText();
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TEXT, text);
+        payload.put(ConvEnginePayloadKey.TEXT, text);
         audit.audit(ConvEngineAuditStage.RESPONSE_EXACT, session.getConversationId(), payload);
 
         if ("JSON".equalsIgnoreCase(response.getOutputFormat())) {
