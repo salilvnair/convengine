@@ -1,3 +1,4 @@
+
 # ConvEngine (Java) - AGENT.md
 
 ## Overview
@@ -131,159 +132,135 @@ There is no `prompt_template_code` in current DDL.
 
 ## Enum / Value Matrix (Current)
 
-### `ce_response`
-- `response_type`: `EXACT | DERIVED`
-- `output_format`: `TEXT | JSON`
+This file is for contributors and internal agents working on ConvEngine.
+
+## What ConvEngine Is
+
+ConvEngine is a deterministic conversational orchestration engine.
+
+- It is configuration-first (`ce_*` tables + app config).
+- It is step-pipeline driven.
+- It is audit-first by design.
+
+Do not treat ConvEngine as an unconstrained chatbot runtime.
+
+## Current Baseline
+
+- Library version: `2.0.0`
+- Property namespace for flow tuning: `convengine.flow.*`
+
+## Core Operating Model
+
+1. Resolve/maintain intent + state
+2. Extract structured fields by schema
+3. Compute transitions via rules and policy
+4. Resolve output by exact/derived response mapping
+5. Persist runtime + publish audit timeline
+
+## Source of Truth Order
+
+When implementing behavior:
+
+1. `src/main/resources/sql/ddl.sql` (schema truth)
+2. `ce_*` table contracts (data behavior)
+3. Step pipeline contracts
+4. API/controller mapping
+5. Docs
+
+If docs/examples conflict with DDL, DDL wins.
+
+## Must-Keep Contracts
 
 ### `ce_prompt_template`
-- `response_type`: `TEXT | JSON | SCHEMA_JSON`
+
+Columns include:
+
+- `template_id`, `intent_code`, `state_code`, `response_type`, `system_prompt`, `user_prompt`, `temperature`, `enabled`
+
+No `template_code`.
+
+### `ce_response`
+
+Columns include:
+
+- `response_id`, `intent_code`, `state_code`, `output_format`, `response_type`, `exact_text`, `derivation_hint`, `json_schema`, `priority`, `enabled`, `description`
+
+No `prompt_template_code`.
 
 ### `ce_rule`
+
 - `rule_type`: `EXACT | REGEX | JSON_PATH`
-- `state_code`: `NULL` (all states), `ANY` (all states), or a specific `state_code`
-- `action`: `SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK`
+- `phase`: `PIPELINE_RULES | AGENT_POST_INTENT | MCP_POST_LLM | TOOL_POST_EXECUTION`
+- `state_code`: `NULL | ANY | exact`
 
-### `ce_intent_classifier`
-- `rule_type`: `REGEX | CONTAINS | STARTS_WITH`
+### `ce_pending_action`
 
-## Session and State Contracts
+Catalog of action candidates by intent/state/action key.
 
-`EngineSession` is the live mutable runtime envelope. Core fields:
-- `intent`, `state`
-- `contextJson`
-- schema status (`resolvedSchema`, `schemaComplete`, `schemaHasAnyValue`)
-- clarification state (`pendingClarificationQuestion`, etc)
-- `inputParams` with controlled exposure
-- `payload` and final `EngineResult`
+Catalog of action candidates by intent/state/action key. 
+When creating `CePendingAction` rows, ensure they are paired with a corresponding Tool/Task executing the logic, and ensure `InteractionPolicy` configuration accurately maps `PENDING_ACTION:AFFIRM` to execution.
 
-### Intent lock behavior
-- Incomplete schema collection can lock intent to prevent reclassification drift.
-- Lock state is persisted/restored via context.
+Runtime lifecycle (`OPEN`, `IN_PROGRESS`, `EXECUTED`, `REJECTED`, `EXPIRED`) is maintained in context (`pending_action_runtime`), not in this table.
 
-### Controlled prompt vars
-- Prompt resolvers use `promptTemplateVars()` and safe filters.
-- System-derived unsafe keys are not blindly exposed to prompt templates.
+## Step Design Rules
 
-## Reset Semantics
+- Keep steps composable and side-effect scoped.
+- Prefer validation/audit in steps over hidden mutation.
+- For safety steps (guardrail/state graph), fail-soft unless explicitly configured fail-closed.
+- Keep order constraints explicit with annotations.
 
-### Input/message based reset
-Reset can be triggered by:
-- request `reset=true`
-- input params `reset=true | restart=true | conversation_reset=true`
-- user message commands (`reset`, `restart`, `/reset`, `/restart`)
+## Rule-First Philosophy
 
-### Intent-based reset via config
-`ResetResolvedIntentStep` supports reset intent codes from `ce_config`:
-- `config_type='ResetResolvedIntentStep'`
-- `config_key='RESET_INTENT_CODES'`
-- default includes `RESET_SESSION`
+Before adding Java branching:
 
-Example:
-```sql
-INSERT INTO ce_config (config_type, config_key, config_value, enabled)
-VALUES ('ResetResolvedIntentStep', 'RESET_INTENT_CODES', 'RESET_SESSION,START_OVER', true);
-```
+- check if behavior can be expressed via `ce_rule`
+- check phase-specific rules (`AGENT_POST_INTENT`, `MCP_POST_LLM`, `TOOL_POST_EXECUTION`)
+- check whether action can be `SET_TASK`
 
-## Rule Engine Contracts
+## Audit Expectations
 
-`RulesStep` loads enabled rules ordered by priority and applies multi-pass execution (up to bounded passes) when intent/state changes.
+Any non-trivial decision should emit a stage event.
 
-State scoping contract for `ce_rule.state_code`:
-- `NULL` -> rule is eligible for all states.
-- `ANY` -> rule is eligible for all states.
-- Specific value -> rule is eligible only when session state equals that value (case-insensitive).
+At minimum ensure visibility for:
 
-### Action value formats
-- `SET_TASK`: `beanName:methodName` or `beanName:methodA,methodB`
-- `SET_JSON`: `targetKey:jsonPath`
-- `GET_CONTEXT`: `targetKey` (optional, default `context`)
-- `GET_SESSION`: `targetKey` (optional, default `session`)
+- dialogue act
+- interaction policy decision
+- pending action lifecycle/skip/execute/reject/fail
+- guardrail allow/deny
+- disambiguation requirement
+- state graph validation/violation
+- tool orchestration request/result/error
 
-### `SET_TASK` runtime
-- Action is resolved by `SetTaskActionResolver`.
-- Task invocation is delegated to `CeRuleTaskExecutor`.
-- Target bean must be a Spring bean implementing `CeRuleTask`.
-- Method signature must accept `(EngineSession, CeRule)`.
+## MCP + Tooling
 
-### Custom rule actions
-Consumers can add custom actions by creating a Spring bean implementing `RuleActionResolver`.  
-`RuleActionResolverFactory` auto-discovers these resolvers by `action().toUpperCase()`.
+Tool routing is by `tool_group` with executor adapters. 
+**CRITICAL**: As of v2.0.0, ALL Tools *must* respect conversational scope. Tools should specify an `intent_code` and `state_code` to restrict when the planner is allowed to call them. Avoid creating "global" tools where `intent_code` IS NULL unless absolutely required (e.g., FAQ searching).
 
-## Extension Points (Consumer)
+Supported canonical groups:
 
-### Step hooks
-`EngineStepHook` supports typed and compatibility signatures:
-- `supports(EngineStep.Name stepName, EngineSession session)`
-- `supports(String stepName, EngineSession session)`
-- `beforeStep(...)`, `afterStep(...)`, `onStepError(...)`
+- `DB`
+- `HTTP_API`
+- `WORKFLOW_ACTION`
+- `DOCUMENT_RETRIEVAL`
+- `CALCULATOR_TRANSFORM`
+- `NOTIFICATION`
+- `FILES`
 
-Use `EngineStep.Name` enum matching where possible.
+Prefer adapters/interfaces; avoid hardcoding transport logic in steps.
 
-### Output and container interception
-- `@ResponseTransformer` + `ResponseTransformerHandler`
-- `@ContainerDataTransformer` + handler
-- `@ContainerDataInterceptor`
+## Documentation Discipline
 
-These are intended for consumer-specific intervention without forking core engine steps.
+When behavior changes:
 
-## Audit and Trace Model
+1. Update `README.md`
+2. Update this `AGENT.md`
+3. Update `src/main/resources/prompts/SQL_GENERATION_AGENT.md` if SQL contracts changed
+4. Keep examples runnable and enum-accurate
 
-### Core behavior
-- `ce_audit` is the source of truth for execution timeline.
-- `ce_conversation_history` is the source for conversation-turn reconstruction used by prompt history providers.
-- Step lifecycle emits `STEP_ENTER`, `STEP_EXIT`, `STEP_ERROR`.
-- Audit metadata should track runtime session `intent` and `state`.
-- `_meta` persistence in DB payloads is controlled by `convengine.audit.persist-meta`.
-- `ce_conversation_history` writes are synchronous; `ce_audit` persistence can run in `IMMEDIATE` or `DEFERRED_BULK` strategy mode.
+## Release Hygiene Checklist
 
-### Trace API
-- `GET /api/v1/conversation/audit/{conversationId}/trace`
-- Reconstructs ordered step timeline and stage events from audit rows.
-
-### Audit controls (`convengine.audit.*`)
-- enable/disable + level filtering (`ALL`, `STANDARD`, `ERROR_ONLY`, `NONE`)
-- include/exclude stage filters
-- async dispatch with bounded queue + rejection policy
-- rate limiting
-- persistence mode:
-  - `IMMEDIATE`
-  - `DEFERRED_BULK` with flush conditions
-
-### Configuration ownership
-- ConvEngine does not ship framework-level `application.yaml` defaults.
-- Consumer applications own all `convengine.*` property configuration.
-
-## Streaming and Transport
-
-### Enable/disable behavior
-- `@EnableConvEngine(stream = true)`:
-  - validates that at least one transport is enabled (`sse` or `stomp`)
-  - fails startup if both are disabled
-- `@EnableConvEngine(stream = false)`:
-  - stream conditions are bypassed
-  - REST-only behavior remains active
-
-### Transport properties
-- `convengine.transport.sse.*`
-- `convengine.transport.stomp.*`
-- STOMP broker mode:
-  - `SIMPLE` (in-memory)
-  - `RELAY` (external broker relay)
-
-## Experimental SQL Generation
-
-- Feature flag: `convengine.experimental.enabled=true`
-- Endpoint: `POST /api/v1/conversation/experimental/generate-sql`
-- Prompt knowledge source:
-  - `src/main/resources/prompts/SQL_GENERATION_AGENT.md`
-- Generates non-transactional `ce_*` inserts only.
-- Excludes runtime transactional tables.
-
-## Engineering Guidance
-
-1. Prefer DB config changes before Java code changes.
-2. Keep step logic domain-agnostic and composable.
-3. Keep transitions explicit in `ce_rule`; avoid hidden branching.
-4. Validate behavior via audit trace before production rollout.
-5. Keep prompt inputs controlled; avoid uncontrolled param injection.
-6. When updating docs/examples, align SQL strictly with `src/main/resources/sql/ddl.sql`.
+- DDL/seed aligned
+- Rule phase enum aligned across code/docs
+- New input param keys centralized in constants
+- New audit stages centralized in enum
+- No stale config prefixes in docs (`convengine.flow.*` only)

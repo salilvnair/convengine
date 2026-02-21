@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.engine.steps;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
@@ -60,6 +61,8 @@ public class RulesStep implements EngineStep {
                     : RulePhase.PIPELINE_RULES.name())
                 : RulePhase.normalize(requestedPhase);
         boolean agentPostIntentPhase = RulePhase.AGENT_POST_INTENT.name().equals(phase);
+        boolean mcpPostLlmPhase = RulePhase.MCP_POST_LLM.name().equals(phase);
+        boolean toolPostExecutionPhase = RulePhase.TOOL_POST_EXECUTION.name().equals(phase);
         session.setPostIntentRule(agentPostIntentPhase);
         session.setRuleExecutionSource(source);
         session.setRuleExecutionOrigin(origin);
@@ -68,6 +71,8 @@ public class RulesStep implements EngineStep {
         session.putInputParam(ConvEngineInputParamKey.RULE_EXECUTION_ORIGIN, origin);
         session.putInputParam(ConvEngineInputParamKey.RULE_PHASE, phase);
         session.putInputParam(ConvEngineInputParamKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
+        session.putInputParam(ConvEngineInputParamKey.RULE_MCP_POST_LLM, mcpPostLlmPhase);
+        session.putInputParam(ConvEngineInputParamKey.RULE_TOOL_POST_EXECUTION, toolPostExecutionPhase);
 
         boolean anyMatched = false;
         int maxPasses = 5;
@@ -81,38 +86,40 @@ public class RulesStep implements EngineStep {
 
                 if (rule.getIntentCode() != null &&
                         !rule.getIntentCode().equalsIgnoreCase(passIntent)) {
-                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, rule, "INTENT_MISMATCH");
+                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, mcpPostLlmPhase, toolPostExecutionPhase, rule, "INTENT_MISMATCH");
                     continue;
                 }
                 if (!matchesState(rule.getStateCode(), passState)) {
-                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, rule, "STATE_MISMATCH");
+                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, mcpPostLlmPhase, toolPostExecutionPhase, rule, "STATE_MISMATCH");
                     continue;
                 }
 
                 RuleTypeResolver typeResolver = typeFactory.get(rule.getRuleType());
                 if (typeResolver == null) {
-                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, rule, "TYPE_RESOLVER_MISSING");
+                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, mcpPostLlmPhase, toolPostExecutionPhase, rule, "TYPE_RESOLVER_MISSING");
                     continue;
                 }
                 if (!typeResolver.resolve(session, rule)) {
-                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, rule, "TYPE_CONDITION_NOT_MET");
+                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, mcpPostLlmPhase, toolPostExecutionPhase, rule, "TYPE_CONDITION_NOT_MET");
                     continue;
                 }
 
                 anyMatched = true;
                 Map<String, Object> matchedPayload = new LinkedHashMap<>();
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.ACTION, rule.getAction());
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_TYPE, rule.getRuleType());
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_STATE_CODE, rule.getStateCode());
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_PHASE, phase);
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
-                matchedPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_JSON, session.schemaJson());
+                matchedPayload.put(ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+                matchedPayload.put(ConvEnginePayloadKey.ACTION, rule.getAction());
+                matchedPayload.put(ConvEnginePayloadKey.RULE_TYPE, rule.getRuleType());
+                matchedPayload.put(ConvEnginePayloadKey.RULE_STATE_CODE, rule.getStateCode());
+                matchedPayload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+                matchedPayload.put(ConvEnginePayloadKey.STATE, session.getState());
+                matchedPayload.put(ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
+                matchedPayload.put(ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
+                matchedPayload.put(ConvEnginePayloadKey.RULE_PHASE, phase);
+                matchedPayload.put(ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
+                matchedPayload.put(ConvEnginePayloadKey.RULE_MCP_POST_LLM, mcpPostLlmPhase);
+                matchedPayload.put(ConvEnginePayloadKey.RULE_TOOL_POST_EXECUTION, toolPostExecutionPhase);
+                matchedPayload.put(ConvEnginePayloadKey.CONTEXT, session.contextDict());
+                matchedPayload.put(ConvEnginePayloadKey.SCHEMA_JSON, session.schemaJson());
                 audit.audit(
                         ConvEngineAuditStage.RULE_MATCHED.withStage(source),
                         session.getConversationId(),
@@ -133,17 +140,19 @@ public class RulesStep implements EngineStep {
                 }
 
                 Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TYPE, rule.getRuleType());
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_STATE_CODE, rule.getStateCode());
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.PATTERN, rule.getMatchPattern());
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.ACTION, rule.getAction());
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_PHASE, phase);
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
-                payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.ACTION_VALUE, JsonUtil.parseOrNull(rule.getActionValue()));
+                payload.put(ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+                payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+                payload.put(ConvEnginePayloadKey.TYPE, rule.getRuleType());
+                payload.put(ConvEnginePayloadKey.RULE_STATE_CODE, rule.getStateCode());
+                payload.put(ConvEnginePayloadKey.PATTERN, rule.getMatchPattern());
+                payload.put(ConvEnginePayloadKey.ACTION, rule.getAction());
+                payload.put(ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
+                payload.put(ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
+                payload.put(ConvEnginePayloadKey.RULE_PHASE, phase);
+                payload.put(ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
+                payload.put(ConvEnginePayloadKey.RULE_MCP_POST_LLM, mcpPostLlmPhase);
+                payload.put(ConvEnginePayloadKey.RULE_TOOL_POST_EXECUTION, toolPostExecutionPhase);
+                payload.put(ConvEnginePayloadKey.ACTION_VALUE, JsonUtil.parseOrNull(rule.getActionValue()));
                 log.info("Rule applied: {}", payload);
                 audit.audit(ConvEngineAuditStage.RULE_APPLIED.withStage(source), session.getConversationId(), payload);
             }
@@ -155,12 +164,14 @@ public class RulesStep implements EngineStep {
 
         if (!anyMatched) {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_PHASE, phase);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
+            payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
+            payload.put(ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
+            payload.put(ConvEnginePayloadKey.RULE_PHASE, phase);
+            payload.put(ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
+            payload.put(ConvEnginePayloadKey.RULE_MCP_POST_LLM, mcpPostLlmPhase);
+            payload.put(ConvEnginePayloadKey.RULE_TOOL_POST_EXECUTION, toolPostExecutionPhase);
             audit.audit(ConvEngineAuditStage.RULE_NO_MATCH.withStage(source), session.getConversationId(), payload);
         }
     }
@@ -184,22 +195,26 @@ public class RulesStep implements EngineStep {
             String origin,
             String phase,
             boolean agentPostIntentPhase,
+            boolean mcpPostLlmPhase,
+            boolean toolPostExecutionPhase,
             CeRule rule,
             String reason
     ) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TYPE, rule.getRuleType());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_STATE_CODE, rule.getStateCode());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.PATTERN, rule.getMatchPattern());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.ACTION, rule.getAction());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
+        payload.put(ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+        payload.put(ConvEnginePayloadKey.TYPE, rule.getRuleType());
+        payload.put(ConvEnginePayloadKey.RULE_STATE_CODE, rule.getStateCode());
+        payload.put(ConvEnginePayloadKey.PATTERN, rule.getMatchPattern());
+        payload.put(ConvEnginePayloadKey.ACTION, rule.getAction());
+        payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(ConvEnginePayloadKey.STATE, session.getState());
         payload.put("reason", reason);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_PHASE, phase);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
+        payload.put(ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
+        payload.put(ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
+        payload.put(ConvEnginePayloadKey.RULE_PHASE, phase);
+        payload.put(ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
+        payload.put(ConvEnginePayloadKey.RULE_MCP_POST_LLM, mcpPostLlmPhase);
+        payload.put(ConvEnginePayloadKey.RULE_TOOL_POST_EXECUTION, toolPostExecutionPhase);
         audit.audit(ConvEngineAuditStage.RULE_NO_MATCH.withStage(source), session.getConversationId(), payload);
     }
 }

@@ -1,5 +1,6 @@
 package com.github.salilvnair.convengine.engine.rule.type.provider;
 
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.rule.action.core.RuleActionResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.RuleAction;
@@ -27,11 +28,11 @@ public class SetStateActionResolver implements RuleActionResolver {
         session.setState(rule.getActionValue());
         session.getConversation().setStateCode(rule.getActionValue());
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.FROM_STATE, previousState);
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.TO_STATE, rule.getActionValue());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-        payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
+        payload.put(ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+        payload.put(ConvEnginePayloadKey.FROM_STATE, previousState);
+        payload.put(ConvEnginePayloadKey.TO_STATE, rule.getActionValue());
+        payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+        payload.put(ConvEnginePayloadKey.CONTEXT, session.contextDict());
         audit.audit(RuleAction.SET_STATE.name(), session.getConversationId(), payload);
     }
 }

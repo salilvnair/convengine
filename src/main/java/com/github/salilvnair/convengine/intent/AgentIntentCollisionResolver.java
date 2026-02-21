@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.intent;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.history.core.ConversationHistoryProvider;
 import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
@@ -75,11 +76,11 @@ public class AgentIntentCollisionResolver implements IntentCollisionResolver {
         };
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.OUTPUT, payloadValue);
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.CONTEXT, session.contextDict());
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA_JSON, session.schemaJson());
+        outputPayload.put(ConvEnginePayloadKey.OUTPUT, payloadValue);
+        outputPayload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+        outputPayload.put(ConvEnginePayloadKey.STATE, session.getState());
+        outputPayload.put(ConvEnginePayloadKey.CONTEXT, session.contextDict());
+        outputPayload.put(ConvEnginePayloadKey.SCHEMA_JSON, session.schemaJson());
         audit.audit(ConvEngineAuditStage.INTENT_COLLISION_RESOLVED, session.getConversationId(), outputPayload);
     }
 }

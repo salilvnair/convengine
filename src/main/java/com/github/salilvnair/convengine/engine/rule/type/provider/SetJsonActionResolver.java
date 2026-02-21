@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.rule.type.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.rule.action.core.RuleActionResolver;
 import com.github.salilvnair.convengine.engine.rule.action.provider.JsonPathRuleTypeResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
@@ -38,13 +39,13 @@ public class SetJsonActionResolver implements RuleActionResolver {
             Object value = search.getFirst();
             session.putInputParam(key, value);
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.KEY, key);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.PATH, path);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.INTENT, session.getIntent());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.STATE, session.getState());
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.VALUE, value);
-            payload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SESSION_INPUT_PARAMS, session.safeInputParams());
+            payload.put(ConvEnginePayloadKey.RULE_ID, rule.getRuleId());
+            payload.put(ConvEnginePayloadKey.KEY, key);
+            payload.put(ConvEnginePayloadKey.PATH, path);
+            payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
+            payload.put(ConvEnginePayloadKey.STATE, session.getState());
+            payload.put(ConvEnginePayloadKey.VALUE, value);
+            payload.put(ConvEnginePayloadKey.SESSION_INPUT_PARAMS, session.safeInputParams());
             audit.audit(RuleAction.SET_JSON.name(), session.getConversationId(), payload);
         }
     }

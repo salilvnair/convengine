@@ -6,8 +6,6 @@ import com.github.salilvnair.convengine.audit.dispatch.AuditEventDispatcher;
 import com.github.salilvnair.convengine.audit.dispatch.AuditStageControl;
 import com.github.salilvnair.convengine.audit.persistence.AuditPersistenceStrategyFactory;
 import com.github.salilvnair.convengine.config.ConvEngineAuditConfig;
-import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
-import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeAudit;
 import com.github.salilvnair.convengine.entity.CeConversation;
@@ -70,10 +68,8 @@ public class DbAuditService implements AuditService {
             }
         } catch (Exception e) {
             log.error("Failed to save audit record for conversationId: {} at stage: {}, payload: {}", conversationId, stage, payloadJson, e);
-            throw new ConversationEngineException(
-                    ConversationEngineErrorCode.AUDIT_SAVE_FAILED,
-                    "Failed to save audit record for conversationId: " + conversationId + " at stage: " + stage
-            );
+            // Audit failures must never break the request pipeline.
+            // We log and continue so APIs remain non-500 even when audit storage is unavailable.
         }
     }
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.response.format.core.OutputFormatResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
@@ -38,23 +39,25 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
     public void resolve(
             EngineSession session,
             ResponseTemplate response,
-            PromptTemplate template
-    ) {
+            PromptTemplate template) {
         session.addPromptTemplateVars();
 
         String historyJson = JsonUtil.toJson(session.conversionHistory());
-        PromptTemplateContext ctx =
-                PromptTemplateContext.builder()
-                        .context(session.getContextJson())
-                        .userInput(session.getUserText())
-                        .schemaJson(session.getResolvedSchema() != null
-                                ? session.getResolvedSchema().getJsonSchema()
-                                : null)
-                        .containerDataJson(session.getContainerDataJson())
-                        .validationJson(session.getValidationTablesJson())
-                        .conversationHistory(historyJson)
-                        .extra(session.promptTemplateVars())
-                        .build();
+        PromptTemplateContext ctx = PromptTemplateContext.builder()
+                .templateName("Response: " + response.getResponseType())
+                .systemPrompt(template.getSystemPrompt())
+                .userPrompt(template.getUserPrompt())
+                .context(session.getContextJson())
+                .userInput(session.getUserText())
+                .schemaJson(session.getResolvedSchema() != null
+                        ? session.getResolvedSchema().getJsonSchema()
+                        : null)
+                .containerDataJson(session.getContainerDataJson())
+                .validationJson(session.getValidationTablesJson())
+                .conversationHistory(historyJson)
+                .extra(session.promptTemplateVars())
+                .session(session)
+                .build();
 
         String systemPrompt = renderer.render(template.getSystemPrompt(), ctx);
         String userPrompt = renderer.render(template.getUserPrompt(), ctx);
@@ -62,29 +65,26 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
         LlmInvocationContext.set(
                 session.getConversationId(),
                 session.getIntent(),
-                session.getState()
-        );
+                session.getState());
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.USER_PROMPT, userPrompt);
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.DERIVATION_HINT, safe(response.getDerivationHint()));
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SCHEMA, response.getJsonSchema());
-        inputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.SESSION, session.eject());
+        inputPayload.put(ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
+        inputPayload.put(ConvEnginePayloadKey.USER_PROMPT, userPrompt);
+        inputPayload.put(ConvEnginePayloadKey.DERIVATION_HINT, safe(response.getDerivationHint()));
+        inputPayload.put(ConvEnginePayloadKey.SCHEMA, response.getJsonSchema());
+        inputPayload.put(ConvEnginePayloadKey.SESSION, session.eject());
         audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_INPUT, session.getConversationId(), inputPayload);
 
-        String json =
-                llm.generateJson(
-                        systemPrompt + "\n\n" + userPrompt + "\n\n" +
-                                safe(response.getDerivationHint()),
-                        response.getJsonSchema(),
-                        JsonUtil.toJson(session.contextDict())
-                );
+        String json = llm.generateJson(
+                systemPrompt + "\n\n" + userPrompt + "\n\n" +
+                        safe(response.getDerivationHint()),
+                response.getJsonSchema(),
+                JsonUtil.toJson(session.contextDict()));
         session.setLastLlmOutput(json);
         session.setLastLlmStage("RESPONSE_JSON");
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
-        outputPayload.put(com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey.OUTPUT, json);
+        outputPayload.put(ConvEnginePayloadKey.OUTPUT, json);
         audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT, session.getConversationId(), outputPayload);
 
         applyIntentAndStateOverride(json, session);
@@ -106,7 +106,8 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
                 session.setState(node.get("state").asText());
                 session.getConversation().setStateCode(node.get("state").asText());
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private String safe(String s) {
