@@ -9,7 +9,6 @@ import com.github.salilvnair.convengine.engine.mcp.model.McpPlan;
 import com.github.salilvnair.convengine.engine.mcp.model.McpObservation;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
-import com.github.salilvnair.convengine.entity.CePromptTemplate;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
@@ -43,32 +42,32 @@ public class McpPlanner {
         String defaultDbSystemPrompt = """
 
                     You are an MCP planning agent inside ConvEngine.
-               
+
                     You will receive:
                     - user_input
                     - contextJson (may contain prior tool observations)
                     - available tools (DB-driven list)
-                
+
                     Your job:
                     1) Decide the next step:
                        - CALL_TOOL (choose a tool_code and args)
                        - ANSWER (when enough observations exist)
                     2) Be conservative and safe.
                     3) Prefer getting schema first if schema is missing AND the question needs DB knowledge.
-                
+
                     Rules:
                     - Never invent tables/columns. If unknown, call postgres.schema first.
                     - For postgres.query, choose identifiers only if schema observation confirms them.
                     - Keep args minimal.
                     - If user question is ambiguous, return ANSWER with an answer that asks ONE clarifying question.
-                
+
                     Return JSON ONLY.
 
-                
+
                 """;
         String defaultDbUserPrompt = """
-                
-                
+
+
                 User input:
                 {{user_input}}
 
@@ -88,8 +87,8 @@ public class McpPlanner {
                   "args": { },
                   "answer": "<text_or_null>"
                 }
-                
-                
+
+
                 """;
 
         DB_SYSTEM_PROMPT = resolvePlannerPrompt("DB_SYSTEM_PROMPT", "SYSTEM_PROMPT", defaultDbSystemPrompt);
@@ -98,40 +97,43 @@ public class McpPlanner {
 
     public McpPlan plan(EngineSession session, List<CeMcpTool> tools, List<McpObservation> observations) {
 
-
-        String toolsJson = JsonUtil.toJson(tools.stream().map(t ->
-                new ToolView(t.getToolCode(), t.getToolGroup(), t.getDescription())
-        ).toList());
+        String toolsJson = JsonUtil.toJson(
+                tools.stream().map(t -> new ToolView(t.getToolCode(), t.getToolGroup(), t.getDescription())).toList());
 
         String obsJson = JsonUtil.toJson(observations);
 
         PromptTemplateContext ctx = PromptTemplateContext.builder()
-                                    .context(session.getContextJson())
-                                    .userInput(session.getUserText())
-                                    .mcpTools(toolsJson)
-                                    .mcpObservations(obsJson)
-                                    .extra(session.promptTemplateVars())
-                                    .build();
+                .templateName("McpPlanner")
+                .systemPrompt(DB_SYSTEM_PROMPT)
+                .userPrompt(DB_USER_PROMPT)
+                .context(session.getContextJson())
+                .userInput(session.getUserText())
+                .mcpTools(toolsJson)
+                .mcpObservations(obsJson)
+                .extra(session.promptTemplateVars())
+                .session(session)
+                .build();
 
         String systemPrompt = renderer.render(DB_SYSTEM_PROMPT, ctx);
         String userPrompt = renderer.render(DB_USER_PROMPT, ctx);
 
         String schema = """
-        {
-          "type":"object",
-          "required":["action","tool_code","args","answer"],
-          "properties":{
-            "action":{"type":"string"},
-            "tool_code":{"type":["string","null"]},
-            "args":{"type":"object"},
-            "answer":{"type":["string","null"]}
-          },
-          "additionalProperties":false
-        }
-        """;
+                {
+                  "type":"object",
+                  "required":["action","tool_code","args","answer"],
+                  "properties":{
+                    "action":{"type":"string"},
+                    "tool_code":{"type":["string","null"]},
+                    "args":{"type":"object"},
+                    "answer":{"type":["string","null"]}
+                  },
+                  "additionalProperties":false
+                }
+                """;
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put(ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER, "DB_USER_PROMPT, DB_SYSTEM_PROMPT (fallback: USER_PROMPT, SYSTEM_PROMPT)");
+        inputPayload.put(ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER,
+                "DB_USER_PROMPT, DB_SYSTEM_PROMPT (fallback: USER_PROMPT, SYSTEM_PROMPT)");
         inputPayload.put(ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
         inputPayload.put(ConvEnginePayloadKey.USER_PROMPT, userPrompt);
         inputPayload.put(ConvEnginePayloadKey.SCHEMA, schema);
@@ -140,8 +142,7 @@ public class McpPlanner {
         LlmInvocationContext.set(
                 session.getConversationId(),
                 session.getIntent(),
-                session.getState()
-        );
+                session.getState());
 
         String out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
 
@@ -157,7 +158,8 @@ public class McpPlanner {
         }
     }
 
-    private record ToolView(String tool_code, String tool_group, String description) {}
+    private record ToolView(String tool_code, String tool_group, String description) {
+    }
 
     private String resolvePlannerPrompt(String primaryKey, String legacyKey, String defaultValue) {
         String primary = configResolver.resolveString(this, primaryKey, defaultValue);

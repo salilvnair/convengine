@@ -83,7 +83,8 @@ public class DisambiguationStep implements EngineStep {
         if (!flowConfig.getDisambiguation().isEnabled()) {
             return new StepResult.Continue();
         }
-        InteractionPolicyDecision decision = parseDecision(session.inputParamAsString(ConvEngineInputParamKey.POLICY_DECISION));
+        InteractionPolicyDecision decision = parseDecision(
+                session.inputParamAsString(ConvEngineInputParamKey.POLICY_DECISION));
         if (decision != InteractionPolicyDecision.EXECUTE_PENDING_ACTION) {
             return new StepResult.Continue();
         }
@@ -95,13 +96,13 @@ public class DisambiguationStep implements EngineStep {
 
         List<CePendingAction> candidates = pendingActionRepository.findEligibleByIntentAndStateOrderByPriorityAsc(
                 session.getIntent(),
-                session.getState()
-        );
+                session.getState());
         if (candidates == null || candidates.size() <= 1) {
             return new StepResult.Continue();
         }
 
-        int bestPriority = candidates.getFirst().getPriority() == null ? Integer.MAX_VALUE : candidates.getFirst().getPriority();
+        int bestPriority = candidates.getFirst().getPriority() == null ? Integer.MAX_VALUE
+                : candidates.getFirst().getPriority();
         List<CePendingAction> top = candidates.stream()
                 .filter(c -> (c.getPriority() == null ? Integer.MAX_VALUE : c.getPriority()) == bestPriority)
                 .toList();
@@ -131,7 +132,8 @@ public class DisambiguationStep implements EngineStep {
         String question = questionResult.question();
         session.setPendingClarificationQuestion(question);
         session.setPendingClarificationReason("PENDING_ACTION_DISAMBIGUATION");
-        session.putInputParam(ConvEngineInputParamKey.POLICY_DECISION, InteractionPolicyDecision.RECLASSIFY_INTENT.name());
+        session.putInputParam(ConvEngineInputParamKey.POLICY_DECISION,
+                InteractionPolicyDecision.RECLASSIFY_INTENT.name());
         session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_DISAMBIGUATION_REQUIRED, true);
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -164,9 +166,13 @@ public class DisambiguationStep implements EngineStep {
         }
         try {
             PromptTemplateContext promptContext = PromptTemplateContext.builder()
+                    .templateName("DisambiguationStep")
+                    .systemPrompt(llmSystemPrompt)
+                    .userPrompt(llmUserPrompt)
                     .context(session.getContextJson())
                     .userInput(session.getUserText())
                     .extra(disambiguationPromptVars(session, top, options))
+                    .session(session)
                     .build();
             String systemPrompt = renderer.render(llmSystemPrompt, promptContext);
             String userPrompt = renderer.render(llmUserPrompt, promptContext);
@@ -185,9 +191,12 @@ public class DisambiguationStep implements EngineStep {
         String joinedOptions = String.join(", ", options);
         try {
             PromptTemplateContext promptContext = PromptTemplateContext.builder()
+                    .templateName("DisambiguationStep - Fallback")
+                    .userPrompt(questionTemplate)
                     .context(session.getContextJson())
                     .userInput(session.getUserText())
                     .extra(disambiguationPromptVars(session, top, options))
+                    .session(session)
                     .build();
             String rendered = renderer.render(questionTemplate, promptContext).trim();
             if (!rendered.isBlank()) {
@@ -198,7 +207,8 @@ public class DisambiguationStep implements EngineStep {
         return "I found multiple actions. Which one should I execute: " + joinedOptions + "?";
     }
 
-    private Map<String, Object> disambiguationPromptVars(EngineSession session, List<CePendingAction> top, Set<String> options) {
+    private Map<String, Object> disambiguationPromptVars(EngineSession session, List<CePendingAction> top,
+            Set<String> options) {
         Map<String, Object> vars = new LinkedHashMap<>();
         vars.put(ConvEnginePayloadKey.OPTIONS, String.join(", ", options));
         vars.put(PROMPT_VAR_CANDIDATE_COUNT, top.size());

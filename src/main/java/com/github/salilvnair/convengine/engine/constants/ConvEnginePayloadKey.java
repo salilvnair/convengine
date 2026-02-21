@@ -72,6 +72,8 @@ public final class ConvEnginePayloadKey {
     public static final String SCHEMA_JSON = "schemaJson";
     public static final String SCORES = "scores";
     public static final String SESSION = "session";
+    public static final String PROMPT_SELECTED = "promptSelected";
+    public static final String PROMPT_VARS = "promptVars";
     public static final String SESSION_INPUT_PARAMS = "sessionInputParams";
     public static final String STATE = "state";
     public static final String STEP = "step";

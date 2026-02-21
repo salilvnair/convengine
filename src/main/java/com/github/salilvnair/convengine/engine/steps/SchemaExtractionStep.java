@@ -80,23 +80,27 @@ public class SchemaExtractionStep implements EngineStep {
 
         Map<String, Object> schemaFieldDetails = schemaResolver.schemaFieldDetails(schema.getJsonSchema());
         session.putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS, schemaFieldDetails);
-        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION, schema.getDescription() == null ? "" : schema.getDescription());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION,
+                schema.getDescription() == null ? "" : schema.getDescription());
         session.putInputParam(ConvEngineInputParamKey.SCHEMA_ID, schema.getSchemaId());
         session.setContextJson(schemaResolver.seedContextFromInputParams(
                 session.getContextJson(),
                 session.getInputParams(),
-                schema.getJsonSchema()
-        ));
+                schema.getJsonSchema()));
         session.getConversation().setContextJson(session.getContextJson());
         session.addPromptTemplateVars();
 
         PromptTemplateContext promptTemplateContext = PromptTemplateContext
                 .builder()
+                .templateName("SchemaExtraction")
+                .systemPrompt(template.getSystemPrompt())
+                .userPrompt(template.getUserPrompt())
                 .context(safeJson(session.getContextJson()))
                 .userInput(session.getUserText())
                 .schemaJson(schema.getJsonSchema())
                 .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
                 .extra(session.promptTemplateVars())
+                .session(session)
                 .build();
         String systemPrompt = renderer.render(template.getSystemPrompt(), promptTemplateContext);
         String userPrompt = renderer.render(template.getUserPrompt(), promptTemplateContext);
@@ -113,8 +117,7 @@ public class SchemaExtractionStep implements EngineStep {
         String extractedJson = llm.generateJson(
                 systemPrompt + "\n\n" + userPrompt,
                 schema.getJsonSchema(),
-                safeJson(session.getContextJson())
-        );
+                safeJson(session.getContextJson()));
         session.setLastLlmOutput(extractedJson);
         session.setLastLlmStage("SCHEMA_EXTRACTION");
 
@@ -126,7 +129,8 @@ public class SchemaExtractionStep implements EngineStep {
         session.setContextJson(merged);
         session.getConversation().setContextJson(merged);
 
-        ConvEngineSchemaComputation computation = schemaResolver.compute(schema.getJsonSchema(), merged, schemaFieldDetails);
+        ConvEngineSchemaComputation computation = schemaResolver.compute(schema.getJsonSchema(), merged,
+                schemaFieldDetails);
         session.setSchemaComplete(computation.schemaComplete());
         session.setSchemaHasAnyValue(computation.hasAnySchemaValue());
         session.setMissingRequiredFields(computation.missingFields());
@@ -140,7 +144,8 @@ public class SchemaExtractionStep implements EngineStep {
         session.putInputParam(ConvEngineInputParamKey.MISSING_FIELDS, computation.missingFields());
         session.putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS, schemaFieldDetails);
         session.putInputParam(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS, computation.missingFieldOptions());
-        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION, schema.getDescription() == null ? "" : schema.getDescription());
+        session.putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION,
+                schema.getDescription() == null ? "" : schema.getDescription());
         session.putInputParam(ConvEngineInputParamKey.SCHEMA_ID, schema.getSchemaId());
         session.addPromptTemplateVars();
 
@@ -162,9 +167,13 @@ public class SchemaExtractionStep implements EngineStep {
     private CePromptTemplate resolvePromptTemplate(String responseType, EngineSession session) {
         String intentCode = session.getIntent();
         String stateCode = session.getState();
-        return promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeAndStateCodeOrderByCreatedAtDesc(responseType, intentCode, stateCode)
-                .or(() -> promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(responseType, intentCode))
-                .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType=" + responseType + " and intent=" + intentCode));
+        return promptTemplateRepo
+                .findFirstByEnabledTrueAndResponseTypeAndIntentCodeAndStateCodeOrderByCreatedAtDesc(responseType,
+                        intentCode, stateCode)
+                .or(() -> promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(
+                        responseType, intentCode))
+                .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType="
+                        + responseType + " and intent=" + intentCode));
     }
 
     private String safeJson(String json) {

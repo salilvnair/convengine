@@ -29,140 +29,125 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ConversationController {
 
-    private final ConversationalEngine engine;
-    private final AuditRepository auditRepository;
-    private final AuditService audit;
-    private final AuditTraceService auditTraceService;
+        private final ConversationalEngine engine;
+        private final AuditRepository auditRepository;
+        private final AuditService audit;
+        private final AuditTraceService auditTraceService;
 
-    @PostMapping("/message")
-    public ConversationResponse message(@RequestBody ConversationRequest request) {
+        @PostMapping("/message")
+        public ConversationResponse message(@RequestBody ConversationRequest request) {
 
-        UUID conversationId =
-                request.getConversationId() != null
-                        ? request.getConversationId()
-                        : UUID.randomUUID();
+                UUID conversationId = request.getConversationId() != null
+                                ? request.getConversationId()
+                                : UUID.randomUUID();
 
-        Map<String, Object> inputParams = new LinkedHashMap<>();
-        Map<String, Object> userInputParams = Collections.emptyMap();
-        if (request.getInputParams() != null) {
-            inputParams.putAll(request.getInputParams());
-            userInputParams = InputParamsHelper.deepCopy(request.getInputParams());
+                Map<String, Object> inputParams = new LinkedHashMap<>();
+                Map<String, Object> userInputParams = Collections.emptyMap();
+                if (request.getInputParams() != null) {
+                        inputParams.putAll(request.getInputParams());
+                        userInputParams = InputParamsHelper.deepCopy(request.getInputParams());
+                }
+                if (Boolean.TRUE.equals(request.getReset())) {
+                        inputParams.put("reset", true);
+                }
+
+                EngineContext engineContext = EngineContext.builder()
+                                .conversationId(conversationId.toString())
+                                .userText(request.getMessage())
+                                .inputParams(inputParams)
+                                .userInputParams(userInputParams)
+                                .build();
+
+                try {
+                        EngineResult result = engine.process(engineContext);
+
+                        ConversationResponse res = new ConversationResponse();
+                        res.setSuccess(true);
+                        res.setConversationId(conversationId.toString());
+                        res.setIntent(result.intent());
+                        res.setState(result.state());
+                        res.setContext(result.contextJson());
+
+                        if (result.payload() instanceof TextPayload(String text)) {
+                                res.setPayload(
+                                                new ConversationResponse.ApiPayload("TEXT", text));
+                        } else if (result.payload() instanceof JsonPayload(String json)) {
+                                res.setPayload(
+                                                new ConversationResponse.ApiPayload("JSON", json));
+                        }
+
+                        return res;
+                } catch (ConversationEngineException ex) {
+                        Map<String, Object> payload = new LinkedHashMap<>();
+                        payload.put(ConvEnginePayloadKey.ERROR_CODE, ex.getErrorCode());
+                        payload.put(ConvEnginePayloadKey.MESSAGE, ex.getMessage());
+                        payload.put(ConvEnginePayloadKey.RECOVERABLE, ex.isRecoverable());
+                        if (ex.getMetaData() != null) {
+                                payload.put("_meta", ex.getMetaData());
+                        }
+                        audit.audit(
+                                        "ENGINE_KNOWN_FAILURE",
+                                        conversationId,
+                                        JsonUtil.toJson(payload));
+                        ConversationResponse error = new ConversationResponse();
+                        error.setConversationId(conversationId.toString());
+                        error.setIntent("ERROR");
+                        error.setState("ERROR");
+
+                        error.setPayload(
+                                        new ConversationResponse.ApiPayload(
+                                                        "ERROR",
+                                                        JsonUtil.toJson(
+                                                                        new ErrorPayload(
+                                                                                        ex.getErrorCode(),
+                                                                                        ex.getMessage(),
+                                                                                        ex.isRecoverable()))));
+                        return error;
+                } catch (Exception ex) {
+                        Map<String, Object> payload = new LinkedHashMap<>();
+                        payload.put(ConvEnginePayloadKey.EXCEPTION, String.valueOf(ex));
+                        payload.put(ConvEnginePayloadKey.MESSAGE, ex.getMessage());
+                        payload.put(ConvEnginePayloadKey.RECOVERABLE, false);
+                        audit.audit(
+                                        "ENGINE_UNKNOWN_FAILURE",
+                                        conversationId,
+                                        JsonUtil.toJson(payload));
+                        ConversationResponse error = new ConversationResponse();
+                        error.setConversationId(conversationId.toString());
+                        error.setIntent("ERROR");
+                        error.setState("ERROR");
+
+                        error.setPayload(
+                                        new ConversationResponse.ApiPayload(
+                                                        "ERROR",
+                                                        JsonUtil.toJson(
+                                                                        new ErrorPayload(
+                                                                                        null,
+                                                                                        ex.getMessage(),
+                                                                                        false))));
+                        return error;
+                } finally {
+                        // Safety flush for deferred audit mode. In immediate mode this is a no-op.
+                        audit.flushPending(conversationId);
+                }
         }
-        if (Boolean.TRUE.equals(request.getReset())) {
-            inputParams.put("reset", true);
+
+        @GetMapping("/audit/{conversationId}")
+        public List<CeAudit> getAudit(@PathVariable("conversationId") UUID conversationId) {
+                return auditRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
         }
 
-        EngineContext engineContext =
-                EngineContext.builder()
-                        .conversationId(conversationId.toString())
-                        .userText(request.getMessage())
-                        .inputParams(inputParams)
-                        .userInputParams(userInputParams)
-                        .build();
-
-        try {
-            EngineResult result = engine.process(engineContext);
-
-            ConversationResponse res = new ConversationResponse();
-            res.setSuccess(true);
-            res.setConversationId(conversationId.toString());
-            res.setIntent(result.intent());
-            res.setState(result.state());
-            res.setContext(result.contextJson());
-
-            if (result.payload() instanceof TextPayload(String text)) {
-                res.setPayload(
-                        new ConversationResponse.ApiPayload("TEXT", text)
-                );
-            }
-            else if (result.payload() instanceof JsonPayload(String json)) {
-                res.setPayload(
-                        new ConversationResponse.ApiPayload("JSON", json)
-                );
-            }
-
-            return res;
+        @GetMapping("/audit/{conversationId}/trace")
+        public AuditTraceResponse getAuditTrace(@PathVariable("conversationId") UUID conversationId) {
+                return auditTraceService.trace(conversationId);
         }
-        catch (ConversationEngineException ex) {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(ConvEnginePayloadKey.ERROR_CODE, ex.getErrorCode());
-            payload.put(ConvEnginePayloadKey.MESSAGE, ex.getMessage());
-            payload.put(ConvEnginePayloadKey.RECOVERABLE, ex.isRecoverable());
-            audit.audit(
-                    "ENGINE_KNOWN_FAILURE",
-                    conversationId,
-                    JsonUtil.toJson(payload)
-            );
-            ConversationResponse error = new ConversationResponse();
-            error.setConversationId(conversationId.toString());
-            error.setIntent("ERROR");
-            error.setState("ERROR");
 
-            error.setPayload(
-                    new ConversationResponse.ApiPayload(
-                            "ERROR",
-                            JsonUtil.toJson(
-                                    new ErrorPayload(
-                                            ex.getErrorCode(),
-                                            ex.getMessage(),
-                                            ex.isRecoverable()
-                                    )
-                            )
-                    )
-            );
-            return error;
+        // ----------------------------------------
+        // Internal error payload (UI contract)
+        // ----------------------------------------
+        record ErrorPayload(
+                        String errorCode,
+                        String message,
+                        boolean recoverable) {
         }
-        catch (Exception ex) {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(ConvEnginePayloadKey.EXCEPTION, String.valueOf(ex));
-            payload.put(ConvEnginePayloadKey.MESSAGE, ex.getMessage());
-            payload.put(ConvEnginePayloadKey.RECOVERABLE, false);
-            audit.audit(
-                    "ENGINE_UNKNOWN_FAILURE",
-                    conversationId,
-                    JsonUtil.toJson(payload)
-            );
-            ConversationResponse error = new ConversationResponse();
-            error.setConversationId(conversationId.toString());
-            error.setIntent("ERROR");
-            error.setState("ERROR");
-
-            error.setPayload(
-                    new ConversationResponse.ApiPayload(
-                            "ERROR",
-                            JsonUtil.toJson(
-                                    new ErrorPayload(
-                                            null,
-                                            ex.getMessage(),
-                                            false
-                                    )
-                            )
-                    )
-            );
-            return error;
-        }
-        finally {
-            // Safety flush for deferred audit mode. In immediate mode this is a no-op.
-            audit.flushPending(conversationId);
-        }
-    }
-
-    @GetMapping("/audit/{conversationId}")
-    public List<CeAudit> getAudit(@PathVariable("conversationId") UUID conversationId) {
-        return auditRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
-    }
-
-    @GetMapping("/audit/{conversationId}/trace")
-    public AuditTraceResponse getAuditTrace(@PathVariable("conversationId") UUID conversationId) {
-        return auditTraceService.trace(conversationId);
-    }
-
-    // ----------------------------------------
-    // Internal error payload (UI contract)
-    // ----------------------------------------
-    record ErrorPayload(
-            String errorCode,
-            String message,
-            boolean recoverable
-    ) {}
 }

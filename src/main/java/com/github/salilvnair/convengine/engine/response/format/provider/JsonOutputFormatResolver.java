@@ -39,23 +39,25 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
     public void resolve(
             EngineSession session,
             ResponseTemplate response,
-            PromptTemplate template
-    ) {
+            PromptTemplate template) {
         session.addPromptTemplateVars();
 
         String historyJson = JsonUtil.toJson(session.conversionHistory());
-        PromptTemplateContext ctx =
-                PromptTemplateContext.builder()
-                        .context(session.getContextJson())
-                        .userInput(session.getUserText())
-                        .schemaJson(session.getResolvedSchema() != null
-                                ? session.getResolvedSchema().getJsonSchema()
-                                : null)
-                        .containerDataJson(session.getContainerDataJson())
-                        .validationJson(session.getValidationTablesJson())
-                        .conversationHistory(historyJson)
-                        .extra(session.promptTemplateVars())
-                        .build();
+        PromptTemplateContext ctx = PromptTemplateContext.builder()
+                .templateName("Response: " + response.getResponseType())
+                .systemPrompt(template.getSystemPrompt())
+                .userPrompt(template.getUserPrompt())
+                .context(session.getContextJson())
+                .userInput(session.getUserText())
+                .schemaJson(session.getResolvedSchema() != null
+                        ? session.getResolvedSchema().getJsonSchema()
+                        : null)
+                .containerDataJson(session.getContainerDataJson())
+                .validationJson(session.getValidationTablesJson())
+                .conversationHistory(historyJson)
+                .extra(session.promptTemplateVars())
+                .session(session)
+                .build();
 
         String systemPrompt = renderer.render(template.getSystemPrompt(), ctx);
         String userPrompt = renderer.render(template.getUserPrompt(), ctx);
@@ -63,8 +65,7 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
         LlmInvocationContext.set(
                 session.getConversationId(),
                 session.getIntent(),
-                session.getState()
-        );
+                session.getState());
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
         inputPayload.put(ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
@@ -74,13 +75,11 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
         inputPayload.put(ConvEnginePayloadKey.SESSION, session.eject());
         audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_INPUT, session.getConversationId(), inputPayload);
 
-        String json =
-                llm.generateJson(
-                        systemPrompt + "\n\n" + userPrompt + "\n\n" +
-                                safe(response.getDerivationHint()),
-                        response.getJsonSchema(),
-                        JsonUtil.toJson(session.contextDict())
-                );
+        String json = llm.generateJson(
+                systemPrompt + "\n\n" + userPrompt + "\n\n" +
+                        safe(response.getDerivationHint()),
+                response.getJsonSchema(),
+                JsonUtil.toJson(session.contextDict()));
         session.setLastLlmOutput(json);
         session.setLastLlmStage("RESPONSE_JSON");
 
@@ -107,7 +106,8 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
                 session.setState(node.get("state").asText());
                 session.getConversation().setStateCode(node.get("state").asText());
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private String safe(String s) {
