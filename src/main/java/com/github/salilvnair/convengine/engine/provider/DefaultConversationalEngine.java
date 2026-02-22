@@ -1,5 +1,6 @@
 package com.github.salilvnair.convengine.engine.provider;
 
+import com.github.salilvnair.convengine.config.ConvEngineFlowConfig;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.core.ConversationalEngine;
 import com.github.salilvnair.convengine.engine.factory.EnginePipelineFactory;
@@ -18,11 +19,12 @@ public class DefaultConversationalEngine implements ConversationalEngine {
     private final EngineSessionFactory sessionFactory;
     private final EnginePipelineFactory pipelineFactory;
     private final ConversationHistoryProvider historyProvider;
+    private final ConvEngineFlowConfig convEngineFlowConfig;
 
     @Override
     public EngineResult process(EngineContext engineContext) {
         EngineSession session = sessionFactory.open(engineContext);
-        session.setConversationHistory(historyProvider.lastTurns(session.getConversationId(), 10));
+        session.setConversationHistory(historyProvider.lastTurns(session.getConversationId(), convEngineFlowConfig.getConversationHistory().getMaxTurns()));
         EnginePipeline pipeline = pipelineFactory.create();
         return pipeline.execute(session);
     }

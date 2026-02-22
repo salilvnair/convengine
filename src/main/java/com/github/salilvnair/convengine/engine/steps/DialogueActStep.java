@@ -16,10 +16,12 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
+import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
+import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
+import com.github.salilvnair.convengine.util.JsonUtil;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
@@ -50,12 +52,17 @@ public class DialogueActStep implements EngineStep {
     private final ConvEngineFlowConfig flowConfig;
     private final LlmClient llm;
     private final CeConfigResolver configResolver;
+    private final PromptTemplateRenderer renderer;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
     private String SYSTEM_PROMPT;
     private String USER_PROMPT;
     private String SCHEMA_JSON;
+
+    private String QUERY_REWRITE_SYSTEM_PROMPT;
+    private String QUERY_REWRITE_USER_PROMPT;
+    private String QUERY_REWRITE_SCHEMA_JSON;
 
     @PostConstruct
     public void init() {
@@ -66,7 +73,7 @@ public class DialogueActStep implements EngineStep {
                 """);
         USER_PROMPT = configResolver.resolveString(this, "USER_PROMPT", """
                 User text:
-                %s
+                {{user_input}}
                 """);
         SCHEMA_JSON = configResolver.resolveString(this, "SCHEMA_PROMPT", """
                 {
@@ -75,6 +82,33 @@ public class DialogueActStep implements EngineStep {
                   "properties":{
                     "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
                     "confidence":{"type":"number"}
+                  },
+                  "additionalProperties":false
+                }
+                """);
+
+        QUERY_REWRITE_SYSTEM_PROMPT = configResolver.resolveString(this, "QUERY_REWRITE_SYSTEM_PROMPT",
+                """
+                        You are a dialogue-act classifier and intelligent query search rewriter.
+                        Using the conversation history, rewrite the user's text into an explicit, standalone query that perfectly describes their intent without needing the conversation history context.
+                        Also classify their dialogue act.
+                        Return JSON only matching the exact schema.
+                        """);
+        QUERY_REWRITE_USER_PROMPT = configResolver.resolveString(this, "QUERY_REWRITE_USER_PROMPT", """
+                Conversation History:
+                {{conversation_history}}
+
+                User text:
+                {{user_input}}
+                """);
+        QUERY_REWRITE_SCHEMA_JSON = configResolver.resolveString(this, "QUERY_REWRITE_SCHEMA_PROMPT", """
+                {
+                  "type":"object",
+                  "required":["dialogueAct","confidence","standaloneQuery"],
+                  "properties":{
+                    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
+                    "confidence":{"type":"number"},
+                    "standaloneQuery":{"type":"string"}
                   },
                   "additionalProperties":false
                 }
@@ -96,12 +130,20 @@ public class DialogueActStep implements EngineStep {
         session.putInputParam(ConvEngineInputParamKey.DIALOGUE_ACT, resolved.act().name());
         session.putInputParam(ConvEngineInputParamKey.DIALOGUE_ACT_CONFIDENCE, resolved.confidence());
         session.putInputParam(ConvEngineInputParamKey.DIALOGUE_ACT_SOURCE, resolved.source());
+        boolean hasStandaloneQuery = resolved.standaloneQuery() != null && !resolved.standaloneQuery().isBlank();
+        if (hasStandaloneQuery) {
+            session.putInputParam(ConvEngineInputParamKey.STANDALONE_QUERY, resolved.standaloneQuery());
+            session.setStandaloneQuery(resolved.standaloneQuery());
+        }
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(ConvEnginePayloadKey.USER_TEXT, session.getUserText());
         payload.put(ConvEnginePayloadKey.DIALOGUE_ACT, resolved.act().name());
         payload.put(ConvEnginePayloadKey.DIALOGUE_ACT_CONFIDENCE, resolved.confidence());
         payload.put(ConvEnginePayloadKey.DIALOGUE_ACT_SOURCE, resolved.source());
+        if (hasStandaloneQuery) {
+            payload.put(ConvEnginePayloadKey.STANDALONE_QUERY, resolved.standaloneQuery());
+        }
         payload.put("dialogueActResolveMode", resolveMode.name());
         payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
         payload.put(ConvEnginePayloadKey.STATE, session.getState());
@@ -150,31 +192,62 @@ public class DialogueActStep implements EngineStep {
 
     private DialogueActResult classifyByRegex(String userText) {
         if (userText.isEmpty()) {
-            return new DialogueActResult(DialogueAct.NEW_REQUEST, 0.40d, "REGEX");
+            return new DialogueActResult(DialogueAct.NEW_REQUEST, 0.40d, "REGEX", null);
         }
         if (AFFIRM.matcher(userText).matches()) {
-            return new DialogueActResult(DialogueAct.AFFIRM, 0.95d, "REGEX");
+            return new DialogueActResult(DialogueAct.AFFIRM, 0.95d, "REGEX", null);
         }
         if (NEGATE.matcher(userText).matches()) {
-            return new DialogueActResult(DialogueAct.NEGATE, 0.95d, "REGEX");
+            return new DialogueActResult(DialogueAct.NEGATE, 0.95d, "REGEX", null);
         }
         if (EDIT.matcher(userText).matches()) {
-            return new DialogueActResult(DialogueAct.EDIT, 0.95d, "REGEX");
+            return new DialogueActResult(DialogueAct.EDIT, 0.95d, "REGEX", null);
         }
         if (RESET.matcher(userText).matches()) {
-            return new DialogueActResult(DialogueAct.RESET, 0.95d, "REGEX");
+            return new DialogueActResult(DialogueAct.RESET, 0.95d, "REGEX", null);
         }
         if (userText.endsWith("?")) {
-            return new DialogueActResult(DialogueAct.QUESTION, 0.70d, "REGEX");
+            return new DialogueActResult(DialogueAct.QUESTION, 0.70d, "REGEX", null);
         }
-        return new DialogueActResult(DialogueAct.NEW_REQUEST, 0.70d, "REGEX");
+        return new DialogueActResult(DialogueAct.NEW_REQUEST, 0.70d, "REGEX", null);
     }
 
     private DialogueActResult classifyByLlm(EngineSession session, String userText) {
         try {
-            String systemPrompt = SYSTEM_PROMPT;
-            String userPrompt = USER_PROMPT.formatted(userText == null ? "" : userText);
-            String schema = SCHEMA_JSON;
+            boolean useQueryRewrite = flowConfig.getQueryRewrite().isEnabled()
+                    && session.conversionHistory() != null
+                    && !session.conversionHistory().isEmpty();
+
+            String systemPrompt;
+            String userPrompt;
+            String schema;
+
+            if (useQueryRewrite) {
+                systemPrompt = QUERY_REWRITE_SYSTEM_PROMPT;
+                userPrompt = QUERY_REWRITE_USER_PROMPT;
+                schema = QUERY_REWRITE_SCHEMA_JSON;
+                session.setQueryRewritten(true);
+            }
+            else {
+                systemPrompt = SYSTEM_PROMPT;
+                userPrompt = USER_PROMPT.formatted(userText == null ? "" : userText);
+                schema = SCHEMA_JSON;
+            }
+
+            PromptTemplateContext promptTemplateContext = PromptTemplateContext
+                                                            .builder()
+                                                            .templateName("DialogueActResult")
+                                                            .systemPrompt(systemPrompt)
+                                                            .userPrompt(userPrompt)
+                                                            .schemaJson(schema)
+                                                            .context(session.getContextJson())
+                                                            .userInput(session.getUserText())
+                                                            .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
+                                                            .extra(session.promptTemplateVars())
+                                                            .session(session)
+                                                            .build();
+            systemPrompt = renderer.render(systemPrompt, promptTemplateContext);
+            userPrompt = renderer.render(userPrompt, promptTemplateContext);
 
             LlmInvocationContext.set(session.getConversationId(), session.getIntent(), session.getState());
             String out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
@@ -182,7 +255,8 @@ public class DialogueActStep implements EngineStep {
             String actRaw = node.path("dialogueAct").asText("").trim();
             DialogueAct act = DialogueAct.valueOf(actRaw.toUpperCase());
             double confidence = clamp(node.path("confidence").asDouble(0.0d));
-            return new DialogueActResult(act, confidence, "LLM");
+            String standaloneQuery = node.has("standaloneQuery") ? node.path("standaloneQuery").asText(null) : null;
+            return new DialogueActResult(act, confidence, "LLM", standaloneQuery);
         } catch (Exception ignored) {
             return null;
         }
@@ -192,9 +266,9 @@ public class DialogueActStep implements EngineStep {
         return Math.max(0.0d, Math.min(1.0d, value));
     }
 
-    private record DialogueActResult(DialogueAct act, double confidence, String source) {
+    private record DialogueActResult(DialogueAct act, double confidence, String source, String standaloneQuery) {
         private DialogueActResult withSource(String source) {
-            return new DialogueActResult(act, confidence, source);
+            return new DialogueActResult(act, confidence, source, standaloneQuery);
         }
     }
 }

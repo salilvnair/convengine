@@ -64,8 +64,6 @@ public class AgentIntentCollisionResolver implements IntentCollisionResolver {
 
     @Override
     public void resolve(EngineSession session) {
-        List<ConversationTurn> conversationTurns = historyProvider.lastTurns(session.getConversationId(), 10);
-        session.setConversationHistory(conversationTurns);
         typeFactory
                 .get(ResponseType.DERIVED.name())
                 .resolve(session, PromptTemplate.initFrom(SYSTEM_PROMPT, USER_PROMPT, OutputType.TEXT.name(), "templateFromCeConfig (AgentIntentCollisionResolver)"), ResponseTemplate.initFrom(DERIVATION_HINT, OutputType.TEXT.name()));

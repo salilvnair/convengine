@@ -371,9 +371,11 @@ public class DbAuditService implements AuditService {
                 return new HistoryEntryType("MCP_AI_RESPONSE", "AI");
             }
             if (ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT.value().equals(normalized)
-                    || ConvEngineAuditStage.RESPONSE_EXACT.value().equals(normalized)
-                    || ConvEngineAuditStage.ASSISTANT_OUTPUT.value().equals(normalized)) {
+                    || ConvEngineAuditStage.RESPONSE_EXACT.value().equals(normalized)) {
                 return new HistoryEntryType("RESOLVE_RESPONSE_AI_RESPONSE", "AI");
+            }
+            if (ConvEngineAuditStage.ASSISTANT_OUTPUT.value().equals(normalized)) {
+                return new HistoryEntryType("ASSISTANT_OUTPUT", "AI");
             }
             return new HistoryEntryType("AI_RESPONSE", "AI");
         }

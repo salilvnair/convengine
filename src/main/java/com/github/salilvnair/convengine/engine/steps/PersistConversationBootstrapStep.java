@@ -5,7 +5,7 @@ import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.ConversationBootstrapStep;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
-import com.github.salilvnair.convengine.repo.ConversationRepository;
+import com.github.salilvnair.convengine.service.ConversationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -17,14 +17,14 @@ import java.time.OffsetDateTime;
 @ConversationBootstrapStep
 public class PersistConversationBootstrapStep implements EngineStep {
 
-    private final ConversationRepository conversationRepo;
+    private final ConversationCacheService cacheService;
 
     @Override
     public StepResult execute(EngineSession session) {
         if (session.getConversation().getCreatedAt() == null) {
             session.getConversation().setCreatedAt(OffsetDateTime.now());
             session.getConversation().setUpdatedAt(OffsetDateTime.now());
-            conversationRepo.save(session.getConversation());
+            cacheService.saveAndCache(session.getConversation());
         }
         return new StepResult.Continue();
     }
