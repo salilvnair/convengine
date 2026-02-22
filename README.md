@@ -6,9 +6,15 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `2.0.0`
+- Current library version: `2.0.3`
 
-## Detailed Architecture Upgrades (v2.0.0)
+## Detailed Architecture Upgrades (v2.0.3)
+
+### 6. Caching, Async Persistence & Deep Audit
+- **Spring `@Cacheable` + `@Async` Control Plane**: Persistences operations are now fire-and-forget background threads to erase RDBMS I/O latency, cleanly fronted by real-time synchronized cache managers. Enabled seamlessly via `@EnableConvEngineCaching` & `@EnableConvEngineAsyncConversation`.
+- **`CacheInspectAuditStep`**: Dedicated `convengine.audit.cache-inspector` debug functionality to serialize the live hydrated cache properties to `ce_audit` as `CACHE_INSPECTION` payloads. 
+- **Global `_cache` Logging**: `DbAuditService` captures memory footprints passively alongside all discrete stage checkpoints when inspection triggers are enabled.
+- **Executor Macro History Control**: Reduced database redundant scans for conversational memory blocks by extracting provisioning arrays `historyProvider.lastTurns` into `DefaultConversationalEngine.process()`.
 
 ### 1. Robust Pending Action & Task Execution Lifecycle
 - **Introduction of `ce_pending_action`**: A new core configuration table used to catalog multi-turn action candidates by intent, state, and `action_key`. Features indexed lookups `idx_ce_pending_action_lookup` across `enabled`, `action_key`, `intent_code`, and `state_code`.
@@ -78,8 +84,9 @@ Step order is DAG-resolved from annotations (`@MustRunAfter`, `@MustRunBefore`, 
 Main runtime stages:
 
 1. Conversation bootstrap/load/reset
-2. User input audit + policy checks
-3. Dialogue-act classification
+2. Cache inspection audit (if enabled)
+3. User input audit + policy checks
+4. Dialogue-act classification
 4. Interaction policy decision
 5. Action lifecycle/disambiguation/guardrail
 6. Intent resolution + fallback/reset handling

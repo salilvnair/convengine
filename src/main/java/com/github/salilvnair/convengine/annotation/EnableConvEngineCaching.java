@@ -17,5 +17,5 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 @Import(ConvEngineCacheConfiguration.class)
-public @interface CeEnableCaching {
+public @interface EnableConvEngineCaching {
 }

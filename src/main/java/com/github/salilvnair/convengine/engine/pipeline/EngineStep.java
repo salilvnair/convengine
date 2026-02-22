@@ -22,6 +22,7 @@ public interface EngineStep {
         MemoryStep,
         AutoAdvanceStep,
         McpToolStep,
+        CacheInspectAuditStep,
         LoadOrCreateConversationStep,
         FallbackIntentStateStep,
         PersistConversationBootstrapStep,

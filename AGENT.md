@@ -14,7 +14,7 @@ Do not treat ConvEngine as an unconstrained chatbot runtime.
 
 ## Current Baseline
 
-- Library version: `2.0.0`
+- Library version: `2.0.3`
 - Property namespace for flow tuning: `convengine.flow.*`
 
 ## Core Operating Model

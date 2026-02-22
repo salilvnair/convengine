@@ -17,12 +17,12 @@ public class ConversationCacheService {
     private final ConversationRepository conversationRepository;
     private final AsyncConversationPersistenceService asyncPersistence;
 
-    @Cacheable(value = "ce_conversation_cache", key = "#conversationId", unless = "#result == null")
+    @Cacheable(value = "ce_conversation_cache", key = "#p0", unless = "#result == null")
     public Optional<CeConversation> getConversation(UUID conversationId) {
         return conversationRepository.findById(conversationId);
     }
 
-    @CachePut(value = "ce_conversation_cache", key = "#conversation.conversationId")
+    @CachePut(value = "ce_conversation_cache", key = "#p0.conversationId")
     public CeConversation saveAndCache(CeConversation conversation) {
         // synchronously update the cache with the new intent/state payload to guarantee
         // consistency across pipelines
@@ -33,7 +33,7 @@ public class ConversationCacheService {
         return conversation;
     }
 
-    @CachePut(value = "ce_conversation_cache", key = "#conversation.conversationId")
+    @CachePut(value = "ce_conversation_cache", key = "#p0.conversationId")
     public CeConversation createAndCacheSync(CeConversation conversation) {
         // When initially creating, we often need the real DB commit before proceeding
         // So we do a synchronous save, but update the cache.

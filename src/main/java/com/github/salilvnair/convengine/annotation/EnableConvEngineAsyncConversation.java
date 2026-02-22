@@ -17,5 +17,5 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 @Import(ConvEngineAsyncConfiguration.class)
-public @interface CeEnableAsyncConversation {
+public @interface EnableConvEngineAsyncConversation {
 }
