@@ -1,7 +1,9 @@
 package com.github.salilvnair.convengine.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.salilvnair.convengine.audit.dispatch.AuditEventDispatcher;
 import com.github.salilvnair.convengine.audit.dispatch.AuditStageControl;
 import com.github.salilvnair.convengine.audit.persistence.AuditPersistenceStrategyFactory;
@@ -12,10 +14,8 @@ import com.github.salilvnair.convengine.entity.CeConversation;
 import com.github.salilvnair.convengine.entity.CeConversationHistory;
 import com.github.salilvnair.convengine.repo.ConversationHistoryRepository;
 import com.github.salilvnair.convengine.repo.ConversationRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +25,6 @@ import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
-@RequiredArgsConstructor
 @Component
 public class DbAuditService implements AuditService {
 
@@ -42,7 +41,26 @@ public class DbAuditService implements AuditService {
     private final AuditEventDispatcher eventDispatcher;
     private final ConvEngineAuditConfig auditConfig;
     private final AuditPersistenceStrategyFactory persistenceStrategyFactory;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
+
+    public DbAuditService(
+            ConversationHistoryRepository conversationHistoryRepository,
+            ConversationRepository conversationRepository,
+            AuditStageControl stageControl,
+            AuditEventDispatcher eventDispatcher,
+            ConvEngineAuditConfig auditConfig,
+            AuditPersistenceStrategyFactory persistenceStrategyFactory) {
+        this.conversationHistoryRepository = conversationHistoryRepository;
+        this.conversationRepository = conversationRepository;
+        this.stageControl = stageControl;
+        this.eventDispatcher = eventDispatcher;
+        this.auditConfig = auditConfig;
+        this.persistenceStrategyFactory = persistenceStrategyFactory;
+
+        this.mapper = new ObjectMapper();
+        this.mapper.registerModule(new JavaTimeModule());
+        this.mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    }
 
     @Override
     public void audit(String stage, UUID conversationId, String payloadJson) {

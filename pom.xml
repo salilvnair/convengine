@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.salilvnair</groupId>
     <artifactId>convengine</artifactId>
-    <version>2.0.3</version>
+    <version>2.0.4</version>
     <name>ConversationEngine Framework</name>
     <description>ConvEngine is a deterministic, database-configured conversational engine designed for enterprise workflows.</description>
     <url>https://github.com/salilvnair/convengine</url>
@@ -110,6 +110,11 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
 
         <dependency>

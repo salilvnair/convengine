@@ -31,7 +31,7 @@ public class DeferredBulkAuditPersistenceStrategy implements AuditPersistenceStr
     @Override
     public List<CeAudit> persist(CeAudit record) {
         BufferedAuditBatch batch = deferredBatch.get();
-        if (batch == null || batch.conversationId == null || !record.getConversationId().equals(batch.conversationId)) {
+        if (batch == null || !record.getConversationId().equals(batch.conversationId)) {
             flushPending(batch == null ? null : batch.conversationId);
             batch = new BufferedAuditBatch(record.getConversationId());
             deferredBatch.set(batch);
