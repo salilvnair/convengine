@@ -75,6 +75,7 @@ public final class ConvEnginePayloadKey {
     public static final String PROMPT_SELECTED = "promptSelected";
     public static final String PROMPT_VARS = "promptVars";
     public static final String SESSION_INPUT_PARAMS = "sessionInputParams";
+    public static final String STANDALONE_QUERY = "standaloneQuery";
     public static final String STATE = "state";
     public static final String STEP = "step";
     public static final String STEP_CLASS = "stepClass";

@@ -88,10 +88,6 @@ public class ResponseResolutionStep implements EngineStep {
                 session.getConversationId(),
                 responsePayload
         );
-        List<ConversationTurn> conversationTurns = historyProvider.lastTurns(session.getConversationId(), 10);
-        session.setConversationHistory(conversationTurns);
-
-
 
         CePromptTemplate template = null;
         if(ResponseType.DERIVED.name().equalsIgnoreCase(resp.getResponseType())) {

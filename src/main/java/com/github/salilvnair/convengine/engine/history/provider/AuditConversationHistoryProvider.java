@@ -8,11 +8,14 @@ import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.entity.CeConversationHistory;
 import com.github.salilvnair.convengine.repo.ConversationHistoryRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @Component
 @RequiredArgsConstructor
@@ -20,10 +23,7 @@ public class AuditConversationHistoryProvider implements ConversationHistoryProv
 
     private static final String USER_ENTRY_TYPE = ConvEngineAuditStage.USER_INPUT.value();
     private static final List<String> AI_ENTRY_TYPES = List.of(
-            "INTENT_AI_RESPONSE",
-            "MCP_AI_RESPONSE",
-            "RESOLVE_RESPONSE_AI_RESPONSE",
-            "AI_RESPONSE"
+            "ASSISTANT_OUTPUT"
     );
 
     private final ConversationHistoryRepository conversationHistoryRepository;
@@ -31,37 +31,36 @@ public class AuditConversationHistoryProvider implements ConversationHistoryProv
 
     @Override
     public List<ConversationTurn> lastTurns(UUID conversationId, int limit) {
-        List<CeConversationHistory> historyRows = conversationHistoryRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
+        Pageable pageable = PageRequest.of(0, 500);
+        List<CeConversationHistory> historyRows = conversationHistoryRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable).getContent();;
 
         List<ConversationTurn> turns = new ArrayList<>();
-
-        String pendingUser = null;
-
-        for (CeConversationHistory row : historyRows) {
-
+        List<String> ALL_ENTRY_TYPES = Stream.concat(
+                                                Stream.of(USER_ENTRY_TYPE),
+                                                AI_ENTRY_TYPES.stream()
+                                        ).toList();
+        String userInput= null;
+        String assistantOutput = null;
+        List<CeConversationHistory> filteredHistoryRows = historyRows.stream().filter(row -> ALL_ENTRY_TYPES.contains(row.getEntryType())).toList();
+        for (CeConversationHistory row : filteredHistoryRows) {
             String entryType = row.getEntryType();
             String payload = row.getPayloadJson();
             String contentText = row.getContentText();
 
             if (USER_ENTRY_TYPE.equals(entryType)) {
-                pendingUser = firstNonBlank(contentText, extractText(payload));
-                continue;
+                userInput = firstNonBlank(contentText, extractText(payload));
             }
-
-            if (AI_ENTRY_TYPES.contains(entryType) && pendingUser != null) {
-                turns.add(
-                        new ConversationTurn(
-                                pendingUser,
-                                firstNonBlank(contentText, extractText(payload))
-                        )
-                );
-                pendingUser = null;
+            if (AI_ENTRY_TYPES.contains(entryType)) {
+                assistantOutput = firstNonBlank(contentText, extractText(payload));
+            }
+            if (userInput != null && assistantOutput != null) {
+                ConversationTurn turn = new ConversationTurn(userInput, assistantOutput);
+                turns.add(turn);
+                userInput= null;
+                assistantOutput = null;
             }
         }
-
-        // Return only last N turns
-        int from = Math.max(0, turns.size() - limit);
-        return turns.subList(from, turns.size());
+        return turns.size() > limit ? turns.subList(0, limit): turns;
     }
 
     private String firstNonBlank(String primary, String fallback) {

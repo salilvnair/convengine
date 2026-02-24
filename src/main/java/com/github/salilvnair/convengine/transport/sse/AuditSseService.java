@@ -46,12 +46,13 @@ public class AuditSseService implements AuditEventListener {
         if (conversationEmitters == null || conversationEmitters.isEmpty()) {
             return;
         }
+
         AuditStreamEventResponse event = new AuditStreamEventResponse(
                 audit.getAuditId(),
                 audit.getStage(),
                 audit.getCreatedAt() == null ? null : audit.getCreatedAt().toString(),
-                payloadMapper.payloadAsMap(audit.getPayloadJson())
-        );
+                payloadMapper.payloadAsMap(audit.getPayloadJson()));
+
         for (SseEmitter emitter : conversationEmitters.toArray(new SseEmitter[0])) {
             try {
                 emitter.send(SseEmitter.event().name(audit.getStage()).data(event));
@@ -68,9 +69,7 @@ public class AuditSseService implements AuditEventListener {
                             .name("CONNECTED")
                             .data(Map.of(
                                     "conversationId", String.valueOf(conversationId),
-                                    "transport", "SSE"
-                            ))
-            );
+                                    "transport", "SSE")));
         } catch (IOException e) {
             removeEmitter(conversationId, emitter);
             log.debug("SSE connected event failed convId={} msg={}", conversationId, e.getMessage());

@@ -103,7 +103,7 @@ public class MemoryStep implements EngineStep {
                     continue;
                 }
                 out.append("{u=").append(value(turn.user()))
-                        .append(",a=").append(value(turn.bot()))
+                        .append(",a=").append(value(turn.assistant()))
                         .append("}");
             }
             out.append("]");

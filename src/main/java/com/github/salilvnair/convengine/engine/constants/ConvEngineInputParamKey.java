@@ -29,6 +29,7 @@ public final class ConvEngineInputParamKey {
     public static final String DIALOGUE_ACT = "dialogue_act";
     public static final String DIALOGUE_ACT_CONFIDENCE = "dialogue_act_confidence";
     public static final String DIALOGUE_ACT_SOURCE = "dialogue_act_source";
+    public static final String STANDALONE_QUERY = "standalone_query";
     public static final String POLICY_DECISION = "policy_decision";
     public static final String SKIP_INTENT_RESOLUTION = "skip_intent_resolution";
     public static final String PENDING_ACTION_KEY = "pending_action_key";

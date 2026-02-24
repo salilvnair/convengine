@@ -78,7 +78,7 @@ public class AddContainerDataStep implements EngineStep {
                 String key = cfg.getInputParamName();
                 Object value = session.extractValueFromContext(key);
                 if(value == null) {
-                    value = session.getUserText();
+                    value = session.isQueryRewritten() ? session.getStandaloneQuery() : session.getUserText();
                 }
                 inputParams.put(key, value);
                 if (session.getInputParams() != null) {

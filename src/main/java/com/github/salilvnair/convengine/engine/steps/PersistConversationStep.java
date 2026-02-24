@@ -12,7 +12,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
-import com.github.salilvnair.convengine.repo.ConversationRepository;
+import com.github.salilvnair.convengine.service.ConversationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -28,7 +28,7 @@ import java.util.Map;
 @MustRunBefore(PipelineEndGuardStep.class)
 public class PersistConversationStep implements EngineStep {
 
-    private final ConversationRepository conversationRepo;
+    private final ConversationCacheService cacheService;
     private final AuditService audit;
 
     @Override
@@ -38,8 +38,7 @@ public class PersistConversationStep implements EngineStep {
         if (session.getPayload() == null) {
             throw new ConversationEngineException(
                     ConversationEngineErrorCode.PIPELINE_NO_RESPONSE_PAYLOAD,
-                    "Engine pipeline ended without payload. ResponseResolutionStep did not run."
-            );
+                    "Engine pipeline ended without payload. ResponseResolutionStep did not run.");
         }
 
         // --- persist conversation ---
@@ -47,15 +46,14 @@ public class PersistConversationStep implements EngineStep {
         session.getConversation().setStatus("RUNNING");
         session.getConversation().setUpdatedAt(OffsetDateTime.now());
         session.getConversation().setInputParamsJson(session.ejectInputParamsJson());
-        conversationRepo.save(session.getConversation());
+        cacheService.saveAndCache(session.getConversation());
 
         // --- build FINAL EngineResult ---
         EngineResult result = new EngineResult(
                 session.getIntent(),
                 session.getState(),
                 session.getPayload(),
-                session.getContextJson()
-        );
+                session.getContextJson());
 
         session.setFinalResult(result);
 

@@ -15,6 +15,7 @@ public class ConvEngineAuditConfig {
 
     private boolean enabled = true;
     private boolean persistMeta = true;
+    private boolean cacheInspector = false;
     private Level level = Level.ALL;
     private Set<String> includeStages = new LinkedHashSet<>();
     private Set<String> excludeStages = new LinkedHashSet<>();

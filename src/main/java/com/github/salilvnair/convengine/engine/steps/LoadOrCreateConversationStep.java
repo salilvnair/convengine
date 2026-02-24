@@ -4,7 +4,7 @@ import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeConversation;
-import com.github.salilvnair.convengine.repo.ConversationRepository;
+import com.github.salilvnair.convengine.service.ConversationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -15,12 +15,13 @@ import java.util.UUID;
 @Component
 public class LoadOrCreateConversationStep implements EngineStep {
 
-    private final ConversationRepository conversationRepo;
+    private final ConversationCacheService cacheService;
 
     @Override
     public StepResult execute(EngineSession session) {
         UUID id = session.getConversationId();
-        CeConversation convo = conversationRepo.findById(id).orElseGet(() -> createNewConversation(id, conversationRepo));
+        CeConversation convo = cacheService.getConversation(id)
+                .orElseGet(() -> createNewConversation(id, cacheService));
 
         convo.setLastUserText(session.getUserText());
         convo.setUpdatedAt(OffsetDateTime.now());
@@ -31,7 +32,7 @@ public class LoadOrCreateConversationStep implements EngineStep {
         return new StepResult.Continue();
     }
 
-    private static CeConversation createNewConversation(UUID id, ConversationRepository repo) {
+    private static CeConversation createNewConversation(UUID id, ConversationCacheService cacheService) {
         CeConversation c = CeConversation.builder()
                 .conversationId(id)
                 .status("RUNNING")
@@ -41,6 +42,6 @@ public class LoadOrCreateConversationStep implements EngineStep {
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
                 .build();
-        return repo.save(c);
+        return cacheService.createAndCacheSync(c);
     }
 }
