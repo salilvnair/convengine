@@ -4,6 +4,8 @@ import com.github.salilvnair.convengine.entity.*;
 import com.github.salilvnair.convengine.repo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -28,6 +30,8 @@ public class StaticConfigurationCacheService {
     private final McpDbToolRepository mcpDbToolRepo;
     private final PolicyRepository policyRepo;
     private final CeConfigRepository ceConfigRepo;
+    @Autowired
+    private ObjectProvider<StaticConfigurationCacheService> selfProvider;
 
     // --- Base Caching Methods ---
 
@@ -93,8 +97,12 @@ public class StaticConfigurationCacheService {
 
     // --- Helper Filter Methods ---
 
+    private StaticConfigurationCacheService self() {
+        return selfProvider.getObject();
+    }
+
     public List<CeConfig> findConfigParams(String type, String configKey) {
-        return getAllConfigs().stream()
+        return self().getAllConfigs().stream()
                 .filter(CeConfig::isEnabled)
                 .filter(c -> c.getConfigType() != null && c.getConfigType().equalsIgnoreCase(type))
                 .filter(c -> c.getConfigKey() != null && c.getConfigKey().equalsIgnoreCase(configKey))
@@ -103,7 +111,7 @@ public class StaticConfigurationCacheService {
 
     // Rules
     public List<CeRule> findEligibleRulesByPhaseAndState(String phase, String state) {
-        return getAllRules().stream()
+        return self().getAllRules().stream()
                 .filter(CeRule::isEnabled)
                 .filter(r -> r.getPhase() != null && r.getPhase().equalsIgnoreCase(phase))
                 .filter(r -> isEligibleState(r.getStateCode(), state))
@@ -113,7 +121,7 @@ public class StaticConfigurationCacheService {
 
     // Pending Actions
     public List<CePendingAction> findEligiblePendingActionsByIntentAndState(String intent, String state) {
-        return getAllPendingActions().stream()
+        return self().getAllPendingActions().stream()
                 .filter(CePendingAction::isEnabled)
                 .filter(p -> isEligibleIntent(p.getIntentCode(), intent))
                 .filter(p -> isEligibleState(p.getStateCode(), state))
@@ -124,7 +132,7 @@ public class StaticConfigurationCacheService {
 
     public List<CePendingAction> findEligiblePendingActionsByActionIntentAndState(String actionKey, String intent,
             String state) {
-        return getAllPendingActions().stream()
+        return self().getAllPendingActions().stream()
                 .filter(CePendingAction::isEnabled)
                 .filter(p -> p.getActionKey() != null && p.getActionKey().equalsIgnoreCase(actionKey))
                 .filter(p -> isEligibleIntent(p.getIntentCode(), intent))
@@ -136,7 +144,7 @@ public class StaticConfigurationCacheService {
 
     // Container Configs
     public List<CeContainerConfig> findContainerConfigsByIntentAndState(String intentCode, String stateCode) {
-        return getAllContainerConfigs().stream()
+        return self().getAllContainerConfigs().stream()
                 .filter(CeContainerConfig::isEnabled)
                 .filter(c -> c.getIntentCode() != null && c.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(c -> c.getStateCode() != null && c.getStateCode().equalsIgnoreCase(stateCode))
@@ -145,7 +153,7 @@ public class StaticConfigurationCacheService {
     }
 
     public List<CeContainerConfig> findContainerConfigsFallbackByState(String stateCode) {
-        return getAllContainerConfigs().stream()
+        return self().getAllContainerConfigs().stream()
                 .filter(CeContainerConfig::isEnabled)
                 .filter(c -> c.getIntentCode() == null || c.getIntentCode().trim().isEmpty())
                 .filter(c -> c.getStateCode() != null && c.getStateCode().equalsIgnoreCase(stateCode))
@@ -154,7 +162,7 @@ public class StaticConfigurationCacheService {
     }
 
     public List<CeContainerConfig> findContainerConfigsGlobalFallback() {
-        return getAllContainerConfigs().stream()
+        return self().getAllContainerConfigs().stream()
                 .filter(CeContainerConfig::isEnabled)
                 .filter(c -> c.getIntentCode() == null || c.getIntentCode().trim().isEmpty())
                 .filter(c -> c.getStateCode() == null || c.getStateCode().trim().isEmpty())
@@ -164,7 +172,7 @@ public class StaticConfigurationCacheService {
 
     // Output Schema
     public Optional<CeOutputSchema> findFirstOutputSchema(String intentCode, String stateCode) {
-        return getAllOutputSchemas().stream()
+        return self().getAllOutputSchemas().stream()
                 .filter(CeOutputSchema::isEnabled)
                 .filter(s -> s.getIntentCode() != null && s.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(s -> s.getStateCode() != null && s.getStateCode().equalsIgnoreCase(stateCode))
@@ -174,7 +182,7 @@ public class StaticConfigurationCacheService {
     // Prompt Template
     public Optional<CePromptTemplate> findFirstPromptTemplate(String responseType, String intentCode,
             String stateCode) {
-        return getAllPromptTemplates().stream()
+        return self().getAllPromptTemplates().stream()
                 .filter(CePromptTemplate::isEnabled)
                 .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
@@ -183,7 +191,7 @@ public class StaticConfigurationCacheService {
     }
 
     public Optional<CePromptTemplate> findFirstPromptTemplate(String responseType, String intentCode) {
-        return getAllPromptTemplates().stream()
+        return self().getAllPromptTemplates().stream()
                 .filter(CePromptTemplate::isEnabled)
                 .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
@@ -193,14 +201,14 @@ public class StaticConfigurationCacheService {
 
     // Intents
     public List<CeIntent> findEnabledIntents() {
-        return getAllIntents().stream()
+        return self().getAllIntents().stream()
                 .filter(CeIntent::isEnabled)
                 .sorted(Comparator.comparing(CeIntent::getPriority))
                 .toList();
     }
 
     public Optional<CeIntent> findIntent(String intentCode) {
-        return getAllIntents().stream()
+        return self().getAllIntents().stream()
                 .filter(CeIntent::isEnabled)
                 .filter(i -> i.getIntentCode() != null && i.getIntentCode().equalsIgnoreCase(intentCode))
                 .findFirst();
@@ -208,7 +216,7 @@ public class StaticConfigurationCacheService {
 
     // Intent Classifiers
     public List<CeIntentClassifier> findEnabledIntentClassifiers() {
-        return getAllIntentClassifiers().stream()
+        return self().getAllIntentClassifiers().stream()
                 .filter(CeIntentClassifier::isEnabled)
                 .sorted(Comparator.comparing(CeIntentClassifier::getPriority))
                 .toList();
@@ -216,7 +224,7 @@ public class StaticConfigurationCacheService {
 
     // Policies
     public List<CePolicy> findEnabledPolicies() {
-        return getAllPolicies().stream()
+        return self().getAllPolicies().stream()
                 .filter(CePolicy::isEnabled)
                 .sorted(Comparator.comparing(CePolicy::getPriority))
                 .toList();
@@ -224,7 +232,7 @@ public class StaticConfigurationCacheService {
 
     // MCP Tools
     public List<CeMcpTool> findEnabledMcpTools(String intentCode, String stateCode) {
-        return getAllMcpTools().stream()
+        return self().getAllMcpTools().stream()
                 .filter(CeMcpTool::isEnabled)
                 .filter(t -> isEligibleIntent(t.getIntentCode(), intentCode))
                 .filter(t -> isEligibleState(t.getStateCode(), stateCode))
@@ -232,7 +240,7 @@ public class StaticConfigurationCacheService {
     }
 
     public Optional<CeMcpTool> findMcpTool(String toolCode, String intentCode, String stateCode) {
-        return getAllMcpTools().stream()
+        return self().getAllMcpTools().stream()
                 .filter(CeMcpTool::isEnabled)
                 .filter(t -> t.getToolCode() != null && t.getToolCode().equalsIgnoreCase(toolCode))
                 .filter(t -> isEligibleIntent(t.getIntentCode(), intentCode))
@@ -241,7 +249,7 @@ public class StaticConfigurationCacheService {
     }
 
     public Optional<CeMcpDbTool> findMcpDbTool(String toolCode) {
-        return getAllMcpDbTools().stream()
+        return self().getAllMcpDbTools().stream()
                 .filter(d -> d.getTool() != null && d.getTool().isEnabled())
                 .filter(d -> d.getTool().getToolCode() != null && d.getTool().getToolCode().equalsIgnoreCase(toolCode))
                 .findFirst();
@@ -249,7 +257,7 @@ public class StaticConfigurationCacheService {
 
     // Responses
     public Optional<CeResponse> findFirstResponse(String stateCode, String intentCode) {
-        return getAllResponses().stream()
+        return self().getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> r.getStateCode() != null && r.getStateCode().equalsIgnoreCase(stateCode))
                 .filter(r -> r.getIntentCode() != null && r.getIntentCode().equalsIgnoreCase(intentCode))
@@ -257,7 +265,7 @@ public class StaticConfigurationCacheService {
     }
 
     public Optional<CeResponse> findFirstResponseFallbackIntent(String stateCode) {
-        return getAllResponses().stream()
+        return self().getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> r.getStateCode() != null && r.getStateCode().equalsIgnoreCase(stateCode))
                 .filter(r -> r.getIntentCode() == null || r.getIntentCode().trim().isEmpty())
@@ -265,7 +273,7 @@ public class StaticConfigurationCacheService {
     }
 
     public Optional<CeResponse> findFirstResponseAnyIntent(String stateCode) {
-        return getAllResponses().stream()
+        return self().getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> r.getStateCode() != null && r.getStateCode().equalsIgnoreCase(stateCode))
                 .min(Comparator.comparing(CeResponse::getPriority));
