@@ -1,5 +1,6 @@
 package com.github.salilvnair.convengine.intent;
 
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.repo.IntentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -11,7 +12,7 @@ import java.util.Set;
 @Component
 public class AllowedIntentService {
 
-    private final IntentRepository intentRepository;
+    private final StaticConfigurationCacheService cacheService;
     private static final Set<String> EXCLUDED_INTENTS = Set.of("UNKNOWN");
 
     /**
@@ -19,7 +20,7 @@ public class AllowedIntentService {
      * Ordered by priority ASC (lower number = higher priority)
      */
     public List<AllowedIntent> allowedIntents() {
-        return intentRepository.findByEnabledTrueOrderByPriorityAsc()
+        return cacheService.findEnabledIntents()
                 .stream()
                 .filter(i ->
                         i.getIntentCode() != null &&

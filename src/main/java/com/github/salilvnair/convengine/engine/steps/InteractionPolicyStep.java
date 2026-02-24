@@ -13,7 +13,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
-import com.github.salilvnair.convengine.repo.PendingActionRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -30,7 +30,7 @@ import java.util.Locale;
 public class InteractionPolicyStep implements EngineStep {
 
     private final AuditService audit;
-    private final PendingActionRepository pendingActionRepository;
+    private final StaticConfigurationCacheService staticCacheService;
     private final ConvEngineFlowConfig flowConfig;
 
     @Override
@@ -78,7 +78,8 @@ public class InteractionPolicyStep implements EngineStep {
                 skipIntentResolution = true;
             } else if (flowConfig.getInteractionPolicy().isFillPendingSlotOnNonNewRequest()
                     && hasPendingSlot
-                    && dialogueAct != DialogueAct.NEW_REQUEST) {
+                    && dialogueAct != DialogueAct.NEW_REQUEST
+                    && dialogueAct != DialogueAct.GREETING) {
                 decision = InteractionPolicyDecision.FILL_PENDING_SLOT;
                 skipIntentResolution = true;
             }
@@ -135,17 +136,17 @@ public class InteractionPolicyStep implements EngineStep {
             return false;
         }
         try {
-            List<?> rows = pendingActionRepository.findEligibleByIntentAndStateOrderByPriorityAsc(
+            List<?> rows = staticCacheService.findEligiblePendingActionsByIntentAndState(
                     session.getIntent(),
-                    session.getState()
-            );
+                    session.getState());
             return rows != null && !rows.isEmpty();
         } catch (Exception ignored) {
             return false;
         }
     }
 
-    private InteractionPolicyDecision resolveFromMatrix(boolean hasPendingAction, boolean hasPendingSlot, DialogueAct dialogueAct) {
+    private InteractionPolicyDecision resolveFromMatrix(boolean hasPendingAction, boolean hasPendingSlot,
+            DialogueAct dialogueAct) {
         String subject = hasPendingAction ? "PENDING_ACTION" : (hasPendingSlot ? "PENDING_SLOT" : "NONE");
         String key = subject + ":" + dialogueAct.name();
         String raw = null;

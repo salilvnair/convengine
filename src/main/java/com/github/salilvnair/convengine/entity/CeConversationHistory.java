@@ -34,22 +34,16 @@ public class CeConversationHistory {
     @Column(nullable = false, name = "conversation_id")
     private UUID conversationId;
 
-    @Column(nullable = false, name = "entry_type")
-    private String entryType;
-
-    @Column(nullable = false, name = "role")
-    private String role;
-
-    @Column(nullable = false, name = "stage")
-    private String stage;
-
-    @Column(name = "content_text")
-    private String contentText;
+    @Column(nullable = false, name = "user_input")
+    private String userInput;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "payload_json")
-    private String payloadJson;
+    @Column(name = "assistant_output")
+    private String assistantOutput;
 
     @Column(nullable = false, name = "created_at")
     private OffsetDateTime createdAt;
+
+    @Column(nullable = false, name = "modified_at")
+    private OffsetDateTime modifiedAt;
 }

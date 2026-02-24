@@ -27,7 +27,7 @@ public class CePromptTemplate {
     @Column(name = "temperature")
     private Double temperature;
     @Column(name = "enabled")
-    private Boolean enabled;
+    private boolean enabled;
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 }

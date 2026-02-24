@@ -20,8 +20,7 @@ import com.github.salilvnair.convengine.entity.CeResponse;
 import com.github.salilvnair.convengine.intent.AgentIntentResolver;
 import com.github.salilvnair.convengine.intent.AgentIntentCollisionResolver;
 import com.github.salilvnair.convengine.model.*;
-import com.github.salilvnair.convengine.repo.PromptTemplateRepository;
-import com.github.salilvnair.convengine.repo.ResponseRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -34,8 +33,7 @@ import java.util.stream.Collectors;
 @MustRunAfter(RulesStep.class)
 public class ResponseResolutionStep implements EngineStep {
 
-    private final ResponseRepository responseRepo;
-    private final PromptTemplateRepository promptRepo;
+    private final StaticConfigurationCacheService staticCacheService;
     private final ResponseTypeResolverFactory typeFactory;
     private final AuditService audit;
     private final ConversationHistoryProvider historyProvider;
@@ -45,34 +43,31 @@ public class ResponseResolutionStep implements EngineStep {
     @Override
     public StepResult execute(EngineSession session) {
 
-        if(AgentIntentResolver.INTENT_COLLISION_STATE.equals(session.getState())) {
+        if (AgentIntentResolver.INTENT_COLLISION_STATE.equals(session.getState())) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
             payload.put(ConvEnginePayloadKey.STATE, session.getState());
             audit.audit(
                     ConvEngineAuditStage.INTENT_COLLISION_DETECTED,
                     session.getConversationId(),
-                    payload
-            );
+                    payload);
             agentIntentCollisionResolver.resolve(session);
             return new StepResult.Continue();
         }
 
         Optional<CeResponse> responseOptional = resolveResponse(session);
 
-        if(responseOptional.isEmpty()) {
+        if (responseOptional.isEmpty()) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
             payload.put(ConvEnginePayloadKey.STATE, session.getState());
             audit.audit(
                     ConvEngineAuditStage.RESPONSE_MAPPING_NOT_FOUND,
                     session.getConversationId(),
-                    payload
-            );
+                    payload);
             throw new ConversationEngineException(
                     ConversationEngineErrorCode.RESPONSE_MAPPING_NOT_FOUND,
-                    "No response found for intent=" + session.getIntent() + ", state=" + session.getState()
-            );
+                    "No response found for intent=" + session.getIntent() + ", state=" + session.getState());
         }
         CeResponse resp = responseOptional.get();
         if (!matches(resp.getStateCode(), session.getState()) && !matches(resp.getStateCode(), "ANY")) {
@@ -86,30 +81,28 @@ public class ResponseResolutionStep implements EngineStep {
         audit.audit(
                 ConvEngineAuditStage.RESOLVE_RESPONSE,
                 session.getConversationId(),
-                responsePayload
-        );
+                responsePayload);
 
         CePromptTemplate template = null;
-        if(ResponseType.DERIVED.name().equalsIgnoreCase(resp.getResponseType())) {
-            template = promptRepo.findAll().stream()
-                    .filter(t -> Boolean.TRUE.equals(t.getEnabled()))
+        if (ResponseType.DERIVED.name().equalsIgnoreCase(resp.getResponseType())) {
+            template = staticCacheService.getAllPromptTemplates().stream()
+                    .filter(CePromptTemplate::isEnabled)
                     .filter(t -> resp.getOutputFormat().equalsIgnoreCase(t.getResponseType()))
                     .filter(t -> matchesOrNull(t.getIntentCode(), session.getIntent()))
-                    .filter(t -> matchesOrNull(t.getStateCode(), session.getState()) || matches(t.getStateCode(), "ANY"))
+                    .filter(t -> matchesOrNull(t.getStateCode(), session.getState())
+                            || matches(t.getStateCode(), "ANY"))
                     .max(Comparator.comparingInt(t -> score(t, session)))
-                    .orElseThrow(() ->
-                            new IllegalStateException(
-                                    "No ce_prompt_template found for response_type=" +
-                                            resp.getOutputFormat() + ", intent=" + session.getIntent() + ", state=" + session.getState()
-                            )
-                    );
+                    .orElseThrow(() -> new IllegalStateException(
+                            "No ce_prompt_template found for response_type=" +
+                                    resp.getOutputFormat() + ", intent=" + session.getIntent() + ", state="
+                                    + session.getState()));
         }
         typeFactory
                 .get(resp.getResponseType())
                 .resolve(session, PromptTemplate.initFrom(template), ResponseTemplate.initFrom(resp));
 
-
-        OutputPayload transformedOutput = responseTransformerService.transformIfApplicable(session.getPayload(), session, session.getInputParams());
+        OutputPayload transformedOutput = responseTransformerService.transformIfApplicable(session.getPayload(),
+                session, session.getInputParams());
         session.setPayload(transformedOutput);
 
         Object payloadValue = switch (session.getPayload()) {
@@ -133,7 +126,7 @@ public class ResponseResolutionStep implements EngineStep {
     }
 
     private Optional<CeResponse> resolveResponse(EngineSession session) {
-        List<CeResponse> candidates = responseRepo.findAll().stream()
+        List<CeResponse> candidates = staticCacheService.getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> matches(r.getIntentCode(), session.getIntent()) || r.getIntentCode() == null)
                 .filter(r -> matches(r.getStateCode(), session.getState()) || matches(r.getStateCode(), "ANY"))

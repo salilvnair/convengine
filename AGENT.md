@@ -146,7 +146,7 @@ Do not treat ConvEngine as an unconstrained chatbot runtime.
 
 ## Current Baseline
 
-- Library version: `2.0.3`
+- Library version: `2.0.5`
 - Property namespace for flow tuning: `convengine.flow.*`
 
 ## Core Operating Model
@@ -155,7 +155,7 @@ Do not treat ConvEngine as an unconstrained chatbot runtime.
 2. Extract structured fields by schema
 3. Compute transitions via rules and policy
 4. Resolve output by exact/derived response mapping
-5. Persist runtime + publish audit timeline
+5. Dispatch async background persistence (`ce_conversation`, `ce_llm_call_log`, `ce_conversation_history`) + publish audit timeline
 
 ## Source of Truth Order
 
@@ -256,6 +256,13 @@ When behavior changes:
 2. Update this `AGENT.md`
 3. Update `src/main/resources/prompts/SQL_GENERATION_AGENT.md` if SQL contracts changed
 4. Keep examples runnable and enum-accurate
+
+## Framework Performance Patterns (v2.0.5+)
+
+Do not introduce synchronous Relational DB reads/writes into the core engine lifecycle path:
+- **Static Configuration**: All `ce_*` configuration tables must be resolved via the `StaticConfigurationCacheService` interface, NOT direct JpaRepository `.find()` hits. The application strictly maintains a 0-latency pre-loaded RAM cache.
+- **Transactional State**: The primary `ce_conversation` mutation must be isolated via `ConversationCacheService` using Spring Cache mechanisms. Never call `conversationRepository.save()` sequentially on the primary NLP thread.
+- **Async Execution**: Delegate all database `INSERT` commands to parallel executor methods (e.g. `AsyncConversationPersistenceService`, `AsyncLlmCallLogPersistenceService`, `AsyncConversationHistoryPersistenceService`) firing in fire-and-forget topologies.
 
 ## Release Hygiene Checklist
 

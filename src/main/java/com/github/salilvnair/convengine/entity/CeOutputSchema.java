@@ -33,7 +33,7 @@ public class CeOutputSchema {
     private String description;
 
     @Column(name = "enabled", nullable = false)
-    private Boolean enabled = true;
+    private boolean enabled;
 
     @Column(name = "priority", nullable = false)
     private Integer priority;

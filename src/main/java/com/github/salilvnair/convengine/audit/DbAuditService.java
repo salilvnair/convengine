@@ -11,9 +11,7 @@ import com.github.salilvnair.convengine.config.ConvEngineAuditConfig;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeAudit;
 import com.github.salilvnair.convengine.entity.CeConversation;
-import com.github.salilvnair.convengine.entity.CeConversationHistory;
-import com.github.salilvnair.convengine.repo.ConversationHistoryRepository;
-import com.github.salilvnair.convengine.repo.ConversationRepository;
+import com.github.salilvnair.convengine.service.ConversationCacheService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import java.time.OffsetDateTime;
@@ -35,8 +33,7 @@ public class DbAuditService implements AuditService {
             ConvEngineAuditStage.ASSISTANT_OUTPUT.value(),
             ConvEngineAuditStage.RESPONSE_EXACT.value());
 
-    private final ConversationHistoryRepository conversationHistoryRepository;
-    private final ConversationRepository conversationRepository;
+    private final ConversationCacheService cacheService;
     private final AuditStageControl stageControl;
     private final AuditEventDispatcher eventDispatcher;
     private final ConvEngineAuditConfig auditConfig;
@@ -44,14 +41,12 @@ public class DbAuditService implements AuditService {
     private final ObjectMapper mapper;
 
     public DbAuditService(
-            ConversationHistoryRepository conversationHistoryRepository,
-            ConversationRepository conversationRepository,
+            ConversationCacheService cacheService,
             AuditStageControl stageControl,
             AuditEventDispatcher eventDispatcher,
             ConvEngineAuditConfig auditConfig,
             AuditPersistenceStrategyFactory persistenceStrategyFactory) {
-        this.conversationHistoryRepository = conversationHistoryRepository;
-        this.conversationRepository = conversationRepository;
+        this.cacheService = cacheService;
         this.stageControl = stageControl;
         this.eventDispatcher = eventDispatcher;
         this.auditConfig = auditConfig;
@@ -75,10 +70,6 @@ public class DbAuditService implements AuditService {
                     .payloadJson(normalizedPayload)
                     .createdAt(OffsetDateTime.now())
                     .build();
-
-            // Always persist conversation history immediately so prompt history is
-            // consistent.
-            persistConversationHistory(record);
 
             List<CeAudit> persisted = persistenceStrategyFactory.currentStrategy().persist(record);
             for (CeAudit auditEvent : persisted) {
@@ -120,7 +111,7 @@ public class DbAuditService implements AuditService {
             meta.put("stage", stage);
             meta.put("conversationId", String.valueOf(conversationId));
             meta.put("emittedAt", OffsetDateTime.now().toString());
-            CeConversation conversation = conversationRepository.findById(conversationId).orElse(null);
+            CeConversation conversation = cacheService.getConversation(conversationId).orElse(null);
             String intent = resolveIntent(root, conversation);
             String state = resolveState(root, conversation);
             if (intent != null && !intent.isBlank()) {
@@ -149,7 +140,7 @@ public class DbAuditService implements AuditService {
                 meta.put("stage", stage);
                 meta.put("conversationId", String.valueOf(conversationId));
                 meta.put("emittedAt", OffsetDateTime.now().toString());
-                CeConversation conversation = conversationRepository.findById(conversationId).orElse(null);
+                CeConversation conversation = cacheService.getConversation(conversationId).orElse(null);
                 if (conversation != null) {
                     if (conversation.getIntentCode() != null && !conversation.getIntentCode().isBlank()) {
                         meta.put("intent", conversation.getIntentCode());
@@ -354,85 +345,6 @@ public class DbAuditService implements AuditService {
         return fallback;
     }
 
-    private void persistConversationHistory(CeAudit auditRecord) {
-        if (auditRecord == null || auditRecord.getConversationId() == null || auditRecord.getStage() == null) {
-            return;
-        }
-        try {
-            HistoryEntryType historyEntryType = resolveHistoryEntryType(auditRecord.getStage());
-            if (historyEntryType == null) {
-                return;
-            }
-            String content = extractHistoryContent(auditRecord.getPayloadJson());
-            CeConversationHistory row = CeConversationHistory.builder()
-                    .conversationId(auditRecord.getConversationId())
-                    .entryType(historyEntryType.entryType)
-                    .role(historyEntryType.role)
-                    .stage(auditRecord.getStage())
-                    .contentText(content)
-                    .payloadJson(auditRecord.getPayloadJson())
-                    .createdAt(auditRecord.getCreatedAt() == null ? OffsetDateTime.now() : auditRecord.getCreatedAt())
-                    .build();
-            conversationHistoryRepository.save(row);
-        } catch (Exception e) {
-            log.warn("Failed to persist conversation history convId={} stage={} msg={}",
-                    auditRecord.getConversationId(),
-                    auditRecord.getStage(),
-                    e.getMessage());
-        }
-    }
-
-    private HistoryEntryType resolveHistoryEntryType(String stage) {
-        if (stage == null || stage.isBlank()) {
-            return null;
-        }
-        String normalized = stage.trim().toUpperCase(Locale.ROOT);
-        if (ConvEngineAuditStage.USER_INPUT.value().equals(normalized)) {
-            return new HistoryEntryType(ConvEngineAuditStage.USER_INPUT.value(), "USER");
-        }
-        if (HISTORY_AI_STAGES.contains(normalized)) {
-            if (ConvEngineAuditStage.INTENT_AGENT_LLM_OUTPUT.value().equals(normalized)) {
-                return new HistoryEntryType("INTENT_AI_RESPONSE", "AI");
-            }
-            if (ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT.value().equals(normalized)) {
-                return new HistoryEntryType("MCP_AI_RESPONSE", "AI");
-            }
-            if (ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT.value().equals(normalized)
-                    || ConvEngineAuditStage.RESPONSE_EXACT.value().equals(normalized)) {
-                return new HistoryEntryType("RESOLVE_RESPONSE_AI_RESPONSE", "AI");
-            }
-            if (ConvEngineAuditStage.ASSISTANT_OUTPUT.value().equals(normalized)) {
-                return new HistoryEntryType("ASSISTANT_OUTPUT", "AI");
-            }
-            return new HistoryEntryType("AI_RESPONSE", "AI");
-        }
-        return null;
-    }
-
-    private String extractHistoryContent(String payloadJson) {
-        if (payloadJson == null || payloadJson.isBlank()) {
-            return "";
-        }
-        try {
-            var node = mapper.readTree(payloadJson);
-            if (node.has("text") && node.get("text").isTextual())
-                return node.get("text").asText();
-            if (node.has("output") && node.get("output").isTextual())
-                return node.get("output").asText();
-            if (node.has("json") && node.get("json").isTextual())
-                return node.get("json").asText();
-            if (node.has("value") && node.get("value").isTextual())
-                return node.get("value").asText();
-            if (node.has("answer") && node.get("answer").isTextual())
-                return node.get("answer").asText();
-            if (node.has("question") && node.get("question").isTextual())
-                return node.get("question").asText();
-            return mapper.writeValueAsString(node);
-        } catch (Exception ignored) {
-            return payloadJson;
-        }
-    }
-
     private void addCacheMeta(ObjectNode root) {
         try {
             EngineSession session = AuditSessionContext.get();
@@ -444,13 +356,4 @@ public class DbAuditService implements AuditService {
         }
     }
 
-    private static final class HistoryEntryType {
-        private final String entryType;
-        private final String role;
-
-        private HistoryEntryType(String entryType, String role) {
-            this.entryType = entryType;
-            this.role = role;
-        }
-    }
 }

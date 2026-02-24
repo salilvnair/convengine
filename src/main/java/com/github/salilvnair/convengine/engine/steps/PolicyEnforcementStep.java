@@ -10,7 +10,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConve
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CePolicy;
 import com.github.salilvnair.convengine.model.TextPayload;
-import com.github.salilvnair.convengine.repo.PolicyRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.service.ConversationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 @RequiresConversationPersisted
 public class PolicyEnforcementStep implements EngineStep {
 
-    private final PolicyRepository policyRepo;
+    private final StaticConfigurationCacheService staticCacheService;
     private final ConversationCacheService cacheService;
     private final AuditService audit;
 
@@ -34,7 +34,7 @@ public class PolicyEnforcementStep implements EngineStep {
     public StepResult execute(EngineSession session) {
         String userText = session.getUserText();
 
-        for (CePolicy policy : policyRepo.findByEnabledTrueOrderByPriorityAsc()) {
+        for (CePolicy policy : staticCacheService.findEnabledPolicies()) {
             if (matches(policy.getRuleType(), policy.getPattern(), userText)) {
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put(ConvEnginePayloadKey.POLICY_ID, policy.getPolicyId());

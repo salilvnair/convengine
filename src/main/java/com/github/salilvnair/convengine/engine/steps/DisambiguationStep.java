@@ -18,7 +18,7 @@ import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
-import com.github.salilvnair.convengine.repo.PendingActionRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -38,7 +38,7 @@ import java.util.Set;
 public class DisambiguationStep implements EngineStep {
 
     private final ConvEngineFlowConfig flowConfig;
-    private final PendingActionRepository pendingActionRepository;
+    private final StaticConfigurationCacheService staticCacheService;
     private final CeConfigResolver configResolver;
     private final PromptTemplateRenderer renderer;
     private final LlmClient llm;
@@ -94,7 +94,7 @@ public class DisambiguationStep implements EngineStep {
             return new StepResult.Continue();
         }
 
-        List<CePendingAction> candidates = pendingActionRepository.findEligibleByIntentAndStateOrderByPriorityAsc(
+        List<CePendingAction> candidates = staticCacheService.findEligiblePendingActionsByIntentAndState(
                 session.getIntent(),
                 session.getState());
         if (candidates == null || candidates.size() <= 1) {

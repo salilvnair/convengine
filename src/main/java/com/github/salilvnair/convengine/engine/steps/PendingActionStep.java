@@ -16,7 +16,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConve
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.task.CeTaskExecutor;
 import com.github.salilvnair.convengine.entity.CePendingAction;
-import com.github.salilvnair.convengine.repo.PendingActionRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -27,13 +27,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Component
 @RequiresConversationPersisted
-@MustRunAfter({AutoAdvanceStep.class, InteractionPolicyStep.class, ActionLifecycleStep.class, DisambiguationStep.class, GuardrailStep.class})
+@MustRunAfter({ AutoAdvanceStep.class, InteractionPolicyStep.class, ActionLifecycleStep.class, DisambiguationStep.class,
+        GuardrailStep.class })
 @MustRunBefore(RulesStep.class)
 public class PendingActionStep implements EngineStep {
 
     private final AuditService audit;
     private final CeTaskExecutor ceTaskExecutor;
-    private final PendingActionRepository pendingActionRepository;
+    private final StaticConfigurationCacheService staticCacheService;
     private final SessionContextHelper contextHelper;
 
     @Override
@@ -122,7 +123,8 @@ public class PendingActionStep implements EngineStep {
         }
     }
 
-    private Map<String, Object> basePayload(EngineSession session, InteractionPolicyDecision decision, String actionRef) {
+    private Map<String, Object> basePayload(EngineSession session, InteractionPolicyDecision decision,
+            String actionRef) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(ConvEnginePayloadKey.POLICY_DECISION, decision.name());
         payload.put(ConvEnginePayloadKey.PENDING_ACTION_REF, actionRef);
@@ -158,16 +160,14 @@ public class PendingActionStep implements EngineStep {
     private String resolveActionReferenceFromTable(EngineSession session, String actionKey) {
         List<CePendingAction> candidates;
         if (actionKey != null && !actionKey.isBlank()) {
-            candidates = pendingActionRepository.findEligibleByActionIntentAndStateOrderByPriorityAsc(
+            candidates = staticCacheService.findEligiblePendingActionsByActionIntentAndState(
                     actionKey,
                     session.getIntent(),
-                    session.getState()
-            );
+                    session.getState());
         } else {
-            candidates = pendingActionRepository.findEligibleByIntentAndStateOrderByPriorityAsc(
+            candidates = staticCacheService.findEligiblePendingActionsByIntentAndState(
                     session.getIntent(),
-                    session.getState()
-            );
+                    session.getState());
         }
         if (candidates.isEmpty()) {
             return null;
@@ -230,7 +230,7 @@ public class PendingActionStep implements EngineStep {
             return null;
         }
         if (!actionRef.contains(":")) {
-            return new String[]{actionRef.trim(), actionRef.trim()};
+            return new String[] { actionRef.trim(), actionRef.trim() };
         }
         String[] parts = actionRef.split(":", 2);
         String bean = parts[0] == null ? "" : parts[0].trim();
@@ -238,7 +238,7 @@ public class PendingActionStep implements EngineStep {
         if (bean.isBlank() || methods.isBlank()) {
             return null;
         }
-        return new String[]{bean, methods};
+        return new String[] { bean, methods };
     }
 
     private void updateRuntimeStatus(EngineSession session, PendingActionStatus status) {

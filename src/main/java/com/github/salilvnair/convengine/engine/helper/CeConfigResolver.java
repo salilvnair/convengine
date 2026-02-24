@@ -1,40 +1,51 @@
 package com.github.salilvnair.convengine.engine.helper;
 
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.entity.CeConfig;
-import com.github.salilvnair.convengine.repo.CeConfigRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
 public class CeConfigResolver {
 
-    private final CeConfigRepository repo;
+    private final StaticConfigurationCacheService staticCacheService;
+
+    public Optional<CeConfig> read(String type, String configKey) {
+        return staticCacheService.findConfigParams(type, configKey).stream()
+                .findFirst();
+    }
 
     public double resolveDouble(Object configType, String configKey, double defaultValue) {
         String type = configType.getClass().getSimpleName();
-        return repo.findByConfigTypeAndConfigKeyAndEnabledTrue(type, configKey)
+        return staticCacheService.findConfigParams(type, configKey).stream()
+                .findFirst()
                 .map(c -> parseDouble(c.getConfigValue(), defaultValue))
                 .orElse(defaultValue);
     }
 
     public int resolveInt(Object configType, String configKey, int defaultValue) {
         String type = configType.getClass().getSimpleName();
-        return repo.findByConfigTypeAndConfigKeyAndEnabledTrue(type, configKey)
+        return staticCacheService.findConfigParams(type, configKey).stream()
+                .findFirst()
                 .map(c -> parseInt(c.getConfigValue(), defaultValue))
                 .orElse(defaultValue);
     }
 
     public String resolveString(Object configType, String configKey, String defaultValue) {
         String type = configType.getClass().getSimpleName();
-        return repo.findByConfigTypeAndConfigKeyAndEnabledTrue(type, configKey)
+        return staticCacheService.findConfigParams(type, configKey).stream()
+                .findFirst()
                 .map(CeConfig::getConfigValue)
                 .orElse(defaultValue);
     }
 
     public boolean resolveBoolean(Object configType, String configKey, boolean defaultValue) {
         String type = configType.getClass().getSimpleName();
-        return repo.findByConfigTypeAndConfigKeyAndEnabledTrue(type, configKey)
+        return staticCacheService.findConfigParams(type, configKey).stream()
+                .findFirst()
                 .map(c -> parseBoolean(c.getConfigValue(), defaultValue))
                 .orElse(defaultValue);
     }
