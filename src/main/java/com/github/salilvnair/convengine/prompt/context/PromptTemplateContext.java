@@ -17,10 +17,10 @@ public class PromptTemplateContext {
     @PromptVar({ "context", "contextJson" })
     private String context;
 
-    @PromptVar({ "user_input", "userInput" })
+    @PromptVar({ "user_input", "userInput", "user_text", "userText", "input_text", "inputText", "input", "user_message", "userMessage" })
     private String userInput;
 
-    @PromptVar({ "schema", "json_schema" })
+    @PromptVar({ "schema", "json_schema", "schema_json", "data_schema", "dataSchema", "jsonSchema", "schemaJson" })
     private String schemaJson;
 
     @PromptVar({ "container_data", "containerData" })
@@ -29,19 +29,19 @@ public class PromptTemplateContext {
     @PromptVar({ "validation", "validation_tables" })
     private String validationJson;
 
-    @PromptVar({ "allowed_intents" })
+    @PromptVar({ "allowed_intents", "allowedIntents" })
     private List<AllowedIntent> allowedIntents;
 
-    @PromptVar({ "pending_clarification" })
+    @PromptVar({ "pending_clarification", "pendingClarification" })
     private String pendingClarification;
 
-    @PromptVar({ "conversation_history" })
+    @PromptVar({ "conversation_history", "conversationHistory", "history" })
     private String conversationHistory;
 
-    @PromptVar({ "mcp_tools" })
+    @PromptVar({ "mcp_tools", "tools", "available_tools", "tool_list", "mcpTools" })
     private String mcpTools;
 
-    @PromptVar({ "mcp_observations" })
+    @PromptVar({ "mcp_observations", "observations", "mcpObservations" })
     private String mcpObservations;
 
     private Map<String, Object> extra;

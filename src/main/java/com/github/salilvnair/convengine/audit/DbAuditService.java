@@ -1,7 +1,9 @@
 package com.github.salilvnair.convengine.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.salilvnair.convengine.audit.dispatch.AuditEventDispatcher;
 import com.github.salilvnair.convengine.audit.dispatch.AuditStageControl;
 import com.github.salilvnair.convengine.audit.persistence.AuditPersistenceStrategyFactory;
@@ -12,10 +14,8 @@ import com.github.salilvnair.convengine.entity.CeConversation;
 import com.github.salilvnair.convengine.entity.CeConversationHistory;
 import com.github.salilvnair.convengine.repo.ConversationHistoryRepository;
 import com.github.salilvnair.convengine.repo.ConversationRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +25,6 @@ import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
-@RequiredArgsConstructor
 @Component
 public class DbAuditService implements AuditService {
 
@@ -34,8 +33,7 @@ public class DbAuditService implements AuditService {
             ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT.value(),
             ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT.value(),
             ConvEngineAuditStage.ASSISTANT_OUTPUT.value(),
-            ConvEngineAuditStage.RESPONSE_EXACT.value()
-    );
+            ConvEngineAuditStage.RESPONSE_EXACT.value());
 
     private final ConversationHistoryRepository conversationHistoryRepository;
     private final ConversationRepository conversationRepository;
@@ -43,7 +41,26 @@ public class DbAuditService implements AuditService {
     private final AuditEventDispatcher eventDispatcher;
     private final ConvEngineAuditConfig auditConfig;
     private final AuditPersistenceStrategyFactory persistenceStrategyFactory;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
+
+    public DbAuditService(
+            ConversationHistoryRepository conversationHistoryRepository,
+            ConversationRepository conversationRepository,
+            AuditStageControl stageControl,
+            AuditEventDispatcher eventDispatcher,
+            ConvEngineAuditConfig auditConfig,
+            AuditPersistenceStrategyFactory persistenceStrategyFactory) {
+        this.conversationHistoryRepository = conversationHistoryRepository;
+        this.conversationRepository = conversationRepository;
+        this.stageControl = stageControl;
+        this.eventDispatcher = eventDispatcher;
+        this.auditConfig = auditConfig;
+        this.persistenceStrategyFactory = persistenceStrategyFactory;
+
+        this.mapper = new ObjectMapper();
+        this.mapper.registerModule(new JavaTimeModule());
+        this.mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    }
 
     @Override
     public void audit(String stage, UUID conversationId, String payloadJson) {
@@ -59,7 +76,8 @@ public class DbAuditService implements AuditService {
                     .createdAt(OffsetDateTime.now())
                     .build();
 
-            // Always persist conversation history immediately so prompt history is consistent.
+            // Always persist conversation history immediately so prompt history is
+            // consistent.
             persistConversationHistory(record);
 
             List<CeAudit> persisted = persistenceStrategyFactory.currentStrategy().persist(record);
@@ -67,9 +85,11 @@ public class DbAuditService implements AuditService {
                 eventDispatcher.dispatch(auditEvent);
             }
         } catch (Exception e) {
-            log.error("Failed to save audit record for conversationId: {} at stage: {}, payload: {}", conversationId, stage, payloadJson, e);
+            log.error("Failed to save audit record for conversationId: {} at stage: {}, payload: {}", conversationId,
+                    stage, payloadJson, e);
             // Audit failures must never break the request pipeline.
-            // We log and continue so APIs remain non-500 even when audit storage is unavailable.
+            // We log and continue so APIs remain non-500 even when audit storage is
+            // unavailable.
         }
     }
 
@@ -113,6 +133,9 @@ public class DbAuditService implements AuditService {
             addUserInputParamsMeta(root, meta);
             addContextDictMeta(meta, conversation);
             addSessionMeta(meta, conversationId, conversation);
+            if (auditConfig.isCacheInspector()) {
+                addCacheMeta(root);
+            }
             if (!auditConfig.isPersistMeta()) {
                 root.remove("_meta");
             }
@@ -139,6 +162,9 @@ public class DbAuditService implements AuditService {
                 addUserInputParamsMeta(fallback, meta);
                 addContextDictMeta(meta, conversation);
                 addSessionMeta(meta, conversationId, conversation);
+                if (auditConfig.isCacheInspector()) {
+                    addCacheMeta(fallback);
+                }
                 if (!auditConfig.isPersistMeta()) {
                     fallback.remove("_meta");
                 }
@@ -214,7 +240,8 @@ public class DbAuditService implements AuditService {
                 return payloadNode.deepCopy();
             }
         }
-        if (conversation != null && conversation.getInputParamsJson() != null && !conversation.getInputParamsJson().isBlank()) {
+        if (conversation != null && conversation.getInputParamsJson() != null
+                && !conversation.getInputParamsJson().isBlank()) {
             try {
                 var conversationNode = mapper.readTree(conversation.getInputParamsJson());
                 if (conversationNode.isObject() && !conversationNode.isEmpty()) {
@@ -371,9 +398,11 @@ public class DbAuditService implements AuditService {
                 return new HistoryEntryType("MCP_AI_RESPONSE", "AI");
             }
             if (ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT.value().equals(normalized)
-                    || ConvEngineAuditStage.RESPONSE_EXACT.value().equals(normalized)
-                    || ConvEngineAuditStage.ASSISTANT_OUTPUT.value().equals(normalized)) {
+                    || ConvEngineAuditStage.RESPONSE_EXACT.value().equals(normalized)) {
                 return new HistoryEntryType("RESOLVE_RESPONSE_AI_RESPONSE", "AI");
+            }
+            if (ConvEngineAuditStage.ASSISTANT_OUTPUT.value().equals(normalized)) {
+                return new HistoryEntryType("ASSISTANT_OUTPUT", "AI");
             }
             return new HistoryEntryType("AI_RESPONSE", "AI");
         }
@@ -386,15 +415,32 @@ public class DbAuditService implements AuditService {
         }
         try {
             var node = mapper.readTree(payloadJson);
-            if (node.has("text") && node.get("text").isTextual()) return node.get("text").asText();
-            if (node.has("output") && node.get("output").isTextual()) return node.get("output").asText();
-            if (node.has("json") && node.get("json").isTextual()) return node.get("json").asText();
-            if (node.has("value") && node.get("value").isTextual()) return node.get("value").asText();
-            if (node.has("answer") && node.get("answer").isTextual()) return node.get("answer").asText();
-            if (node.has("question") && node.get("question").isTextual()) return node.get("question").asText();
+            if (node.has("text") && node.get("text").isTextual())
+                return node.get("text").asText();
+            if (node.has("output") && node.get("output").isTextual())
+                return node.get("output").asText();
+            if (node.has("json") && node.get("json").isTextual())
+                return node.get("json").asText();
+            if (node.has("value") && node.get("value").isTextual())
+                return node.get("value").asText();
+            if (node.has("answer") && node.get("answer").isTextual())
+                return node.get("answer").asText();
+            if (node.has("question") && node.get("question").isTextual())
+                return node.get("question").asText();
             return mapper.writeValueAsString(node);
         } catch (Exception ignored) {
             return payloadJson;
+        }
+    }
+
+    private void addCacheMeta(ObjectNode root) {
+        try {
+            EngineSession session = AuditSessionContext.get();
+            if (session != null && session.getConversation() != null) {
+                root.set("_cache", mapper.valueToTree(session.getConversation()));
+            }
+        } catch (Exception ignored) {
+            // best-effort cache metadata only
         }
     }
 

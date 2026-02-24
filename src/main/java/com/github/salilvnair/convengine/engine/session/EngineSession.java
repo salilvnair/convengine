@@ -33,6 +33,11 @@ public class EngineSession {
     private CeConversation conversation;
 
     private String userText;
+    //this has information about conversation history so if user asks on top of a previous question
+    // this will have the full question instead of just the followup.
+    // This is useful in cases where we want to rewrite the query based
+    // on conversation history and then use that rewritten query for intent detection and other things
+    private String standaloneQuery;
     private String intent;
     private String state;
     private boolean intentLocked;
@@ -69,6 +74,8 @@ public class EngineSession {
     private int clarificationTurn;
     private String lastClarificationQuestion;
 
+    private boolean queryRewritten;
+
     private final ObjectMapper mapper;
     private final List<StepTiming> stepTimings = new ArrayList<>();
     private Map<String, Object> inputParams = new LinkedHashMap<>();
@@ -94,11 +101,9 @@ public class EngineSession {
             ConvEngineInputParamKey.INTENT_TOP3,
             ConvEngineInputParamKey.INTENT_COLLISION_CANDIDATES,
             ConvEngineInputParamKey.FOLLOWUPS,
-            ConvEngineInputParamKey.AGENT_RESOLVER
-    );
+            ConvEngineInputParamKey.AGENT_RESOLVER);
     private static final Pattern SAFE_INPUT_KEY_PATTERN = Pattern.compile("^[a-zA-Z0-9_.-]{1,120}$");
     private static final Set<String> RESET_CONTROL_KEYS = Set.of("reset", "restart", "conversation_reset");
-
 
     public boolean hasPendingClarification() {
         return pendingClarificationQuestion != null && !pendingClarificationQuestion.isBlank();
@@ -173,22 +178,26 @@ public class EngineSession {
     }
 
     public void syncInputParamsFromConversation() {
-        if (conversation == null) return;
+        if (conversation == null)
+            return;
         String inputParamsJson = conversation.getInputParamsJson();
-        if (inputParamsJson == null || inputParamsJson.isBlank()) return;
+        if (inputParamsJson == null || inputParamsJson.isBlank())
+            return;
         try {
             JsonNode root = mapper.readTree(inputParamsJson);
-            if (!root.isObject()) return;
-            Map<String, Object> params = mapper.convertValue(root, new TypeReference<>() {});
+            if (!root.isObject())
+                return;
+            Map<String, Object> params = mapper.convertValue(root, new TypeReference<>() {
+            });
             mergeInputParams(params, false, false);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
     }
 
     public void syncFromConversation(boolean preserveContext) {
-        if (conversation == null) return;
+        if (conversation == null)
+            return;
 
         this.intent = conversation.getIntentCode();
         this.state = conversation.getStateCode();
@@ -201,7 +210,8 @@ public class EngineSession {
     }
 
     public void syncToConversation() {
-        if (conversation == null) return;
+        if (conversation == null)
+            return;
 
         persistClarificationToContext();
         persistIntentLockToContext();
@@ -217,10 +227,9 @@ public class EngineSession {
 
     private void persistClarificationToContext() {
         try {
-            ObjectNode root =
-                    contextJson == null || contextJson.isBlank()
-                            ? mapper.createObjectNode()
-                            : (ObjectNode) mapper.readTree(contextJson);
+            ObjectNode root = contextJson == null || contextJson.isBlank()
+                    ? mapper.createObjectNode()
+                    : (ObjectNode) mapper.readTree(contextJson);
 
             ObjectNode clarification = mapper.createObjectNode();
             clarification.put("question", pendingClarificationQuestion);
@@ -236,17 +245,17 @@ public class EngineSession {
 
     private void restoreClarificationFromContext() {
         try {
-            if (contextJson == null) return;
+            if (contextJson == null)
+                return;
 
             JsonNode root = mapper.readTree(contextJson);
             JsonNode node = root.path("pending_clarification");
 
-            if (node.isMissingNode()) return;
+            if (node.isMissingNode())
+                return;
 
-            this.pendingClarificationQuestion =
-                    node.path("question").asText(null);
-            this.pendingClarificationReason =
-                    node.path("reason").asText(null);
+            this.pendingClarificationQuestion = node.path("question").asText(null);
+            this.pendingClarificationReason = node.path("reason").asText(null);
 
         } catch (Exception e) {
             // ignore
@@ -255,10 +264,9 @@ public class EngineSession {
 
     private void persistIntentLockToContext() {
         try {
-            ObjectNode root =
-                    contextJson == null || contextJson.isBlank()
-                            ? mapper.createObjectNode()
-                            : (ObjectNode) mapper.readTree(contextJson);
+            ObjectNode root = contextJson == null || contextJson.isBlank()
+                    ? mapper.createObjectNode()
+                    : (ObjectNode) mapper.readTree(contextJson);
             ObjectNode lock = mapper.createObjectNode();
             lock.put("locked", intentLocked);
             lock.put("reason", intentLockReason);
@@ -295,18 +303,25 @@ public class EngineSession {
             JsonNode root = this.getMapper().readTree(this.getContextJson());
             JsonNode node = root.path(key);
 
-            if (node.isMissingNode() || node.isNull()) return null;
+            if (node.isMissingNode() || node.isNull())
+                return null;
 
-            if (node.isTextual()) return node.asText();
-            if (node.isNumber()) return node.numberValue();
-            if (node.isBoolean()) return node.asBoolean();
+            if (node.isTextual())
+                return node.asText();
+            if (node.isNumber())
+                return node.numberValue();
+            if (node.isBoolean())
+                return node.asBoolean();
 
             if (node.isArray()) {
                 List<Object> values = new ArrayList<>();
                 for (JsonNode e : node) {
-                    if (e.isTextual()) values.add(e.asText());
-                    else if (e.isNumber()) values.add(e.numberValue());
-                    else if (e.isBoolean()) values.add(e.asBoolean());
+                    if (e.isTextual())
+                        values.add(e.asText());
+                    else if (e.isNumber())
+                        values.add(e.numberValue());
+                    else if (e.isBoolean())
+                        values.add(e.asBoolean());
                 }
                 return values;
             }
@@ -390,9 +405,9 @@ public class EngineSession {
             if (!containerData.isObject()) {
                 return new LinkedHashMap<>();
             }
-            return mapper.convertValue(containerData, new TypeReference<>() {});
-        }
-        catch (Exception e) {
+            return mapper.convertValue(containerData, new TypeReference<>() {
+            });
+        } catch (Exception e) {
             return new LinkedHashMap<>();
         }
     }
@@ -406,9 +421,9 @@ public class EngineSession {
             if (!root.isObject()) {
                 return new LinkedHashMap<>();
             }
-            return mapper.convertValue(root, new TypeReference<>() {});
-        }
-        catch (Exception e) {
+            return mapper.convertValue(root, new TypeReference<>() {
+            });
+        } catch (Exception e) {
             return new LinkedHashMap<>();
         }
     }
@@ -446,11 +461,16 @@ public class EngineSession {
         Map<String, Object> out = new LinkedHashMap<>();
 
         for (Map.Entry<String, Object> e : safeInputParamsForOutput.entrySet()) {
-            Object v = e.getValue();
-            if (ConvEngineInputParamKey.SESSION.equalsIgnoreCase(e.getKey())) {
+            String key = e.getKey();
+            if (ConvEngineInputParamKey.SESSION.equalsIgnoreCase(key)
+                    || ConvEngineInputParamKey.CONTEXT.equalsIgnoreCase(key)
+                    || ConvEngineInputParamKey.SCHEMA_JSON.equalsIgnoreCase(key)
+                    || ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS.equalsIgnoreCase(key)
+                    || ConvEngineInputParamKey.MISSING_FIELD_OPTIONS.equalsIgnoreCase(key)
+                    || ConvEngineInputParamKey.MCP_OBSERVATIONS.equalsIgnoreCase(key)) {
                 continue;
             }
-            out.put(e.getKey(), v);
+            out.put(key, e.getValue());
         }
 
         if (!unknownSystemInputParamKeys.isEmpty()) {
@@ -460,7 +480,8 @@ public class EngineSession {
     }
 
     private Object jsonSafe(Object value) {
-        if (value == null) return null;
+        if (value == null)
+            return null;
         if (value instanceof String
                 || value instanceof Number
                 || value instanceof Boolean) {
@@ -473,8 +494,8 @@ public class EngineSession {
         if (value instanceof JsonNode node) {
             return mapper.convertValue(
                     node,
-                    new TypeReference<Map<String, Object>>() {}
-            );
+                    new TypeReference<Map<String, Object>>() {
+                    });
         }
         // fallback → string
         return String.valueOf(value);
@@ -506,8 +527,7 @@ public class EngineSession {
                 }
             }
             return new ObjectMapper().valueToTree(facts);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             return null;
         }
     }
@@ -515,18 +535,22 @@ public class EngineSession {
     public String ejectInputParamsJson() {
         try {
             return mapper.writeValueAsString(safeInputParams());
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             return "{}";
         }
     }
 
     public void addPromptTemplateVars() {
-        putInputParam(ConvEngineInputParamKey.MISSING_FIELDS, valueOrDefaultList(inputParams.get(ConvEngineInputParamKey.MISSING_FIELDS)));
-        putInputParam(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS, valueOrDefaultMap(inputParams.get(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS)));
-        putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION, valueOrDefaultString(inputParams.get(ConvEngineInputParamKey.SCHEMA_DESCRIPTION)));
-        putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS, valueOrDefaultMap(inputParams.get(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS)));
-        putInputParam(ConvEngineInputParamKey.SCHEMA_ID, inputParams.getOrDefault(ConvEngineInputParamKey.SCHEMA_ID, null));
+        putInputParam(ConvEngineInputParamKey.MISSING_FIELDS,
+                valueOrDefaultList(inputParams.get(ConvEngineInputParamKey.MISSING_FIELDS)));
+        putInputParam(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS,
+                valueOrDefaultMap(inputParams.get(ConvEngineInputParamKey.MISSING_FIELD_OPTIONS)));
+        putInputParam(ConvEngineInputParamKey.SCHEMA_DESCRIPTION,
+                valueOrDefaultString(inputParams.get(ConvEngineInputParamKey.SCHEMA_DESCRIPTION)));
+        putInputParam(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS,
+                valueOrDefaultMap(inputParams.get(ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS)));
+        putInputParam(ConvEngineInputParamKey.SCHEMA_ID,
+                inputParams.getOrDefault(ConvEngineInputParamKey.SCHEMA_ID, null));
         putInputParam(ConvEngineInputParamKey.SCHEMA_JSON, schemaJson());
         putInputParam(ConvEngineInputParamKey.CONTEXT, contextDict());
         putInputParam(ConvEngineInputParamKey.SESSION, sessionDict());
@@ -589,13 +613,13 @@ public class EngineSession {
         }
     }
 
-
     @SuppressWarnings("unchecked")
     public static List<String> valueOrDefaultList(Object value) {
         if (value instanceof List<?> list) {
             List<String> out = new ArrayList<>();
             for (Object item : list) {
-                if (item != null) out.add(String.valueOf(item));
+                if (item != null)
+                    out.add(String.valueOf(item));
             }
             return out;
         }
@@ -611,8 +635,6 @@ public class EngineSession {
         }
         return new LinkedHashMap<>();
     }
-
-
 
     public static String valueOrDefaultString(Object value) {
         return value == null ? "" : String.valueOf(value);

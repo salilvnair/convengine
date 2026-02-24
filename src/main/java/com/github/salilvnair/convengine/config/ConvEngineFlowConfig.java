@@ -4,7 +4,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,6 +23,20 @@ public class ConvEngineFlowConfig {
     private StateGraph stateGraph = new StateGraph();
     private Disambiguation disambiguation = new Disambiguation();
     private Memory memory = new Memory();
+    private QueryRewrite queryRewrite = new QueryRewrite();
+    private ConversationHistory conversationHistory = new ConversationHistory();
+
+    @Getter
+    @Setter
+    public static class QueryRewrite {
+        private boolean enabled = true;
+    }
+
+    @Getter
+    @Setter
+    public static class ConversationHistory {
+        private int maxTurns = 20;
+    }
 
     @Getter
     @Setter

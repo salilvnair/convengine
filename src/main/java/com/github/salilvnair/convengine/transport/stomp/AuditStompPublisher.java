@@ -31,8 +31,7 @@ public class AuditStompPublisher implements AuditEventListener {
                 audit.getAuditId(),
                 audit.getStage(),
                 audit.getCreatedAt() == null ? null : audit.getCreatedAt().toString(),
-                payloadMapper.payloadAsMap(audit.getPayloadJson())
-        );
+                payloadMapper.payloadAsMap(audit.getPayloadJson()));
         messagingTemplate.convertAndSend(destination, event);
     }
 }

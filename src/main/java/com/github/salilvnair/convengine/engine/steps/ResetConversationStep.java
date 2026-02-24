@@ -8,7 +8,7 @@ import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
-import com.github.salilvnair.convengine.repo.ConversationRepository;
+import com.github.salilvnair.convengine.service.ConversationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -27,11 +27,10 @@ public class ResetConversationStep implements EngineStep {
             "reset",
             "restart",
             "/reset",
-            "/restart"
-    );
+            "/restart");
 
     private final AuditService audit;
-    private final ConversationRepository conversationRepository;
+    private final ConversationCacheService cacheService;
 
     @Override
     public StepResult execute(EngineSession session) {
@@ -48,7 +47,7 @@ public class ResetConversationStep implements EngineStep {
         session.getConversation().setInputParamsJson("{}");
         session.getConversation().setLastAssistantJson(null);
         session.getConversation().setUpdatedAt(OffsetDateTime.now());
-        conversationRepository.save(session.getConversation());
+        cacheService.saveAndCache(session.getConversation());
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(ConvEnginePayloadKey.REASON, reason);
@@ -75,9 +74,12 @@ public class ResetConversationStep implements EngineStep {
     }
 
     private String resetReason(EngineSession session) {
-        if (truthy(session.getInputParams().get("reset"))) return "INPUT_PARAM:reset";
-        if (truthy(session.getInputParams().get("restart"))) return "INPUT_PARAM:restart";
-        if (truthy(session.getInputParams().get("conversation_reset"))) return "INPUT_PARAM:conversation_reset";
+        if (truthy(session.getInputParams().get("reset")))
+            return "INPUT_PARAM:reset";
+        if (truthy(session.getInputParams().get("restart")))
+            return "INPUT_PARAM:restart";
+        if (truthy(session.getInputParams().get("conversation_reset")))
+            return "INPUT_PARAM:conversation_reset";
         return "USER_TEXT_COMMAND";
     }
 

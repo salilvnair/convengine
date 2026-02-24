@@ -10,8 +10,8 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConve
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CePolicy;
 import com.github.salilvnair.convengine.model.TextPayload;
-import com.github.salilvnair.convengine.repo.ConversationRepository;
 import com.github.salilvnair.convengine.repo.PolicyRepository;
+import com.github.salilvnair.convengine.service.ConversationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
 public class PolicyEnforcementStep implements EngineStep {
 
     private final PolicyRepository policyRepo;
-    private final ConversationRepository conversationRepo;
+    private final ConversationCacheService cacheService;
     private final AuditService audit;
 
     @Override
@@ -45,14 +45,13 @@ public class PolicyEnforcementStep implements EngineStep {
                 session.getConversation().setStatus("BLOCKED");
                 session.getConversation().setLastAssistantJson(jsonText(policy.getResponseText()));
                 session.getConversation().setUpdatedAt(OffsetDateTime.now());
-                conversationRepo.save(session.getConversation());
+                cacheService.saveAndCache(session.getConversation());
 
                 EngineResult out = new EngineResult(
                         session.getIntent(),
                         session.getState(),
                         new TextPayload(policy.getResponseText()),
-                        session.getContextJson()
-                );
+                        session.getContextJson());
                 return new StepResult.Stop(out);
             }
         }
@@ -61,7 +60,8 @@ public class PolicyEnforcementStep implements EngineStep {
     }
 
     private boolean matches(String type, String pattern, String text) {
-        if (type == null || pattern == null || text == null) return false;
+        if (type == null || pattern == null || text == null)
+            return false;
         return switch (type.trim().toUpperCase()) {
             case "REGEX" -> Pattern.compile(pattern, Pattern.CASE_INSENSITIVE).matcher(text).find();
             case "CONTAINS" -> text.toLowerCase().contains(pattern.toLowerCase());

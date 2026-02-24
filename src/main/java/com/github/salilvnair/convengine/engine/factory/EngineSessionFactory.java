@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeConversation;
-import com.github.salilvnair.convengine.repo.ConversationRepository;
+import com.github.salilvnair.convengine.service.ConversationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
@@ -17,7 +17,7 @@ import java.util.UUID;
 public class EngineSessionFactory {
 
     private final ObjectMapper mapper;
-    private final ConversationRepository conversationRepository;
+    private final ConversationCacheService cacheService;
 
     public EngineSession open(EngineContext ctx) {
         EngineSession session = new EngineSession(ctx, mapper);
@@ -28,7 +28,7 @@ public class EngineSessionFactory {
     }
 
     private CeConversation ensureConversationBootstrap(UUID conversationId) {
-        return conversationRepository.findById(conversationId)
+        return cacheService.getConversation(conversationId)
                 .orElseGet(() -> createMinimalConversation(conversationId));
     }
 
@@ -44,11 +44,10 @@ public class EngineSessionFactory {
                     .createdAt(now)
                     .updatedAt(now)
                     .build();
-            return conversationRepository.save(conversation);
-        }
-        catch (DataIntegrityViolationException ignored) {
+            return cacheService.createAndCacheSync(conversation);
+        } catch (DataIntegrityViolationException ignored) {
             // Another concurrent request created the row first.
-            return conversationRepository.findById(conversationId)
+            return cacheService.getConversation(conversationId)
                     .orElseThrow(() -> ignored);
         }
     }

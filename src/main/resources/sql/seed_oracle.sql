@@ -141,7 +141,7 @@ Return JSON only with:
 INSERT INTO ce_config
 (config_id, config_type, config_key, config_value, enabled)
 VALUES(12, 'DialogueActStep', 'USER_PROMPT', 'User text:
-%s', 1);
+{{user_input}}', 1);
 
 INSERT INTO ce_config
 (config_id, config_type, config_key, config_value, enabled)
@@ -151,6 +151,36 @@ VALUES(13, 'DialogueActStep', 'SCHEMA_PROMPT', '{
   "properties":{
     "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
     "confidence":{"type":"number"}
+  },
+  "additionalProperties":false
+}', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(14, 'DialogueActStep', 'QUERY_REWRITE_SYSTEM_PROMPT', ' You are a dialogue-act classifier and intelligent query search rewriter.
+                        Using the conversation history, rewrite the user''s text into an explicit, standalone query that perfectly describes their intent without needing the conversation history context.
+                        Also classify their dialogue act.
+                        Return JSON only matching the exact schema.', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(15, 'DialogueActStep', 'QUERY_REWRITE_USER_PROMPT', '
+ Conversation History:
+ {{conversation_history}}
+
+ User input:
+ {{user_input}}
+', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(16, 'DialogueActStep', 'QUERY_REWRITE_SCHEMA_JSON', '{
+  "type":"object",
+  "required":["dialogueAct","confidence","standaloneQuery"],
+  "properties":{
+    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
+    "confidence":{"type":"number"},
+    "standaloneQuery":{"type":"string"}
   },
   "additionalProperties":false
 }', 1);
