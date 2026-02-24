@@ -17,7 +17,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeContainerConfig;
-import com.github.salilvnair.convengine.repo.ContainerConfigRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.stereotype.Component;
@@ -31,7 +31,7 @@ import java.util.Map;
 @MustRunAfter(FallbackIntentStateStep.class)
 public class AddContainerDataStep implements EngineStep {
 
-    private final ContainerConfigRepository containerConfigRepo;
+    private final StaticConfigurationCacheService staticCacheService;
     private final CcfCoreService ccfCoreService;
     private final AuditService audit;
     private final ObjectMapper mapper;
@@ -42,18 +42,16 @@ public class AddContainerDataStep implements EngineStep {
     @Override
     public StepResult execute(EngineSession session) {
 
-        List<CeContainerConfig> configs =
-                containerConfigRepo.findByIntentAndState(
-                        session.getIntent(),
-                        session.getState()
-                );
+        List<CeContainerConfig> configs = staticCacheService.findContainerConfigsByIntentAndState(
+                session.getIntent(),
+                session.getState());
 
         if (configs.isEmpty()) {
-            configs = containerConfigRepo.findFallbackByState(session.getState());
+            configs = staticCacheService.findContainerConfigsFallbackByState(session.getState());
         }
 
         if (configs.isEmpty()) {
-            configs = containerConfigRepo.findGlobalFallback();
+            configs = staticCacheService.findContainerConfigsGlobalFallback();
         }
 
         if (configs.isEmpty()) {
@@ -64,8 +62,7 @@ public class AddContainerDataStep implements EngineStep {
             audit.audit(
                     "CONTAINER_DATA_SKIPPED",
                     session.getConversationId(),
-                    reasonMap
-            );
+                    reasonMap);
             return new StepResult.Continue();
         }
 
@@ -77,7 +74,7 @@ public class AddContainerDataStep implements EngineStep {
                 Map<String, Object> inputParams = new HashMap<>();
                 String key = cfg.getInputParamName();
                 Object value = session.extractValueFromContext(key);
-                if(value == null) {
+                if (value == null) {
                     value = session.isQueryRewritten() ? session.getStandaloneQuery() : session.getUserText();
                 }
                 inputParams.put(key, value);
@@ -89,13 +86,13 @@ public class AddContainerDataStep implements EngineStep {
                 }
 
                 PageInfoRequest pageInfo = PageInfoRequest.builder()
-                                                .userId("convengine")
-                                                .loggedInUserId("convengine")
-                                                .pageId(cfg.getPageId())
-                                                .sectionId(cfg.getSectionId())
-                                                .containerId(cfg.getContainerId())
-                                                .inputParams(inputParams)
-                                                .build();
+                        .userId("convengine")
+                        .loggedInUserId("convengine")
+                        .pageId(cfg.getPageId())
+                        .sectionId(cfg.getSectionId())
+                        .containerId(cfg.getContainerId())
+                        .inputParams(inputParams)
+                        .build();
 
                 ContainerComponentRequest req = new ContainerComponentRequest();
                 req.setPageInfo(List.of(pageInfo));
@@ -103,9 +100,12 @@ public class AddContainerDataStep implements EngineStep {
                 interceptorExecutor.beforeExecute(req, session);
                 ContainerComponentResponse resp = ccfCoreService.execute(req);
                 resp = interceptorExecutor.afterExecute(resp, session);
-                // find classes with @ContainerDataTransformer(state, intent) to transform resp if needed
-                Map<String, Object> transformedData = transformerService.transformIfApplicable(resp, session, inputParams);
-                JsonNode responseNode = transformedData == null ? mapper.valueToTree(resp) : mapper.valueToTree(transformedData);
+                // find classes with @ContainerDataTransformer(state, intent) to transform resp
+                // if needed
+                Map<String, Object> transformedData = transformerService.transformIfApplicable(resp, session,
+                        inputParams);
+                JsonNode responseNode = transformedData == null ? mapper.valueToTree(resp)
+                        : mapper.valueToTree(transformedData);
                 session.setContainerData(responseNode);
                 containerRoot.set(cfg.getInputParamName(), responseNode);
                 Map<String, Object> jsonMap = Map.of(
@@ -114,13 +114,11 @@ public class AddContainerDataStep implements EngineStep {
                         "sectionId", cfg.getSectionId(),
                         "inputParam", cfg.getInputParamName(),
                         "requestInput", inputParams,
-                        "response", responseNode
-                );
+                        "response", responseNode);
                 audit.audit(
                         "CONTAINER_DATA_EXECUTED",
                         session.getConversationId(),
-                        jsonMap
-                );
+                        jsonMap);
 
             } catch (Exception e) {
                 Map<String, Object> errorJsonMap = new HashMap<>();
@@ -129,8 +127,7 @@ public class AddContainerDataStep implements EngineStep {
                 audit.audit(
                         "CONTAINER_DATA_FAILED",
                         session.getConversationId(),
-                        errorJsonMap
-                );
+                        errorJsonMap);
             }
         }
 
@@ -153,8 +150,7 @@ public class AddContainerDataStep implements EngineStep {
             audit.audit(
                     "CONTAINER_DATA_ATTACHED",
                     session.getConversationId(),
-                    containerRoot.toString()
-            );
+                    containerRoot.toString());
         }
 
         return new StepResult.Continue();

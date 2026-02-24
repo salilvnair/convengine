@@ -44,7 +44,7 @@ public class CeContainerConfig {
     private Integer priority;
 
     @Column(name = "enabled", nullable = false)
-    private Boolean enabled;
+    private boolean enabled;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

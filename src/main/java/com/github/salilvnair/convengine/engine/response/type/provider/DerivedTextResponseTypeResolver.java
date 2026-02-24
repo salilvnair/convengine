@@ -7,11 +7,8 @@ import com.github.salilvnair.convengine.engine.response.format.core.OutputFormat
 import com.github.salilvnair.convengine.engine.response.format.factory.OutputFormatResolverFactory;
 import com.github.salilvnair.convengine.engine.response.type.core.ResponseTypeResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
-import com.github.salilvnair.convengine.entity.CePromptTemplate;
-import com.github.salilvnair.convengine.entity.CeResponse;
 import com.github.salilvnair.convengine.model.PromptTemplate;
 import com.github.salilvnair.convengine.model.ResponseTemplate;
-import com.github.salilvnair.convengine.repo.PromptTemplateRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

@@ -35,18 +35,11 @@ import java.util.regex.Pattern;
 @MustRunBefore(IntentResolutionStep.class)
 public class DialogueActStep implements EngineStep {
 
-    private static final Pattern AFFIRM = Pattern.compile(
-            "^(\\s)*(yes|yep|yeah|ok|okay|sure|go ahead|do that|please do|confirm|approved?)(\\s)*$",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern NEGATE = Pattern.compile(
-            "^(\\s)*(no|nope|nah|cancel|stop|don't|do not)(\\s)*$",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern EDIT = Pattern.compile(
-            "^(\\s)*(edit|revise|change|modify|update)(\\s)*$",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern RESET = Pattern.compile(
-            "^(\\s)*(reset|restart|start over)(\\s)*$",
-            Pattern.CASE_INSENSITIVE);
+    private Pattern REGEX_AFFIRM;
+    private Pattern REGEX_NEGATE;
+    private Pattern REGEX_EDIT;
+    private Pattern REGEX_RESET;
+    private Pattern REGEX_GREETING;
 
     private final AuditService audit;
     private final ConvEngineFlowConfig flowConfig;
@@ -66,6 +59,24 @@ public class DialogueActStep implements EngineStep {
 
     @PostConstruct
     public void init() {
+        REGEX_AFFIRM = Pattern.compile(
+                configResolver.resolveString(this, "REGEX_AFFIRM",
+                        "^(\\s)*(yes|yep|yeah|ok|okay|sure|go ahead|do that|please do|confirm|approved?)(\\s)*$"),
+                Pattern.CASE_INSENSITIVE);
+        REGEX_NEGATE = Pattern.compile(
+                configResolver.resolveString(this, "REGEX_NEGATE",
+                        "^(\\s)*(no|nope|nah|cancel|stop|don't|do not)(\\s)*$"),
+                Pattern.CASE_INSENSITIVE);
+        REGEX_EDIT = Pattern.compile(
+                configResolver.resolveString(this, "REGEX_EDIT", "^(\\s)*(edit|revise|change|modify|update)(\\s)*$"),
+                Pattern.CASE_INSENSITIVE);
+        REGEX_RESET = Pattern.compile(
+                configResolver.resolveString(this, "REGEX_RESET", "^(\\s)*(reset|restart|start over)(\\s)*$"),
+                Pattern.CASE_INSENSITIVE);
+        REGEX_GREETING = Pattern.compile(
+                configResolver.resolveString(this, "REGEX_GREETING",
+                        "^(\\s)*(hi|hello|hey|greetings|good morning|good afternoon|good evening|howdy)(\\s)*$"),
+                Pattern.CASE_INSENSITIVE);
         SYSTEM_PROMPT = configResolver.resolveString(this, "SYSTEM_PROMPT", """
                 You are a dialogue-act classifier.
                 Return JSON only with:
@@ -75,17 +86,18 @@ public class DialogueActStep implements EngineStep {
                 User text:
                 {{user_input}}
                 """);
-        SCHEMA_JSON = configResolver.resolveString(this, "SCHEMA_PROMPT", """
-                {
-                  "type":"object",
-                  "required":["dialogueAct","confidence"],
-                  "properties":{
-                    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
-                    "confidence":{"type":"number"}
-                  },
-                  "additionalProperties":false
-                }
-                """);
+        SCHEMA_JSON = configResolver.resolveString(this, "SCHEMA_PROMPT",
+                """
+                        {
+                          "type":"object",
+                          "required":["dialogueAct","confidence"],
+                          "properties":{
+                            "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST","GREETING"]},
+                            "confidence":{"type":"number"}
+                          },
+                          "additionalProperties":false
+                        }
+                        """);
 
         QUERY_REWRITE_SYSTEM_PROMPT = configResolver.resolveString(this, "QUERY_REWRITE_SYSTEM_PROMPT",
                 """
@@ -101,18 +113,19 @@ public class DialogueActStep implements EngineStep {
                 User text:
                 {{user_input}}
                 """);
-        QUERY_REWRITE_SCHEMA_JSON = configResolver.resolveString(this, "QUERY_REWRITE_SCHEMA_PROMPT", """
-                {
-                  "type":"object",
-                  "required":["dialogueAct","confidence","standaloneQuery"],
-                  "properties":{
-                    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
-                    "confidence":{"type":"number"},
-                    "standaloneQuery":{"type":"string"}
-                  },
-                  "additionalProperties":false
-                }
-                """);
+        QUERY_REWRITE_SCHEMA_JSON = configResolver.resolveString(this, "QUERY_REWRITE_SCHEMA_PROMPT",
+                """
+                        {
+                          "type":"object",
+                          "required":["dialogueAct","confidence","standaloneQuery"],
+                          "properties":{
+                            "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST","GREETING"]},
+                            "confidence":{"type":"number"},
+                            "standaloneQuery":{"type":"string"}
+                          },
+                          "additionalProperties":false
+                        }
+                        """);
     }
 
     @Override
@@ -167,7 +180,7 @@ public class DialogueActStep implements EngineStep {
                 }
                 // Prevent false EDIT/RESET when user sends a fresh request sentence.
                 if ((llmResult.act() == DialogueAct.EDIT || llmResult.act() == DialogueAct.RESET)
-                        && !(EDIT.matcher(userText).matches() || RESET.matcher(userText).matches())) {
+                        && !(REGEX_EDIT.matcher(userText).matches() || REGEX_RESET.matcher(userText).matches())) {
                     yield regexResult.withSource("REGEX_GUARD");
                 }
                 yield llmResult.withSource("LLM");
@@ -182,7 +195,7 @@ public class DialogueActStep implements EngineStep {
                 }
                 // Prevent false EDIT/RESET when user sends a fresh request sentence.
                 if ((llmResult.act() == DialogueAct.EDIT || llmResult.act() == DialogueAct.RESET)
-                        && !(EDIT.matcher(userText).matches() || RESET.matcher(userText).matches())) {
+                        && !(REGEX_EDIT.matcher(userText).matches() || REGEX_RESET.matcher(userText).matches())) {
                     yield regexResult.withSource("REGEX_GUARD");
                 }
                 yield llmResult.withSource("LLM");
@@ -194,17 +207,20 @@ public class DialogueActStep implements EngineStep {
         if (userText.isEmpty()) {
             return new DialogueActResult(DialogueAct.NEW_REQUEST, 0.40d, "REGEX", null);
         }
-        if (AFFIRM.matcher(userText).matches()) {
+        if (REGEX_AFFIRM.matcher(userText).matches()) {
             return new DialogueActResult(DialogueAct.AFFIRM, 0.95d, "REGEX", null);
         }
-        if (NEGATE.matcher(userText).matches()) {
+        if (REGEX_NEGATE.matcher(userText).matches()) {
             return new DialogueActResult(DialogueAct.NEGATE, 0.95d, "REGEX", null);
         }
-        if (EDIT.matcher(userText).matches()) {
+        if (REGEX_EDIT.matcher(userText).matches()) {
             return new DialogueActResult(DialogueAct.EDIT, 0.95d, "REGEX", null);
         }
-        if (RESET.matcher(userText).matches()) {
+        if (REGEX_RESET.matcher(userText).matches()) {
             return new DialogueActResult(DialogueAct.RESET, 0.95d, "REGEX", null);
+        }
+        if (REGEX_GREETING.matcher(userText).matches()) {
+            return new DialogueActResult(DialogueAct.GREETING, 0.95d, "REGEX", null);
         }
         if (userText.endsWith("?")) {
             return new DialogueActResult(DialogueAct.QUESTION, 0.70d, "REGEX", null);
@@ -227,25 +243,24 @@ public class DialogueActStep implements EngineStep {
                 userPrompt = QUERY_REWRITE_USER_PROMPT;
                 schema = QUERY_REWRITE_SCHEMA_JSON;
                 session.setQueryRewritten(true);
-            }
-            else {
+            } else {
                 systemPrompt = SYSTEM_PROMPT;
                 userPrompt = USER_PROMPT.formatted(userText == null ? "" : userText);
                 schema = SCHEMA_JSON;
             }
 
             PromptTemplateContext promptTemplateContext = PromptTemplateContext
-                                                            .builder()
-                                                            .templateName("DialogueActResult")
-                                                            .systemPrompt(systemPrompt)
-                                                            .userPrompt(userPrompt)
-                                                            .schemaJson(schema)
-                                                            .context(session.getContextJson())
-                                                            .userInput(session.getUserText())
-                                                            .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
-                                                            .extra(session.promptTemplateVars())
-                                                            .session(session)
-                                                            .build();
+                    .builder()
+                    .templateName("DialogueActResult")
+                    .systemPrompt(systemPrompt)
+                    .userPrompt(userPrompt)
+                    .schemaJson(schema)
+                    .context(session.getContextJson())
+                    .userInput(session.getUserText())
+                    .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
+                    .extra(session.promptTemplateVars())
+                    .session(session)
+                    .build();
             systemPrompt = renderer.render(systemPrompt, promptTemplateContext);
             userPrompt = renderer.render(userPrompt, promptTemplateContext);
 

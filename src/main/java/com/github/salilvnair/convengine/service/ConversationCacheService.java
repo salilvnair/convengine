@@ -17,7 +17,11 @@ public class ConversationCacheService {
     private final ConversationRepository conversationRepository;
     private final AsyncConversationPersistenceService asyncPersistence;
 
-    @Cacheable(value = "ce_conversation_cache", key = "#p0", unless = "#result == null")
+    @Cacheable(
+            value = "ce_conversation_cache",
+            key = "#p0",
+            unless = "#result == null"
+    )
     public Optional<CeConversation> getConversation(UUID conversationId) {
         return conversationRepository.findById(conversationId);
     }

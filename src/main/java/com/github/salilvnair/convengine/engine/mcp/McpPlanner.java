@@ -13,7 +13,7 @@ import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
-import com.github.salilvnair.convengine.repo.PromptTemplateRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ import java.util.Map;
 @Component
 public class McpPlanner {
 
-    private final PromptTemplateRepository promptRepo;
+    private final StaticConfigurationCacheService staticCacheService;
     private final PromptTemplateRenderer renderer;
     private final LlmClient llm;
     private final AuditService audit;

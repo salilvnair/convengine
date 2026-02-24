@@ -30,7 +30,7 @@ public class CeIntentClassifier {
     private Integer priority;
 
     @Column(name = "enabled")
-    private Boolean enabled = true;
+    private boolean enabled;
 
     @Column(name = "description")
     private String description;

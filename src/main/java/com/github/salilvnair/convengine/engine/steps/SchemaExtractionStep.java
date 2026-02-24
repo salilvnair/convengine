@@ -18,8 +18,7 @@ import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
-import com.github.salilvnair.convengine.repo.OutputSchemaRepository;
-import com.github.salilvnair.convengine.repo.PromptTemplateRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -32,8 +31,7 @@ import java.util.Map;
 @Component
 @RequiresConversationPersisted
 public class SchemaExtractionStep implements EngineStep {
-    private final OutputSchemaRepository outputSchemaRepo;
-    private final PromptTemplateRepository promptTemplateRepo;
+    private final StaticConfigurationCacheService staticCacheService;
     private final PromptTemplateRenderer renderer;
     private final LlmClient llm;
     private final AuditService audit;
@@ -45,12 +43,8 @@ public class SchemaExtractionStep implements EngineStep {
         String intent = session.getIntent();
         String state = session.getState();
 
-        CeOutputSchema schema = outputSchemaRepo.findAll().stream()
-                .filter(s -> Boolean.TRUE.equals(s.getEnabled()))
-                .filter(s -> equalsIgnoreCase(s.getIntentCode(), intent))
-                .filter(s -> equalsIgnoreCase(s.getStateCode(), state) || equalsIgnoreCase(s.getStateCode(), "ANY"))
-                .min((a, b) -> Integer.compare(priorityOf(a), priorityOf(b)))
-                .orElse(null);
+        CeOutputSchema schema = staticCacheService.findFirstOutputSchema(intent, state)
+                .orElseGet(() -> staticCacheService.findFirstOutputSchema(intent, "ANY").orElse(null));
 
         if (schema != null) {
             runExtraction(session, schema);
@@ -167,11 +161,9 @@ public class SchemaExtractionStep implements EngineStep {
     private CePromptTemplate resolvePromptTemplate(String responseType, EngineSession session) {
         String intentCode = session.getIntent();
         String stateCode = session.getState();
-        return promptTemplateRepo
-                .findFirstByEnabledTrueAndResponseTypeAndIntentCodeAndStateCodeOrderByCreatedAtDesc(responseType,
-                        intentCode, stateCode)
-                .or(() -> promptTemplateRepo.findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(
-                        responseType, intentCode))
+        return staticCacheService
+                .findFirstPromptTemplate(responseType, intentCode, stateCode)
+                .or(() -> staticCacheService.findFirstPromptTemplate(responseType, intentCode))
                 .orElseThrow(() -> new IllegalStateException("No enabled ce_prompt_template found for responseType="
                         + responseType + " and intent=" + intentCode));
     }

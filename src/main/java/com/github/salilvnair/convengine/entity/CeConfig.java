@@ -31,7 +31,7 @@ public class CeConfig {
     private String configValue;
 
     @Column(name = "enabled", nullable = false)
-    private Boolean enabled = true;
+    private boolean enabled;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

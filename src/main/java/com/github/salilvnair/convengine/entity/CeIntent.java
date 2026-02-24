@@ -30,7 +30,7 @@ public class CeIntent {
     private Integer priority;
 
     @Column(name = "enabled")
-    private Boolean enabled;
+    private boolean enabled;
 
     @Column(name = "created_at")
     private OffsetDateTime createdAt;

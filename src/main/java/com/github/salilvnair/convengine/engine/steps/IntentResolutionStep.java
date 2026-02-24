@@ -11,7 +11,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConve
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
 import com.github.salilvnair.convengine.intent.CompositeIntentResolver;
-import com.github.salilvnair.convengine.repo.OutputSchemaRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
@@ -30,22 +30,20 @@ public class IntentResolutionStep implements EngineStep {
 
     private final CompositeIntentResolver intentResolver;
     private final AuditService audit;
-    private final OutputSchemaRepository outputSchemaRepository;
+    private final StaticConfigurationCacheService staticCacheService;
     private final CeConfigResolver configResolver;
 
     private static final Set<String> RESET_COMMANDS = Set.of(
             "reset",
             "restart",
             "/reset",
-            "/restart"
-    );
+            "/restart");
     private static final Set<String> FORCE_RESOLVE_INPUT_PARAM_KEYS = Set.of(
             "force_intent_resolution",
             "resolve_intent",
             "switch_intent",
             "switch_flow",
-            "switch_mode"
-    );
+            "switch_mode");
     private boolean stickyIntentEnabled = true;
 
     @PostConstruct
@@ -78,7 +76,8 @@ public class IntentResolutionStep implements EngineStep {
             payload.put(ConvEnginePayloadKey.STATE, session.getState());
             payload.put(ConvEnginePayloadKey.INTENT_LOCKED, session.isIntentLocked());
             payload.put(ConvEnginePayloadKey.INTENT_LOCK_REASON, session.getIntentLockReason());
-            audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_SKIPPED_SCHEMA_COLLECTION, session.getConversationId(), payload);
+            audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_SKIPPED_SCHEMA_COLLECTION, session.getConversationId(),
+                    payload);
             return new StepResult.Continue();
         }
 
@@ -90,8 +89,10 @@ public class IntentResolutionStep implements EngineStep {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
             payload.put(ConvEnginePayloadKey.STATE, session.getState());
-            payload.put(ConvEnginePayloadKey.DIALOGUE_ACT, session.inputParamAsString(ConvEngineInputParamKey.DIALOGUE_ACT));
-            payload.put(ConvEnginePayloadKey.POLICY_DECISION, session.inputParamAsString(ConvEngineInputParamKey.POLICY_DECISION));
+            payload.put(ConvEnginePayloadKey.DIALOGUE_ACT,
+                    session.inputParamAsString(ConvEngineInputParamKey.DIALOGUE_ACT));
+            payload.put(ConvEnginePayloadKey.POLICY_DECISION,
+                    session.inputParamAsString(ConvEngineInputParamKey.POLICY_DECISION));
             payload.put(ConvEnginePayloadKey.SKIP_INTENT_RESOLUTION, true);
             payload.put(ConvEnginePayloadKey.REASON, "policy decision retained existing intent/state");
             audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_SKIPPED_POLICY, session.getConversationId(), payload);
@@ -104,7 +105,8 @@ public class IntentResolutionStep implements EngineStep {
                 session.getConversation().setStateCode(session.getState());
             }
             Map<String, Object> payload = existingIntentRetainedAuditPayload(session);
-            audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_SKIPPED_STICKY_INTENT, session.getConversationId(), payload);
+            audit.audit(ConvEngineAuditStage.INTENT_RESOLVE_SKIPPED_STICKY_INTENT, session.getConversationId(),
+                    payload);
             return new StepResult.Continue();
         }
 
@@ -124,8 +126,7 @@ public class IntentResolutionStep implements EngineStep {
         audit.audit(
                 ConvEngineAuditStage.intentResolvedBy(result.source().name()),
                 session.getConversationId(),
-                result
-        );
+                result);
 
         return new StepResult.Continue();
     }
@@ -144,18 +145,16 @@ public class IntentResolutionStep implements EngineStep {
             return false;
         }
         try {
-            Optional<CeOutputSchema> schema = outputSchemaRepository
-                    .findFirstByEnabledTrueAndIntentCodeAndStateCodeOrderByPriorityAsc(
+            Optional<CeOutputSchema> schema = staticCacheService
+                    .findFirstOutputSchema(
                             session.getIntent(),
-                            session.getState()
-                    );
+                            session.getState());
 
             if (schema.isEmpty()) {
-                schema = outputSchemaRepository
-                        .findFirstByEnabledTrueAndIntentCodeAndStateCodeOrderByPriorityAsc(
+                schema = staticCacheService
+                        .findFirstOutputSchema(
                                 session.getIntent(),
-                                "ANY"
-                        );
+                                "ANY");
             }
             if (schema.isEmpty() || schema.get().getJsonSchema() == null) {
                 return false;
@@ -254,7 +253,8 @@ public class IntentResolutionStep implements EngineStep {
         }
         if (value instanceof String s) {
             String normalized = s.trim().toLowerCase();
-            return "true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized) || "on".equals(normalized);
+            return "true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized)
+                    || "on".equals(normalized);
         }
         return false;
     }
