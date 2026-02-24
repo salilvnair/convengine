@@ -6,5 +6,6 @@ public enum DialogueAct {
     EDIT,
     RESET,
     QUESTION,
-    NEW_REQUEST
+    NEW_REQUEST,
+    GREETING
 }

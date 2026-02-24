@@ -6,9 +6,18 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `2.0.3`
+- Current library version: `2.0.5`
 
-## Detailed Architecture Upgrades (v2.0.3)
+## Detailed Architecture Upgrades (v2.0.3 - v2.0.5)
+
+### 7. Static Caching, Async Logging & Context RAG Evolution (v2.0.5)
+- **Static Configurations Cache Loader**: All static framework properties (`ce_intent`, `ce_rule`, `ce_mcp_tool`, etc.) are pre-loaded entirely into memory on JVM live via `StaticTableCachePreloader`, dropping complex query I/O across `RulesStep` and `InteractionPolicyStep` to sub-millisecond evaluate times.
+- **Cache Eviction API**: Deployed `/api/v1/cache/refresh` endpoint natively inside `ConvEngineCacheController` to allow database administrators to immediately flush and reload RAM without bouncing the application. 
+- **Standalone Contextual Query Rewriting**: `DialogueActStep` now natively evaluates `convengine.flow.query-rewrite` directives. It intelligently piggybacks on the existing actuation LLM prompt, forcing it to seamlessly read `session.conversionHistory` and emit a mathematically perfect `"standaloneQuery"` search phrase, fundamentally eliminating downstream MCP RAG context drift while consuming zero additional network roundtrip latency.
+- **Async LLM Call Logging**: Integrated `@Async` onto `LlmCallLogPersistenceService`. Lengthy physical HTTP prompts/completions are recorded in background threads preserving microsecond user-facing SLA times.
+- **History DDL Revolution**: Hard-deprecated noisy legacy `role` & `stage` `ce_conversation_history` table arrays. Decoupled history updates away from the core `DbAuditService` pipeline loop entirely, deploying an explicit `user_input` + `assistant_output` monolithic string format that tracks asynchronously inside the final `PipelineEndGuardStep`.
+- **JSON Payload Parameter Optimization**: Re-engineered `EngineSession.safeInputParams()` to aggressively strip deep duplicated objects (`CONTEXT`, `SCHEMA_JSON`, `SESSION_SUMMARY`) prior to JPA serialization, significantly condensing relational table footprints.
+- **SQLite Timezone Idempotency**: Normalized all underlying timestamp extractions across standard JSON mapping using formal JVM `jackson-datatype-jsr310` deployments and rigorous `OffsetDateTime` string converters preserving micro-transaction timezone stability across disparate engine host OS profiles.
 
 ### 6. Caching, Async Persistence & Deep Audit
 - **Spring `@Cacheable` + `@Async` Control Plane**: Persistences operations are now fire-and-forget background threads to erase RDBMS I/O latency, cleanly fronted by real-time synchronized cache managers. Enabled seamlessly via `@EnableConvEngineCaching` & `@EnableConvEngineAsyncConversation`.
@@ -220,6 +229,7 @@ convengine:
   audit:
     enabled: true
     persist-meta: true
+    cache-inspector: false
     level: ALL # ALL | STANDARD | ERROR_ONLY | NONE
     include-stages: []
     exclude-stages: []

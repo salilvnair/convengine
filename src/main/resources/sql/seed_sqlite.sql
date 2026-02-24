@@ -149,7 +149,7 @@ VALUES(13, 'DialogueActStep', 'SCHEMA_PROMPT', '{
   "type":"object",
   "required":["dialogueAct","confidence"],
   "properties":{
-    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
+    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST","GREETING"]},
     "confidence":{"type":"number"}
   },
   "additionalProperties":false
@@ -178,9 +178,29 @@ VALUES(16, 'DialogueActStep', 'QUERY_REWRITE_SCHEMA_JSON', '{
   "type":"object",
   "required":["dialogueAct","confidence","standaloneQuery"],
   "properties":{
-    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
+    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST","GREETING"]},
     "confidence":{"type":"number"},
     "standaloneQuery":{"type":"string"}
   },
   "additionalProperties":false
 }', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(17, 'DialogueActStep', 'REGEX_AFFIRM', '^(\\s)*(yes|yep|yeah|ok|okay|sure|go ahead|do that|please do|confirm|approved?)(\\s)*$', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(18, 'DialogueActStep', 'REGEX_NEGATE', '^(\\s)*(no|nope|nah|cancel|stop|don''t|do not)(\\s)*$', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(19, 'DialogueActStep', 'REGEX_EDIT', '^(\\s)*(edit|revise|change|modify|update)(\\s)*$', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(20, 'DialogueActStep', 'REGEX_RESET', '^(\\s)*(reset|restart|start over)(\\s)*$', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(21, 'DialogueActStep', 'REGEX_GREETING', '^(\\s)*(hi|hello|hey|greetings|good morning|good afternoon|good evening|howdy)(\\s)*$', 1);

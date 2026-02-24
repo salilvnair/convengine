@@ -149,7 +149,7 @@ VALUES(13, 'DialogueActStep', 'SCHEMA_PROMPT', '{
   "type":"object",
   "required":["dialogueAct","confidence"],
   "properties":{
-    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
+    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST","GREETING"]},
     "confidence":{"type":"number"}
   },
   "additionalProperties":false
@@ -178,9 +178,29 @@ VALUES(16, 'DialogueActStep', 'QUERY_REWRITE_SCHEMA_JSON', '{
   "type":"object",
   "required":["dialogueAct","confidence","standaloneQuery"],
   "properties":{
-    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST"]},
+    "dialogueAct":{"type":"string","enum":["AFFIRM","NEGATE","EDIT","RESET","QUESTION","NEW_REQUEST","GREETING"]},
     "confidence":{"type":"number"},
     "standaloneQuery":{"type":"string"}
   },
   "additionalProperties":false
 }', true, '2026-02-20 10:15:54.230');
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(17, 'DialogueActStep', 'REGEX_AFFIRM', '^(\\s)*(yes|yep|yeah|ok|okay|sure|go ahead|do that|please do|confirm|approved?)(\\s)*$', true, '2026-02-24 10:15:54.230');
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(18, 'DialogueActStep', 'REGEX_NEGATE', '^(\\s)*(no|nope|nah|cancel|stop|don''t|do not)(\\s)*$', true, '2026-02-24 10:15:54.230');
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(19, 'DialogueActStep', 'REGEX_EDIT', '^(\\s)*(edit|revise|change|modify|update)(\\s)*$', true, '2026-02-24 10:15:54.230');
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(20, 'DialogueActStep', 'REGEX_RESET', '^(\\s)*(reset|restart|start over)(\\s)*$', true, '2026-02-24 10:15:54.230');
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(21, 'DialogueActStep', 'REGEX_GREETING', '^(\\s)*(hi|hello|hey|greetings|good morning|good afternoon|good evening|howdy)(\\s)*$', true, '2026-02-24 10:15:54.230');

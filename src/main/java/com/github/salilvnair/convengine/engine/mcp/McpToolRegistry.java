@@ -2,8 +2,7 @@ package com.github.salilvnair.convengine.engine.mcp;
 
 import com.github.salilvnair.convengine.entity.CeMcpDbTool;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
-import com.github.salilvnair.convengine.repo.McpDbToolRepository;
-import com.github.salilvnair.convengine.repo.McpToolRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -14,22 +13,20 @@ import java.util.Locale;
 @Component
 public class McpToolRegistry {
 
-    private final McpToolRepository toolRepo;
-    private final McpDbToolRepository dbToolRepo;
+    private final StaticConfigurationCacheService staticCacheService;
 
     public List<CeMcpTool> listEnabledTools(String intentCode, String stateCode) {
-        return toolRepo.findEnabledByIntentAndState(intentCode, stateCode);
+        return staticCacheService.findEnabledMcpTools(intentCode, stateCode);
     }
 
     public CeMcpTool requireTool(String toolCode, String intentCode, String stateCode) {
-        return toolRepo.findByToolCodeEnabledAndIntentAndState(toolCode, intentCode, stateCode)
+        return staticCacheService.findMcpTool(toolCode, intentCode, stateCode)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Missing enabled MCP tool for current intent/state: " + toolCode
-                ));
+                        "Missing enabled MCP tool for current intent/state: " + toolCode));
     }
 
     public CeMcpDbTool requireDbTool(String toolCode) {
-        return dbToolRepo.findByTool_ToolCodeAndTool_EnabledTrue(toolCode)
+        return staticCacheService.findMcpDbTool(toolCode)
                 .orElseThrow(() -> new IllegalStateException("Missing enabled DB tool: " + toolCode));
     }
 

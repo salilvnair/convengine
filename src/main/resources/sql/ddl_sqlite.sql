@@ -201,12 +201,10 @@ CREATE INDEX idx_ce_audit_conversation ON ce_audit (conversation_id, created_at 
 CREATE TABLE ce_conversation_history (
   history_id INTEGER PRIMARY KEY AUTOINCREMENT,
   conversation_id TEXT NOT NULL,
-  entry_type TEXT NOT NULL,
-  role TEXT NOT NULL,
-  stage TEXT NOT NULL,
-  content_text TEXT,
-  payload_json TEXT NOT NULL,
+  user_input TEXT NOT NULL,
+  assistant_output TEXT,
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+  modified_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
   FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_ce_conversation_history_conv ON ce_conversation_history (conversation_id, created_at DESC);

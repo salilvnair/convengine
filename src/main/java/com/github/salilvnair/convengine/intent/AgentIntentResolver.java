@@ -15,7 +15,7 @@ import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.model.JsonPayload;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
-import com.github.salilvnair.convengine.repo.OutputSchemaRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +41,7 @@ public class AgentIntentResolver implements IntentResolver {
     private final LlmClient llm;
     private final AuditService audit;
     private final PromptTemplateRenderer renderer;
-    private final OutputSchemaRepository outputSchemaRepo;
+    private final StaticConfigurationCacheService staticCacheService;
     private final RulesStep rulesStep;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -320,8 +320,8 @@ public class AgentIntentResolver implements IntentResolver {
             return false;
         }
         try {
-            return outputSchemaRepo.findAll().stream()
-                    .anyMatch(s -> Boolean.TRUE.equals(s.getEnabled())
+            return staticCacheService.getAllOutputSchemas().stream()
+                    .anyMatch(s -> s.isEnabled()
                             && s.getIntentCode() != null
                             && s.getIntentCode().equalsIgnoreCase(intent));
         } catch (Exception e) {

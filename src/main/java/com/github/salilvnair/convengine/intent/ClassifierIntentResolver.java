@@ -2,10 +2,10 @@ package com.github.salilvnair.convengine.intent;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeIntentClassifier;
-import com.github.salilvnair.convengine.repo.IntentClassifierRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 @Component
 public class ClassifierIntentResolver implements IntentResolver {
 
-    private final IntentClassifierRepository intentClassifierRepo;
+    private final StaticConfigurationCacheService staticCacheService;
     private final AuditService audit;
 
     @Override
@@ -30,7 +30,7 @@ public class ClassifierIntentResolver implements IntentResolver {
         Set<String> matchedIntents = new LinkedHashSet<>();
         Map<String, Object> matchedByRule = new LinkedHashMap<>();
 
-        for (CeIntentClassifier ic : intentClassifierRepo.findByEnabledTrueOrderByPriorityAsc()) {
+        for (CeIntentClassifier ic : staticCacheService.findEnabledIntentClassifiers()) {
             if (matches(ic.getRuleType(), ic.getPattern(), userText)) {
                 String intent = ic.getIntentCode();
                 matchedIntents.add(intent);

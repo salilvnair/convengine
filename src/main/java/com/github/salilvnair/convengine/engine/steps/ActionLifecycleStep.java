@@ -16,7 +16,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CePendingAction;
-import com.github.salilvnair.convengine.repo.PendingActionRepository;
+import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -35,7 +35,7 @@ public class ActionLifecycleStep implements EngineStep {
     private static final String RUNTIME_NODE = "pending_action_runtime";
 
     private final ConvEngineFlowConfig flowConfig;
-    private final PendingActionRepository pendingActionRepository;
+    private final StaticConfigurationCacheService staticCacheService;
     private final SessionContextHelper contextHelper;
     private final AuditService audit;
 
@@ -51,16 +51,17 @@ public class ActionLifecycleStep implements EngineStep {
         long now = Instant.now().toEpochMilli();
 
         PendingActionStatus currentStatus = PendingActionStatus.from(runtime.path("status").asText(null), null);
-        if (isExpired(runtime, currentTurn, now) && (currentStatus == PendingActionStatus.OPEN || currentStatus == PendingActionStatus.IN_PROGRESS)) {
+        if (isExpired(runtime, currentTurn, now)
+                && (currentStatus == PendingActionStatus.OPEN || currentStatus == PendingActionStatus.IN_PROGRESS)) {
             runtime.put("status", PendingActionStatus.EXPIRED.name());
             runtime.put("expired_turn", currentTurn);
             runtime.put("expired_at_epoch_ms", now);
-            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS, PendingActionStatus.EXPIRED.name());
+            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS,
+                    PendingActionStatus.EXPIRED.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_LIFECYCLE, session.getConversationId(), mapOf(
                     "event", "EXPIRED",
                     "status", PendingActionStatus.EXPIRED.name(),
-                    "turn", currentTurn
-            ));
+                    "turn", currentTurn));
         }
 
         String actionKey = resolveActionKey(session);
@@ -83,38 +84,39 @@ public class ActionLifecycleStep implements EngineStep {
             runtime.put("expires_at_epoch_ms", flowConfig.getActionLifecycle().getTtlMinutes() > 0
                     ? now + (flowConfig.getActionLifecycle().getTtlMinutes() * 60_000L)
                     : -1);
-            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS, PendingActionStatus.OPEN.name());
+            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS,
+                    PendingActionStatus.OPEN.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_LIFECYCLE, session.getConversationId(), mapOf(
                     "event", "OPEN",
                     "status", PendingActionStatus.OPEN.name(),
                     "actionKey", actionKey,
-                    "actionRef", actionRef
-            ));
+                    "actionRef", actionRef));
         }
 
-        InteractionPolicyDecision decision = parseDecision(session.inputParamAsString(ConvEngineInputParamKey.POLICY_DECISION));
+        InteractionPolicyDecision decision = parseDecision(
+                session.inputParamAsString(ConvEngineInputParamKey.POLICY_DECISION));
         if (decision == InteractionPolicyDecision.EXECUTE_PENDING_ACTION) {
             runtime.put("status", PendingActionStatus.IN_PROGRESS.name());
             runtime.put("in_progress_turn", currentTurn);
             runtime.put("in_progress_at_epoch_ms", now);
-            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS, PendingActionStatus.IN_PROGRESS.name());
+            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS,
+                    PendingActionStatus.IN_PROGRESS.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_LIFECYCLE, session.getConversationId(), mapOf(
                     "event", "IN_PROGRESS",
                     "status", PendingActionStatus.IN_PROGRESS.name(),
                     "actionKey", actionKey,
-                    "actionRef", actionRef
-            ));
+                    "actionRef", actionRef));
         } else if (decision == InteractionPolicyDecision.REJECT_PENDING_ACTION) {
             runtime.put("status", PendingActionStatus.REJECTED.name());
             runtime.put("rejected_turn", currentTurn);
             runtime.put("rejected_at_epoch_ms", now);
-            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS, PendingActionStatus.REJECTED.name());
+            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS,
+                    PendingActionStatus.REJECTED.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_LIFECYCLE, session.getConversationId(), mapOf(
                     "event", "REJECTED",
                     "status", PendingActionStatus.REJECTED.name(),
                     "actionKey", actionKey,
-                    "actionRef", actionRef
-            ));
+                    "actionRef", actionRef));
         }
 
         contextHelper.writeRoot(session, root);
@@ -172,24 +174,24 @@ public class ActionLifecycleStep implements EngineStep {
     private String resolveActionReferenceFromTable(EngineSession session, String actionKey) {
         List<CePendingAction> candidates;
         if (actionKey != null && !actionKey.isBlank()) {
-            candidates = pendingActionRepository.findEligibleByActionIntentAndStateOrderByPriorityAsc(
+            candidates = staticCacheService.findEligiblePendingActionsByActionIntentAndState(
                     actionKey,
                     session.getIntent(),
-                    session.getState()
-            );
+                    session.getState());
         } else {
-            candidates = pendingActionRepository.findEligibleByIntentAndStateOrderByPriorityAsc(
+            candidates = staticCacheService.findEligiblePendingActionsByIntentAndState(
                     session.getIntent(),
-                    session.getState()
-            );
+                    session.getState());
         }
         if (candidates.isEmpty()) {
             return null;
         }
         if (actionKey == null || actionKey.isBlank()) {
             if (candidates.size() > 1) {
-                Integer p1 = candidates.getFirst().getPriority() == null ? Integer.MAX_VALUE : candidates.getFirst().getPriority();
-                Integer p2 = candidates.get(1).getPriority() == null ? Integer.MAX_VALUE : candidates.get(1).getPriority();
+                Integer p1 = candidates.getFirst().getPriority() == null ? Integer.MAX_VALUE
+                        : candidates.getFirst().getPriority();
+                Integer p2 = candidates.get(1).getPriority() == null ? Integer.MAX_VALUE
+                        : candidates.get(1).getPriority();
                 if (p1.equals(p2)) {
                     return null;
                 }
@@ -222,4 +224,3 @@ public class ActionLifecycleStep implements EngineStep {
         return out;
     }
 }
-
