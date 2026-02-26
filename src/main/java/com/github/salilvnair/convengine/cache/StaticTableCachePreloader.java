@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 public class StaticTableCachePreloader {
 
     private final StaticConfigurationCacheService staticCacheService;
+    private final StaticScopeIntegrityValidator staticScopeIntegrityValidator;
 
     @EventListener(ApplicationReadyEvent.class)
     public void preloadCaches() {
@@ -28,7 +29,9 @@ public class StaticTableCachePreloader {
         staticCacheService.getAllContainerConfigs();
         staticCacheService.getAllMcpTools();
         staticCacheService.getAllMcpDbTools();
+        staticCacheService.getAllMcpPlanners();
         staticCacheService.getAllPolicies();
+        staticScopeIntegrityValidator.validateOrThrow();
 
         log.info("ConvEngine: Static configuration preload complete.");
     }

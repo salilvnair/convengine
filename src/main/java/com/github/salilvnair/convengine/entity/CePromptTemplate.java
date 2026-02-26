@@ -14,11 +14,11 @@ public class CePromptTemplate {
     @Column(name = "template_id")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long templateId;
-    @Column(name = "intent_code")
+    @Column(name = "intent_code", nullable = false)
     private String intentCode;
     @Column(name = "response_type")
     private String responseType;
-    @Column(name = "state_code")
+    @Column(name = "state_code", nullable = false)
     private String stateCode;
     @Column(name = "system_prompt")
     private String systemPrompt;

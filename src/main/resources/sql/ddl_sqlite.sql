@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool;
+DROP TABLE IF EXISTS ce_mcp_planner;
 DROP TABLE IF EXISTS ce_conversation_history;
 DROP TABLE IF EXISTS ce_audit;
 DROP TABLE IF EXISTS ce_pending_action;
@@ -42,8 +43,8 @@ CREATE INDEX idx_ce_validation_config_lookup ON ce_container_config (intent_code
 CREATE TABLE ce_conversation (
   conversation_id TEXT NOT NULL PRIMARY KEY,
   status TEXT NOT NULL,
-  intent_code TEXT,
-  state_code TEXT NOT NULL,
+  intent_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(state_code) <> ''),
   context_json TEXT NOT NULL DEFAULT '{}',
   last_user_text TEXT,
   last_assistant_json TEXT,
@@ -68,6 +69,7 @@ CREATE INDEX ix_ce_intent_enabled_priority ON ce_intent (enabled, priority, inte
 CREATE TABLE ce_intent_classifier (
   classifier_id INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_code TEXT NOT NULL,
+  state_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(state_code) <> ''),
   rule_type TEXT NOT NULL,
   pattern TEXT NOT NULL,
   priority INTEGER NOT NULL,
@@ -78,8 +80,8 @@ CREATE TABLE ce_intent_classifier (
 CREATE TABLE ce_llm_call_log (
   llm_call_id INTEGER PRIMARY KEY AUTOINCREMENT,
   conversation_id TEXT NOT NULL,
-  intent_code TEXT,
-  state_code TEXT,
+  intent_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(state_code) <> ''),
   provider TEXT NOT NULL,
   model TEXT NOT NULL,
   temperature NUMERIC(3,2),
@@ -97,8 +99,8 @@ CREATE TABLE ce_mcp_tool (
   tool_id INTEGER PRIMARY KEY AUTOINCREMENT,
   tool_code TEXT NOT NULL UNIQUE,
   tool_group TEXT NOT NULL,
-  intent_code TEXT,
-  state_code TEXT,
+  intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
   enabled BOOLEAN NOT NULL DEFAULT 1,
   description TEXT,
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
@@ -130,8 +132,8 @@ CREATE INDEX idx_ce_policy_priority ON ce_policy (enabled, priority);
 
 CREATE TABLE ce_prompt_template (
   template_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  intent_code TEXT,
-  state_code TEXT,
+  intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
   response_type TEXT NOT NULL,
   system_prompt TEXT NOT NULL,
   user_prompt TEXT NOT NULL,
@@ -143,8 +145,8 @@ CREATE INDEX idx_ce_prompt_template_lookup ON ce_prompt_template (response_type,
 
 CREATE TABLE ce_response (
   response_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  intent_code TEXT,
-  state_code TEXT NOT NULL,
+  intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
   output_format TEXT NOT NULL,
   response_type TEXT NOT NULL,
   exact_text TEXT,
@@ -160,9 +162,9 @@ CREATE INDEX idx_ce_response_lookup ON ce_response (state_code, enabled, priorit
 
 CREATE TABLE ce_rule (
   rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  phase TEXT NOT NULL DEFAULT 'PIPELINE_RULES',
-  intent_code TEXT,
-  state_code TEXT,
+  phase TEXT NOT NULL DEFAULT 'PRE_RESPONSE_RESOLUTION',
+  intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
   rule_type TEXT NOT NULL,
   match_pattern TEXT NOT NULL,
   action TEXT NOT NULL,
@@ -176,8 +178,8 @@ CREATE INDEX idx_ce_rule_priority ON ce_rule (enabled, phase, state_code, priori
 
 CREATE TABLE ce_pending_action (
   pending_action_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  intent_code TEXT,
-  state_code TEXT,
+  intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
   action_key TEXT NOT NULL,
   bean_name TEXT NOT NULL,
   method_names TEXT NOT NULL,
@@ -221,3 +223,14 @@ CREATE TABLE ce_mcp_db_tool (
   FOREIGN KEY (tool_id) REFERENCES ce_mcp_tool(tool_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_ce_mcp_db_tool_dialect ON ce_mcp_db_tool (dialect);
+
+CREATE TABLE ce_mcp_planner (
+  planner_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
+  system_prompt TEXT NOT NULL,
+  user_prompt TEXT NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_mcp_planner_scope ON ce_mcp_planner (enabled, intent_code, state_code, planner_id);

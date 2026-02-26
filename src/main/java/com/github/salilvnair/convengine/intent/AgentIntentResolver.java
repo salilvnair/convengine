@@ -308,11 +308,11 @@ public class AgentIntentResolver implements IntentResolver {
         if (session.getIntent() == null || session.getIntent().isBlank()) {
             return;
         }
-        session.setRuleExecutionSource("AgentIntentResolver PostIntent");
+        session.setRuleExecutionSource("AgentIntentResolver");
         session.setRuleExecutionOrigin("AGENT_INTENT_RESOLVER");
-        session.putInputParam(ConvEngineInputParamKey.RULE_EXECUTION_SOURCE, "AgentIntentResolver PostIntent");
+        session.putInputParam(ConvEngineInputParamKey.RULE_EXECUTION_SOURCE, "AgentIntentResolver");
         session.putInputParam(ConvEngineInputParamKey.RULE_EXECUTION_ORIGIN, "AGENT_INTENT_RESOLVER");
-        rulesStep.applyRules(session, "AgentIntentResolver PostIntent", RulePhase.AGENT_POST_INTENT.name());
+        rulesStep.applyRules(session, "AgentIntentResolver", RulePhase.POST_AGENT_INTENT.name());
     }
 
     private boolean isSchemaDrivenIntent(String intent) {

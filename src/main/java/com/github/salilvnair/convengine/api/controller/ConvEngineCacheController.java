@@ -36,6 +36,7 @@ public class ConvEngineCacheController {
             "ce_container_config",
             "ce_mcp_tool",
             "ce_mcp_db_tool",
+            "ce_mcp_planner",
             "ce_policy"
     }, allEntries = true)
     public ResponseEntity<String> refreshStaticCaches() {

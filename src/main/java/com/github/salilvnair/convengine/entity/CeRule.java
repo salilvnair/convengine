@@ -11,9 +11,9 @@ public class CeRule {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "rule_id")
     private Long ruleId;
-    @Column(name = "intent_code")
+    @Column(name = "intent_code", nullable = false)
     private String intentCode;
-    @Column(name = "state_code")
+    @Column(name = "state_code", nullable = false)
     private String stateCode;
     @Column(name = "rule_type")
     private String ruleType;

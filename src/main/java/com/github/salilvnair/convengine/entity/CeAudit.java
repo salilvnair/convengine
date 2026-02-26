@@ -30,7 +30,7 @@ public class CeAudit {
      * MESSAGE_RECEIVED
      * POLICY_HIT
      * INTENT_CLASSIFIED
-     * RULE_MATCHED
+     * RULE_MATCH
      * EXTRACTION_RAN
      * CONTEXT_MERGED
      * RESPONSE_SELECTED

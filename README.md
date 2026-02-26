@@ -6,7 +6,27 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `2.0.5`
+- Current library version: `2.0.7`
+
+### HTTP API MCP Revamp (v2.0.7)
+- **Per-tool consumer handlers**: Added `HttpApiToolHandler` so consumers can implement one Spring bean per `tool_code` (for example `crm.lookup`, `order.status`) instead of building a large central switch block.
+- **Backward compatible fallback**: Existing `HttpApiExecutorAdapter` support remains; it is used when no matching `HttpApiToolHandler` is found.
+- **Normalized observation payloads**: `McpHttpApiToolExecutor` now normalizes handler outputs into JSON-safe strings for MCP observations and planner loops. Maps/POJOs serialize directly, JSON strings pass through, and plain text is wrapped as `{"text":"..."}`.
+- **Advanced HTTP execution model**: Added `HttpApiRequestingToolHandler` + `HttpApiToolInvoker` for framework-managed timeout policies, retry/backoff, circuit breaker windows, auth injection (`API_KEY`, static `BEARER`), and response mapping (`RAW_JSON`, `JSON_PATH`, `FIELD_TEMPLATE`, `MAPPER_CLASS`, `TEXT`) while preserving existing handlers/adapters.
+- **[api-processor](https://github.com/salilvnair/api-processor) native MCP path**: Added `HttpApiApiProcessorToolHandler` so consumers can execute MCP HTTP tools directly through `RestWebServiceFacade` (`prepareRequest -> delegate.invoke -> processResponse`) and return mapped responses to ConvEngine.
+- **Intent/state-scoped planner prompts**: Added `ce_mcp_planner` table and runtime selection in `McpPlanner` so each use case can own planner prompts by `intent_code` + `state_code` instead of globally overriding `ce_config`.
+
+### Advanced DB Knowledge MCP (v2.0.7)
+- **DB tool extension SPI**: Added `DbToolHandler` so `DB` tools can be implemented per `tool_code` before fallback to legacy `ce_mcp_db_tool.sql_template`.
+- **Knowledge graph handler**: Added optional `DbKnowledgeGraphToolHandler` (enabled with `convengine.mcp.db.knowledge.enabled=true`) that reads two consumer-owned metadata tables:
+  - query knowledge catalog (scenario description + prepared SQL/API hints)
+  - schema knowledge catalog (table/column semantics)
+- **Similarity ranking output**: `DbKnowledgeGraphService` tokenizes user question and returns ranked `queryKnowledge` + `schemaKnowledge` + `insights` (`suggestedPreparedQueries`, `suggestedTables`) to help MCP answer similar/variant questions consistently.
+
+### Cache Diagnostics & Proxy Hardening (v2.0.6)
+- **Proxy hygiene**: `StaticConfigurationCacheService` now routes every helper through the proxied bean so `@Cacheable` saves the static `ce_*` collections instead of re-running SQL after warmup.
+- **ConvEngineCacheAnalyzer + `/api/v1/cache/analyze`**: The new analyzer reports the active `CacheManager`, provider/resolver/interceptor/error-handler beans, Spring cache settings, `SimpleKey.EMPTY` entries, native entry counts, warmup timings, and AOP/advisor metadata for `StaticConfigurationCacheService`, `ConversationCacheService`, and `ConversationHistoryCacheService`.
+- **Operational visibility**: Analyzer results highlight first-call versus second-call latencies, plus provider metadata, so you can prove caching is healthy in any deployment (demo, local, or company project) without guessing.
 
 ## Detailed Architecture Upgrades (v2.0.3 - v2.0.5)
 
@@ -121,6 +141,7 @@ Main runtime stages:
 - `ce_rule`
 - `ce_policy`
 - `ce_mcp_tool`
+- `ce_mcp_planner`
 - `ce_mcp_db_tool`
 - `ce_pending_action`
 
@@ -146,9 +167,9 @@ Main runtime stages:
 ### `ce_rule`
 
 - `rule_type`: `EXACT`, `REGEX`, `JSON_PATH`
-- `phase`: `PIPELINE_RULES`, `AGENT_POST_INTENT`, `MCP_POST_LLM`, `TOOL_POST_EXECUTION`
+- `phase`: `PRE_RESPONSE_RESOLUTION`, `POST_AGENT_INTENT`, `POST_AGENT_MCP`, `POST_TOOL_EXECUTION`
 - `action`: `SET_INTENT`, `SET_STATE`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`
-- `state_code`: `NULL`, `ANY`, or exact state
+- `state_code`: `ANY`, `UNKNOWN`, or exact state
 
 ### `ce_intent_classifier`
 
@@ -160,9 +181,27 @@ Flow behavior is file-configured from consumer app config.
 
 ```yaml
 convengine:
-  flow:
-    dialogue-act:
-      resolute: REGEX_THEN_LLM # REGEX_ONLY | REGEX_THEN_LLM | LLM_ONLY
+  mcp:
+    db:
+      knowledge:
+        enabled: false
+        tool-code: db.knowledge.graph
+        query-catalog-table: ce_mcp_query_knowledge
+        schema-catalog-table: ce_mcp_schema_knowledge
+    http-api:
+      defaults:
+        connect-timeout-ms: 2000
+        read-timeout-ms: 5000
+        max-attempts: 2
+        initial-backoff-ms: 200
+        max-backoff-ms: 2000
+        backoff-multiplier: 2.0
+        circuit-breaker-enabled: true
+        circuit-failure-threshold: 5
+        circuit-open-ms: 30000
+    flow:
+      dialogue-act:
+        resolute: REGEX_THEN_LLM # REGEX_ONLY | REGEX_THEN_LLM | LLM_ONLY
       llm-threshold: 0.90
     interaction-policy:
       execute-pending-on-affirm: true
@@ -201,6 +240,13 @@ convengine:
 Consumer contract details:
 
 - `docs/consumer-contract-v2.md`
+- Canonical MCP example seed packs:
+  - `src/main/resources/sql/mcp_planner_seed.sql` (Postgres)
+  - `src/main/resources/sql/mcp_planner_seed_postgres.sql` (Postgres alias)
+  - `src/main/resources/sql/mcp_planner_seed_sqlite.sql` (SQLite)
+- Optional advanced DB knowledge seed packs:
+  - `src/main/resources/sql/seed_mcp_advanced_postgres.sql`
+  - `src/main/resources/sql/seed_mcp_advanced_sqlite.sql`
 
 ## Streaming Configuration
 

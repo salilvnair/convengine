@@ -41,6 +41,7 @@ public class ExperimentalSqlGenerationService {
             "ce_intent",
             "ce_intent_classifier",
             "ce_mcp_tool",
+            "ce_mcp_planner",
             "ce_output_schema",
             "ce_policy",
             "ce_prompt_template",
@@ -84,7 +85,7 @@ public class ExperimentalSqlGenerationService {
                   ce_response.output_format: TEXT | JSON
                   ce_prompt_template.response_type: TEXT | JSON | SCHEMA_JSON
                   ce_rule.rule_type: EXACT | REGEX | JSON_PATH
-                  ce_rule.phase: PIPELINE_RULES | AGENT_POST_INTENT
+                  ce_rule.phase: PRE_RESPONSE_RESOLUTION | POST_AGENT_INTENT | POST_AGENT_MCP | POST_TOOL_EXECUTION
                   ce_rule.state_code: NULL | ANY | <STATE_CODE>
                   ce_intent_classifier.rule_type: REGEX | CONTAINS | STARTS_WITH
                   action: SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK
@@ -214,7 +215,10 @@ public class ExperimentalSqlGenerationService {
     private List<String> expectedTables(boolean includeMcp) {
         List<String> tables = new ArrayList<>();
         for (String table : NON_TRANSACTIONAL_TABLES_DDL_ORDER) {
-            if (!includeMcp && ("ce_mcp_tool".equalsIgnoreCase(table) || "ce_mcp_db_tool".equalsIgnoreCase(table))) {
+            if (!includeMcp
+                    && ("ce_mcp_tool".equalsIgnoreCase(table)
+                    || "ce_mcp_db_tool".equalsIgnoreCase(table)
+                    || "ce_mcp_planner".equalsIgnoreCase(table))) {
                 continue;
             }
             tables.add(table);

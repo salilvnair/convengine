@@ -39,6 +39,7 @@ public class ConvEngineCacheAnalyzer {
             "ce_container_config",
             "ce_mcp_tool",
             "ce_mcp_db_tool",
+            "ce_mcp_planner",
             "ce_policy"
     );
 
@@ -186,6 +187,7 @@ public class ConvEngineCacheAnalyzer {
         metrics.put("ce_container_config", measure(() -> staticCacheService.getAllContainerConfigs()));
         metrics.put("ce_mcp_tool", measure(() -> staticCacheService.getAllMcpTools()));
         metrics.put("ce_mcp_db_tool", measure(() -> staticCacheService.getAllMcpDbTools()));
+        metrics.put("ce_mcp_planner", measure(() -> staticCacheService.getAllMcpPlanners()));
         metrics.put("ce_policy", measure(() -> staticCacheService.getAllPolicies()));
         return metrics;
     }

@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp.executor;
 
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.FileExecutorAdapter;
+import com.github.salilvnair.convengine.engine.mcp.McpConstants;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ public class McpFileToolExecutor implements McpToolExecutor {
 
     @Override
     public String toolGroup() {
-        return "FILES";
+        return McpConstants.TOOL_GROUP_FILES;
     }
 
     @Override
@@ -26,4 +27,3 @@ public class McpFileToolExecutor implements McpToolExecutor {
                 .orElseThrow(() -> new IllegalStateException("No FileExecutorAdapter configured"));
     }
 }
-

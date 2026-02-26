@@ -11,7 +11,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -29,9 +31,14 @@ public class ClassifierIntentResolver implements IntentResolver {
         UUID conversationId = session.getConversationId();
         Set<String> matchedIntents = new LinkedHashSet<>();
         Map<String, Object> matchedByRule = new LinkedHashMap<>();
+        List<CeIntentClassifier> classifiers = staticCacheService.findEnabledIntentClassifiers();
+        CeIntentClassifier firstMatchedClassifier = null;
 
-        for (CeIntentClassifier ic : staticCacheService.findEnabledIntentClassifiers()) {
+        for (CeIntentClassifier ic : classifiers) {
             if (matches(ic.getRuleType(), ic.getPattern(), userText)) {
+                if (firstMatchedClassifier == null) {
+                    firstMatchedClassifier = ic;
+                }
                 String intent = ic.getIntentCode();
                 matchedIntents.add(intent);
                 matchedByRule.put(String.valueOf(ic.getClassifierId()), intent);
@@ -49,8 +56,14 @@ public class ClassifierIntentResolver implements IntentResolver {
 
         if (matchedIntents.size() == 1) {
             String intent = matchedIntents.iterator().next();
+            String resolvedState = normalizeState(firstMatchedClassifier == null ? null : firstMatchedClassifier.getStateCode());
+            session.setState(resolvedState);
+            if (session.getConversation() != null) {
+                session.getConversation().setStateCode(resolvedState);
+            }
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put(ConvEnginePayloadKey.INTENT, intent);
+            payload.put(ConvEnginePayloadKey.STATE, resolvedState);
             payload.put(ConvEnginePayloadKey.MATCHED_BY_RULE, matchedByRule);
             audit.audit(ConvEngineAuditStage.INTENT_CLASSIFICATION_MATCHED, conversationId, payload);
             return intent;
@@ -72,5 +85,12 @@ public class ClassifierIntentResolver implements IntentResolver {
             case "STARTS_WITH" -> text.toLowerCase().startsWith(pattern.toLowerCase());
             default -> false;
         };
+    }
+
+    private String normalizeState(String stateCode) {
+        if (stateCode == null || stateCode.isBlank()) {
+            return "UNKNOWN";
+        }
+        return stateCode.trim().toUpperCase(Locale.ROOT);
     }
 }

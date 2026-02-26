@@ -1,4 +1,4 @@
-package com.github.salilvnair.convengine.config.config;
+package com.github.salilvnair.convengine.config.hibernate;
 
 import com.github.salilvnair.convengine.config.ConvEngineEntityConfig;
 import lombok.RequiredArgsConstructor;
