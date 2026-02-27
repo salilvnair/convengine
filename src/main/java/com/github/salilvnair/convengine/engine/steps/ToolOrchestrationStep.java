@@ -18,6 +18,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConve
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
+import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +39,7 @@ public class ToolOrchestrationStep implements EngineStep {
     private final List<McpToolExecutor> toolExecutors;
     private final RulesStep rulesStep;
     private final AuditService audit;
+    private final VerboseMessagePublisher verbosePublisher;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -55,6 +57,7 @@ public class ToolOrchestrationStep implements EngineStep {
         }
 
         session.putInputParam(ConvEngineInputParamKey.TOOL_REQUEST, request.toMap());
+        verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_REQUEST", null, request.toolCode(), false, request.toMap());
         audit.audit(ConvEngineAuditStage.TOOL_ORCHESTRATION_REQUEST, session.getConversationId(), request.toMap());
 
         CeMcpTool resolvedTool = null;
@@ -81,6 +84,7 @@ public class ToolOrchestrationStep implements EngineStep {
             result.put("_meta", toolMeta(resolvedTool, request, group));
             session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
             session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, McpConstants.TOOL_STATUS_SUCCESS);
+            verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_RESULT", null, request.toolCode(), false, result);
             writeToolExecutionToContext(
                     session,
                     McpConstants.TOOL_STATUS_SUCCESS,
@@ -106,6 +110,7 @@ public class ToolOrchestrationStep implements EngineStep {
                 result.put("_meta", toolMeta(resolvedTool, request, request.toolGroup()));
                 session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
                 session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, McpConstants.TOOL_STATUS_SCOPE_MISMATCH);
+                verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_ERROR", null, request.toolCode(), true, result);
                 writeToolExecutionToContext(
                         session,
                         McpConstants.TOOL_STATUS_SCOPE_MISMATCH,
@@ -127,6 +132,7 @@ public class ToolOrchestrationStep implements EngineStep {
             result.put("_meta", toolMeta(resolvedTool, request, request.toolGroup()));
             session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
             session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, McpConstants.TOOL_STATUS_ERROR);
+            verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_ERROR", null, request.toolCode(), true, result);
             writeToolExecutionToContext(
                     session,
                     McpConstants.TOOL_STATUS_ERROR,
@@ -147,6 +153,7 @@ public class ToolOrchestrationStep implements EngineStep {
             result.put("_meta", toolMeta(resolvedTool, request, request.toolGroup()));
             session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
             session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, McpConstants.TOOL_STATUS_ERROR);
+            verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_ERROR", null, request.toolCode(), true, result);
             writeToolExecutionToContext(
                     session,
                     McpConstants.TOOL_STATUS_ERROR,

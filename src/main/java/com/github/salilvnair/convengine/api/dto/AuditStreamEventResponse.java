@@ -10,8 +10,10 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AuditStreamEventResponse {
+    private String eventType;
     private Long auditId;
     private String stage;
     private String createdAt;
     private Map<String, Object> payload;
+    private VerboseStreamPayload verbose;
 }

@@ -19,6 +19,7 @@ public final class McpConstants {
     public static final String STATUS_SKIPPED_BY_GUARDRAIL = "SKIPPED_BY_GUARDRAIL";
     public static final String STATUS_SKIPPED_DIALOGUE_ACT = "SKIPPED_DIALOGUE_ACT";
     public static final String STATUS_SKIPPED_GREETING = "SKIPPED_GREETING";
+    public static final String STATUS_SKIPPED_SCHEMA_INCOMPLETE = "SKIPPED_SCHEMA_INCOMPLETE";
     public static final String STATUS_NO_TOOLS_FOR_SCOPE = "NO_TOOLS_FOR_SCOPE";
     public static final String STATUS_ANSWER = "ANSWER";
     public static final String STATUS_FALLBACK = "FALLBACK";

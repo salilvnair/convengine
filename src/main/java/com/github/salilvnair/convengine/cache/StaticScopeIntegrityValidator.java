@@ -65,6 +65,10 @@ public class StaticScopeIntegrityValidator {
                 CeMcpTool::getStateCode, allowedIntents, allowedStates, violations);
         validateScope("ce_mcp_planner", staticCacheService.getAllMcpPlanners().stream().filter(CeMcpPlanner::isEnabled).toList(), CeMcpPlanner::getPlannerId,
                 CeMcpPlanner::getIntentCode, CeMcpPlanner::getStateCode, allowedIntents, allowedStates, violations);
+        validateScope("ce_verbose", staticCacheService.getAllVerboses().stream().filter(CeVerbose::isEnabled).toList(), CeVerbose::getVerboseId,
+                CeVerbose::getIntentCode, CeVerbose::getStateCode, allowedIntents, allowedStates, violations);
+        validateVerboseRows(staticCacheService.getAllVerboses().stream().filter(CeVerbose::isEnabled).toList(),
+                violations);
         validateScope("ce_intent_classifier", staticCacheService.getAllIntentClassifiers().stream().filter(CeIntentClassifier::isEnabled).toList(),
                 CeIntentClassifier::getClassifierId, CeIntentClassifier::getIntentCode, CeIntentClassifier::getStateCode,
                 allowedIntents, allowedStates, violations);
@@ -109,6 +113,27 @@ public class StaticScopeIntegrityValidator {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private void validateVerboseRows(List<CeVerbose> rows, List<String> violations) {
+        Set<String> allowedMatches = Set.of("EXACT", "REGEX", "JSON_PATH");
+        for (CeVerbose row : rows) {
+            String id = String.valueOf(row.getVerboseId());
+            String stepMatch = normalize(row.getStepMatch());
+            String stepValue = normalize(row.getStepValue());
+            String determinant = normalize(row.getDeterminant());
+            if (stepMatch.isEmpty()) {
+                violations.add("ce_verbose[" + id + "] step_match is null/blank");
+            } else if (!allowedMatches.contains(stepMatch)) {
+                violations.add("ce_verbose[" + id + "] invalid step_match=" + stepMatch);
+            }
+            if (stepValue.isEmpty()) {
+                violations.add("ce_verbose[" + id + "] step_value is null/blank");
+            }
+            if (determinant.isEmpty()) {
+                violations.add("ce_verbose[" + id + "] determinant is null/blank");
+            }
+        }
     }
 
     @FunctionalInterface

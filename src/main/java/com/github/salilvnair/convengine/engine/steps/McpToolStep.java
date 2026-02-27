@@ -17,10 +17,12 @@ import com.github.salilvnair.convengine.engine.mcp.model.McpPlan;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
+import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -35,6 +37,7 @@ import java.util.Set;
 @Component
 @RequiresConversationPersisted
 @MustRunAfter(ToolOrchestrationStep.class)
+@MustRunBefore(ResponseResolutionStep.class)
 public class McpToolStep implements EngineStep {
 
     private static final int MAX_LOOPS = 5;
@@ -45,6 +48,7 @@ public class McpToolStep implements EngineStep {
     private final AuditService audit;
     private final RulesStep rulesStep;
     private final ConvEngineMcpConfig mcpConfig;
+    private final VerboseMessagePublisher verbosePublisher;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -55,6 +59,21 @@ public class McpToolStep implements EngineStep {
             session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_SKIPPED_BY_GUARDRAIL);
             writeLifecycleToContext(session, McpConstants.STATUS_SKIPPED_BY_GUARDRAIL, McpConstants.OUTCOME_SKIPPED,
                     true, false, false, null, null, null, null, null);
+            return new StepResult.Continue();
+        }
+
+        if (session.getResolvedSchema() != null && !session.isSchemaComplete()) {
+            session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_SKIPPED_SCHEMA_INCOMPLETE);
+            writeLifecycleToContext(session, McpConstants.STATUS_SKIPPED_SCHEMA_INCOMPLETE, McpConstants.OUTCOME_SKIPPED,
+                    true, false, false, null, null, null, null, "SCHEMA_INCOMPLETE");
+            audit.audit(
+                    ConvEngineAuditStage.MCP_SKIPPED_SCHEMA_INCOMPLETE,
+                    session.getConversationId(),
+                    mapOf(
+                            "intent", session.getIntent(),
+                            "state", session.getState(),
+                            "missing_fields", session.getMissingRequiredFields(),
+                            "schema_complete", false));
             return new StepResult.Continue();
         }
 
@@ -124,6 +143,7 @@ public class McpToolStep implements EngineStep {
                 writeLifecycleToContext(session, McpConstants.STATUS_ANSWER, McpConstants.OUTCOME_ANSWERED,
                         true, false, false, plan.action(), plan.tool_code(), null,
                         plan.args() == null ? Map.of() : plan.args(), null);
+                verbosePublisher.publish(session, "McpToolStep", "MCP_FINAL_ANSWER", null, null, false, mapOf("answer", plan.answer()));
                 audit.audit(
                         ConvEngineAuditStage.MCP_FINAL_ANSWER,
                         session.getConversationId(),
@@ -139,11 +159,13 @@ public class McpToolStep implements EngineStep {
                 writeLifecycleToContext(session, McpConstants.STATUS_FALLBACK, McpConstants.OUTCOME_FALLBACK,
                         true, false, false, plan.action(), plan.tool_code(), null,
                         plan.args() == null ? Map.of() : plan.args(), null);
+                verbosePublisher.publish(session, "McpToolStep", "MCP_FINAL_ANSWER", null, null, true, mapOf("answer", McpConstants.FALLBACK_UNSAFE_NEXT_STEP));
                 break;
             }
 
             String toolCode = plan.tool_code();
             Map<String, Object> args = (plan.args() == null) ? Map.of() : plan.args();
+            verbosePublisher.publish(session, "McpToolStep", "MCP_TOOL_CALL", null, toolCode, false, mapOf("tool_code", toolCode, "args", args));
 
             if (!isAllowedByNextToolGuardrail(toolCode, observations)) {
                 writeFinalAnswerToContext(session, McpConstants.FALLBACK_GUARDRAIL_BLOCKED);
@@ -152,6 +174,7 @@ public class McpToolStep implements EngineStep {
                 writeLifecycleToContext(session, McpConstants.STATUS_GUARDRAIL_BLOCKED, McpConstants.OUTCOME_BLOCKED,
                         true, true, false, plan.action(), toolCode, null, args,
                         "NEXT_TOOL_GUARDRAIL_BLOCKED");
+                verbosePublisher.publish(session, "McpToolStep", "MCP_TOOL_ERROR", null, toolCode, true, mapOf("tool_code", toolCode, "error", "NEXT_TOOL_GUARDRAIL_BLOCKED"));
                 audit.audit(
                         ConvEngineAuditStage.MCP_TOOL_ERROR,
                         session.getConversationId(),
@@ -182,6 +205,7 @@ public class McpToolStep implements EngineStep {
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_TOOL_RESULT);
                 writeLifecycleToContext(session, McpConstants.STATUS_TOOL_RESULT, McpConstants.OUTCOME_IN_PROGRESS,
                         false, false, false, plan.action(), toolCode, toolGroup, args, null);
+                verbosePublisher.publish(session, "McpToolStep", "MCP_TOOL_RESULT", null, toolCode, false, mapOf("tool_code", toolCode, "tool_group", toolGroup));
 
                 audit.audit(
                         ConvEngineAuditStage.MCP_TOOL_RESULT,
@@ -200,6 +224,7 @@ public class McpToolStep implements EngineStep {
                 writeLifecycleToContext(session, McpConstants.STATUS_TOOL_ERROR, McpConstants.OUTCOME_ERROR,
                         true, false, true, plan.action(), toolCode, toolGroup, args,
                         String.valueOf(e.getMessage()));
+                verbosePublisher.publish(session, "McpToolStep", "MCP_TOOL_ERROR", null, toolCode, true, mapOf("tool_code", toolCode, "error", String.valueOf(e.getMessage())));
                 break;
             }
         }

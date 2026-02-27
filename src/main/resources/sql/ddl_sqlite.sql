@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS ce_mcp_planner;
 DROP TABLE IF EXISTS ce_conversation_history;
 DROP TABLE IF EXISTS ce_audit;
 DROP TABLE IF EXISTS ce_pending_action;
+DROP TABLE IF EXISTS ce_verbose;
 DROP TABLE IF EXISTS ce_rule;
 DROP TABLE IF EXISTS ce_response;
 DROP TABLE IF EXISTS ce_prompt_template;
@@ -175,6 +176,23 @@ CREATE TABLE ce_rule (
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
 CREATE INDEX idx_ce_rule_priority ON ce_rule (enabled, phase, state_code, priority);
+
+CREATE TABLE ce_verbose (
+  verbose_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
+  state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
+  step_match TEXT NOT NULL DEFAULT 'EXACT' CHECK (trim(step_match) <> ''),
+  step_value TEXT NOT NULL CHECK (trim(step_value) <> ''),
+  determinant TEXT NOT NULL CHECK (trim(determinant) <> ''),
+  rule_id INTEGER,
+  tool_code TEXT,
+  message TEXT,
+  error_message TEXT,
+  priority INTEGER NOT NULL DEFAULT 100,
+  enabled BOOLEAN NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_verbose_lookup ON ce_verbose (enabled, intent_code, state_code, determinant, step_match, step_value, rule_id, tool_code, priority);
 
 CREATE TABLE ce_pending_action (
   pending_action_id INTEGER PRIMARY KEY AUTOINCREMENT,

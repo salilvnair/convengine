@@ -15,6 +15,7 @@ import com.github.salilvnair.convengine.engine.rule.type.factory.RuleActionResol
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.CeRule;
+import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class RulesStep implements EngineStep {
     private final RuleTypeResolverFactory typeFactory;
     private final RuleActionResolverFactory actionFactory;
     private final AuditService audit;
+    private final VerboseMessagePublisher verbosePublisher;
 
     @Override
     public StepResult execute(EngineSession session) {
@@ -128,8 +130,9 @@ public class RulesStep implements EngineStep {
                         ConvEngineAuditStage.RULE_MATCH.withStage(source),
                         session.getConversationId(),
                         matchedPayload);
+                verbosePublisher.publish(session, "RulesStep", "RULE_MATCH", rule.getRuleId(), null, false, matchedPayload);
 
-                RuleActionResolver actionResolver = actionFactory.get(rule.getAction());
+                RuleActionResolver actionResolver = actionFactory.get(rule.getAction(), session);
                 String previousIntent = session.getIntent();
                 String previousState = session.getState();
 
@@ -158,6 +161,7 @@ public class RulesStep implements EngineStep {
                 payload.put(ConvEnginePayloadKey.ACTION_VALUE, JsonUtil.parseOrNull(rule.getActionValue()));
                 log.info("Rule applied: {}", payload);
                 audit.audit(ConvEngineAuditStage.RULE_APPLIED.withStage(source), session.getConversationId(), payload);
+                verbosePublisher.publish(session, "RulesStep", "RULE_APPLIED", rule.getRuleId(), null, false, payload);
             }
 
             if (!passChanged) {

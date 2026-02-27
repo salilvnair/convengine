@@ -40,7 +40,8 @@ public class ConvEngineCacheAnalyzer {
             "ce_mcp_tool",
             "ce_mcp_db_tool",
             "ce_mcp_planner",
-            "ce_policy"
+            "ce_policy",
+            "ce_verbose"
     );
 
     private static final List<String> RUNTIME_CACHES = List.of(
@@ -189,6 +190,7 @@ public class ConvEngineCacheAnalyzer {
         metrics.put("ce_mcp_db_tool", measure(() -> staticCacheService.getAllMcpDbTools()));
         metrics.put("ce_mcp_planner", measure(() -> staticCacheService.getAllMcpPlanners()));
         metrics.put("ce_policy", measure(() -> staticCacheService.getAllPolicies()));
+        metrics.put("ce_verbose", measure(() -> staticCacheService.getAllVerboses()));
         return metrics;
     }
 

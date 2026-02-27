@@ -79,11 +79,12 @@ VALUES
     '{
       "type":"object",
       "properties":{
-        "customerId":{"type":"string"},
-        "requestedAmount":{"type":"number"},
-        "tenureMonths":{"type":"integer"}
+        "customerId":{"type":"string","minLength":3,"maxLength":64},
+        "requestedAmount":{"type":"number","minimum":1000,"maximum":50000000},
+        "tenureMonths":{"type":"integer","minimum":6,"maximum":480}
       },
-      "required":["customerId","requestedAmount","tenureMonths"]
+      "required":["customerId","requestedAmount","tenureMonths"],
+      "additionalProperties":false
     }'::jsonb,
     'Loan application required fields for MCP chain',
     true,
@@ -116,9 +117,18 @@ VALUES
 (
     'LOAN_APPLICATION',
     'ELIGIBILITY_GATE',
+    'SCHEMA_JSON',
+    'You are a strict structured extractor for loan application fields.',
+    'User input:\n{{user_input}}\n\nContext JSON:\n{{context}}\n\nExtract only: customerId, requestedAmount, tenureMonths.\nFor each field: return actual value only if explicitly present in input/context; otherwise return null.\nNever invent values.\nNever use placeholders like "", 0, or 0.0 for missing values.\nReturn valid JSON only.',
+    0.00,
+    true
+),
+(
+    'LOAN_APPLICATION',
+    'ELIGIBILITY_GATE',
     'TEXT',
     'You are a strict loan decision summarizer.',
-    'Context JSON:\n{{context}}\n\nRead context.mcp.observations and context.mcp.finalAnswer when present. Mention rating, fraud flag, dti, availableCredit, and applicationId when available.',
+    'Context JSON:\n{{context}}\n\nIf schema is incomplete, respond with exactly which required fields are missing using {{missing_fields}} and ask only for those fields. If schema is complete, read context.mcp.observations and context.mcp.finalAnswer when present. Mention rating, fraud flag, dti, availableCredit, and applicationId when available.',
     0.00,
     true
 ),
@@ -145,12 +155,13 @@ VALUES
  NULL,
  'Use context.mcp.finalAnswer as final answer. Keep concise and evidence-based from context.mcp.observations.',
  NULL, 30, true, 'Order diagnostics completed response derived from MCP final answer'),
-('LOAN_APPLICATION', 'IDLE', 'TEXT', 'EXACT',
- 'Please share customerId, requestedAmount, and tenureMonths to evaluate your loan application.',
- NULL, NULL, 10, true, 'Loan intake prompt'),
+('LOAN_APPLICATION', 'IDLE', 'TEXT', 'DERIVED',
+ NULL,
+ 'If missing_fields is not empty, clearly list only the missing required fields from {{missing_fields}}. Ask user to provide them to proceed. If no fields are missing, proceed with normal loan eligibility summary.',
+ NULL, 10, true, 'Loan intake derived prompt with explicit missing required fields'),
 ('LOAN_APPLICATION', 'ELIGIBILITY_GATE', 'TEXT', 'DERIVED',
  NULL,
- 'Use context.mcp.observations and context.mcp.finalAnswer to explain decision. Reject on low rating/fraud/poor profile. Include applicationId when submitted.',
+ 'If missing_fields is not empty, clearly list only missing required fields from {{missing_fields}} and do not claim processing/submission. Otherwise use context.mcp.observations and context.mcp.finalAnswer to explain decision. Reject on low rating/fraud/poor profile. Include applicationId when submitted.',
  NULL, 20, true, 'Loan decision derived from MCP chain'),
 ('LOAN_APPLICATION', 'COMPLETED', 'TEXT', 'DERIVED',
  NULL,

@@ -31,6 +31,7 @@ public class StaticConfigurationCacheService {
     private final McpDbToolRepository mcpDbToolRepo;
     private final McpPlannerRepository mcpPlannerRepo;
     private final PolicyRepository policyRepo;
+    private final VerboseRepository verboseRepo;
     private final CeConfigRepository ceConfigRepo;
     @Autowired
     private ObjectProvider<StaticConfigurationCacheService> selfProvider;
@@ -100,6 +101,11 @@ public class StaticConfigurationCacheService {
     @Cacheable("ce_mcp_planner")
     public List<CeMcpPlanner> getAllMcpPlanners() {
         return mcpPlannerRepo.findAll();
+    }
+
+    @Cacheable("ce_verbose")
+    public List<CeVerbose> getAllVerboses() {
+        return verboseRepo.findAll();
     }
 
     // --- Helper Filter Methods ---
@@ -274,6 +280,18 @@ public class StaticConfigurationCacheService {
                                 .reversed()
                                 .thenComparing(CeMcpPlanner::getPlannerId, Comparator.nullsLast(Comparator.reverseOrder())))
                 .findFirst();
+    }
+
+    // Verbose mappings
+    public List<CeVerbose> findEligibleVerboseMessages(String intentCode, String stateCode) {
+        return self().getAllVerboses().stream()
+                .filter(CeVerbose::isEnabled)
+                .filter(v -> isEligibleIntent(v.getIntentCode(), intentCode))
+                .filter(v -> isEligibleState(v.getStateCode(), stateCode))
+                .sorted(
+                        Comparator.comparing((CeVerbose v) -> v.getPriority() == null ? Integer.MAX_VALUE : v.getPriority())
+                                .thenComparing(CeVerbose::getVerboseId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
     }
 
     // Responses

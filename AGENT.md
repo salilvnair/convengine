@@ -14,7 +14,7 @@ Do not treat ConvEngine as an unconstrained chatbot runtime.
 
 ## Current Baseline
 
-- Library version: `2.0.7`
+- Library version: `2.0.8`
 - Property namespace for flow tuning: `convengine.flow.*`
 
 ## Core Operating Model
@@ -123,6 +123,17 @@ Prefer adapters/interfaces; avoid hardcoding transport logic in steps.
 - Optional built-in DB knowledge graph tool (`DbKnowledgeGraphToolHandler`) can read consumer-managed query/schema knowledge tables (`convengine.mcp.db.knowledge.*`) and return ranked semantic matches.
 - `HTTP_API` now supports `HttpApiRequestingToolHandler` and framework-managed invocation via `HttpApiToolInvoker` for retries, backoff, circuit breaker, timeout, auth provider injection, and response mapping.
 
+### CE verbose + stream envelope extensions (v2.0.8)
+
+- New control-plane table `ce_verbose` drives user-facing runtime progress and error messaging by `intent_code`, `state_code`, `step_match`, `step_value`, and `determinant`.
+- New standalone SQL assets:
+  - `src/main/resources/sql/verbose_ddl.sql`
+  - `src/main/resources/sql/verbose_seed.sql`
+  plus merged rows in all dialect main `ddl_*` and `seed_*` files.
+- `EngineSession` now carries `stepInfos` (`StepInfo`) with step enter/exit/error timings and outcomes; preserve this shape when extending session metadata.
+- Streaming payload contract changed: `AuditStreamEventResponse` now includes `eventType` and optional `verbose` payload. Both SSE and STOMP can emit `AUDIT` and `VERBOSE`.
+- MCP now supports deterministic schema-incomplete skip (`MCP_SKIPPED_SCHEMA_INCOMPLETE`, `STATUS_SKIPPED_SCHEMA_INCOMPLETE`) in `McpToolStep`.
+
 ## Documentation Discipline
 
 When behavior changes:
@@ -146,3 +157,4 @@ Do not introduce synchronous Relational DB reads/writes into the core engine lif
 - New input param keys centralized in constants
 - New audit stages centralized in enum
 - No stale config prefixes in docs (`convengine.flow.*` only)
+- `ce_verbose` rows validated for `step_match` (`EXACT|REGEX|JSON_PATH`) and non-empty `step_value`/`determinant`

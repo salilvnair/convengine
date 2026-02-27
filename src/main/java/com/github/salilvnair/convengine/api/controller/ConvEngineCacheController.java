@@ -37,7 +37,8 @@ public class ConvEngineCacheController {
             "ce_mcp_tool",
             "ce_mcp_db_tool",
             "ce_mcp_planner",
-            "ce_policy"
+            "ce_policy",
+            "ce_verbose"
     }, allEntries = true)
     public ResponseEntity<String> refreshStaticCaches() {
         log.info("ConvEngine Admin: Received manual cache eviction payload. Purging and reconnecting to DB...");

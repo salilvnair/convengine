@@ -5,6 +5,8 @@ import com.github.salilvnair.convengine.audit.AuditEventListener;
 import com.github.salilvnair.convengine.audit.AuditPayloadMapper;
 import com.github.salilvnair.convengine.config.ConvEngineTransportConfig;
 import com.github.salilvnair.convengine.entity.CeAudit;
+import com.github.salilvnair.convengine.api.dto.VerboseStreamPayload;
+import com.github.salilvnair.convengine.transport.verbose.VerboseEventListener;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.github.salilvnair.convengine.config.stream.ConvEngineStreamEnabledCondition;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.Map;
+import java.time.OffsetDateTime;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Conditional(ConvEngineStreamEnabledCondition.class)
 @ConditionalOnProperty(prefix = "convengine.transport.sse", name = "enabled", havingValue = "true", matchIfMissing = true)
 @Slf4j
-public class AuditSseService implements AuditEventListener {
+public class AuditSseService implements AuditEventListener, VerboseEventListener {
 
     private final ConvEngineTransportConfig transportConfig;
     private final AuditPayloadMapper payloadMapper;
@@ -47,17 +50,42 @@ public class AuditSseService implements AuditEventListener {
             return;
         }
 
+        Map<String, Object> payload = payloadMapper.payloadAsMap(audit.getPayloadJson());
         AuditStreamEventResponse event = new AuditStreamEventResponse(
+                "AUDIT",
                 audit.getAuditId(),
                 audit.getStage(),
                 audit.getCreatedAt() == null ? null : audit.getCreatedAt().toString(),
-                payloadMapper.payloadAsMap(audit.getPayloadJson()));
+                payload,
+                null);
 
         for (SseEmitter emitter : conversationEmitters.toArray(new SseEmitter[0])) {
             try {
                 emitter.send(SseEmitter.event().name(audit.getStage()).data(event));
             } catch (IOException ex) {
                 removeEmitter(audit.getConversationId(), emitter);
+            }
+        }
+    }
+
+    @Override
+    public void onVerbose(UUID conversationId, VerboseStreamPayload verbosePayload) {
+        Set<SseEmitter> conversationEmitters = emitters.get(conversationId);
+        if (conversationEmitters == null || conversationEmitters.isEmpty() || verbosePayload == null) {
+            return;
+        }
+        AuditStreamEventResponse event = new AuditStreamEventResponse(
+                "VERBOSE",
+                null,
+                "VERBOSE",
+                OffsetDateTime.now().toString(),
+                Map.of("verbose", verbosePayload),
+                verbosePayload);
+        for (SseEmitter emitter : conversationEmitters.toArray(new SseEmitter[0])) {
+            try {
+                emitter.send(SseEmitter.event().name("VERBOSE").data(event));
+            } catch (IOException ex) {
+                removeEmitter(conversationId, emitter);
             }
         }
     }

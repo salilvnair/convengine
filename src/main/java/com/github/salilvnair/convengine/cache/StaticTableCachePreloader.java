@@ -31,6 +31,7 @@ public class StaticTableCachePreloader {
         staticCacheService.getAllMcpDbTools();
         staticCacheService.getAllMcpPlanners();
         staticCacheService.getAllPolicies();
+        staticCacheService.getAllVerboses();
         staticScopeIntegrityValidator.validateOrThrow();
 
         log.info("ConvEngine: Static configuration preload complete.");
