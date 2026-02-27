@@ -1,7 +1,9 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool CASCADE;
+DROP TABLE IF EXISTS ce_mcp_planner CASCADE;
 DROP TABLE IF EXISTS ce_conversation_history CASCADE;
 DROP TABLE IF EXISTS ce_audit CASCADE;
 DROP TABLE IF EXISTS ce_pending_action CASCADE;
+DROP TABLE IF EXISTS ce_verbose CASCADE;
 DROP TABLE IF EXISTS ce_rule CASCADE;
 DROP TABLE IF EXISTS ce_response CASCADE;
 DROP TABLE IF EXISTS ce_prompt_template CASCADE;
@@ -44,16 +46,22 @@ CREATE INDEX idx_ce_validation_config_lookup ON public.ce_container_config USING
 CREATE TABLE ce_conversation (
                                  conversation_id uuid DEFAULT uuid_generate_v4() NOT NULL,
                                  status text NOT NULL,
-                                 intent_code text NULL,
-                                 state_code text NOT NULL,
+                                 intent_code text DEFAULT 'UNKNOWN'::text NOT NULL,
+                                 state_code text DEFAULT 'UNKNOWN'::text NOT NULL,
                                  context_json jsonb DEFAULT '{}'::jsonb NOT NULL,
                                  last_user_text text NULL,
                                  last_assistant_json jsonb NULL,
                                  input_params_json jsonb DEFAULT '{}'::jsonb NOT NULL,
                                  created_at timestamptz DEFAULT now() NOT NULL,
                                  updated_at timestamptz DEFAULT now() NOT NULL,
-                                 CONSTRAINT ce_conversation_pkey PRIMARY KEY (conversation_id)
+                                 CONSTRAINT ce_conversation_pkey PRIMARY KEY (conversation_id),
+                                 CONSTRAINT ce_conversation_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                                 CONSTRAINT ce_conversation_state_not_blank CHECK (btrim(state_code) <> '')
 );
+ALTER TABLE ce_conversation DROP CONSTRAINT IF EXISTS idx_ce_conversation_status;
+ALTER TABLE ce_conversation DROP CONSTRAINT IF EXISTS idx_ce_conversation_updated;
+DROP INDEX IF EXISTS idx_ce_conversation_status;
+DROP INDEX IF EXISTS idx_ce_conversation_updated;
 CREATE INDEX idx_ce_conversation_status ON public.ce_conversation USING btree (status);
 CREATE INDEX idx_ce_conversation_updated ON public.ce_conversation USING btree (updated_at);
 
@@ -72,19 +80,21 @@ CREATE INDEX ix_ce_intent_enabled_priority ON public.ce_intent USING btree (enab
 CREATE TABLE ce_intent_classifier (
                                       classifier_id bigserial NOT NULL,
                                       intent_code text NOT NULL,
+                                      state_code text DEFAULT 'UNKNOWN'::text NOT NULL,
                                       rule_type text NOT NULL,
                                       pattern text NOT NULL,
                                       priority int4 NOT NULL,
                                       enabled bool DEFAULT true NULL,
                                       description text NULL,
-                                      CONSTRAINT ce_intent_classifier_pkey PRIMARY KEY (classifier_id)
+                                      CONSTRAINT ce_intent_classifier_pkey PRIMARY KEY (classifier_id),
+                                      CONSTRAINT ce_intent_classifier_state_not_blank CHECK (btrim(state_code) <> '')
 );
 
 CREATE TABLE ce_llm_call_log (
                                  llm_call_id bigserial NOT NULL,
                                  conversation_id uuid NOT NULL,
-                                 intent_code text NULL,
-                                 state_code text NULL,
+                                 intent_code text DEFAULT 'UNKNOWN'::text NOT NULL,
+                                 state_code text DEFAULT 'UNKNOWN'::text NOT NULL,
                                  provider text NOT NULL,
                                  model text NOT NULL,
                                  temperature numeric(3, 2) NULL,
@@ -94,7 +104,9 @@ CREATE TABLE ce_llm_call_log (
                                  success bool NOT NULL,
                                  error_message text NULL,
                                  created_at timestamptz DEFAULT now() NOT NULL,
-                                 CONSTRAINT ce_llm_call_log_pkey PRIMARY KEY (llm_call_id)
+                                 CONSTRAINT ce_llm_call_log_pkey PRIMARY KEY (llm_call_id),
+                                 CONSTRAINT ce_llm_call_log_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                                 CONSTRAINT ce_llm_call_log_state_not_blank CHECK (btrim(state_code) <> '')
 );
 CREATE INDEX idx_ce_llm_log_conversation ON public.ce_llm_call_log USING btree (conversation_id);
 CREATE INDEX idx_ce_llm_log_intent_state ON public.ce_llm_call_log USING btree (intent_code, state_code);
@@ -103,13 +115,15 @@ CREATE TABLE ce_mcp_tool (
                              tool_id bigserial NOT NULL,
                              tool_code text NOT NULL,
                              tool_group text NOT NULL,
-                             intent_code text NULL,
-                             state_code text NULL,
+                             intent_code text NOT NULL,
+                             state_code text NOT NULL,
                              enabled bool DEFAULT true NOT NULL,
                              description text NULL,
                              created_at timestamptz DEFAULT now() NOT NULL,
                              CONSTRAINT ce_mcp_tool_pkey PRIMARY KEY (tool_id),
-                             CONSTRAINT ce_mcp_tool_tool_code_key UNIQUE (tool_code)
+                             CONSTRAINT ce_mcp_tool_tool_code_key UNIQUE (tool_code),
+                             CONSTRAINT ce_mcp_tool_intent_code_not_blank CHECK (btrim(intent_code) <> ''),
+                             CONSTRAINT ce_mcp_tool_state_code_not_blank CHECK (btrim(state_code) <> '')
 );
 CREATE INDEX idx_ce_mcp_tool_enabled ON public.ce_mcp_tool USING btree (enabled, intent_code, state_code, tool_group, tool_code);
 
@@ -140,21 +154,23 @@ CREATE INDEX idx_ce_policy_priority ON public.ce_policy USING btree (enabled, pr
 
 CREATE TABLE ce_prompt_template (
                                     template_id bigserial NOT NULL,
-                                    intent_code text NULL,
-                                    state_code text NULL,
+                                    intent_code text NOT NULL,
+                                    state_code text NOT NULL,
                                     response_type text NOT NULL,
                                     system_prompt text NOT NULL,
                                     user_prompt text NOT NULL,
                                     temperature numeric(3, 2) DEFAULT 0.0 NOT NULL,
                                     enabled bool DEFAULT true NOT NULL,
                                     created_at timestamptz DEFAULT now() NOT NULL,
-                                    CONSTRAINT ce_prompt_template_pkey PRIMARY KEY (template_id)
+                                    CONSTRAINT ce_prompt_template_pkey PRIMARY KEY (template_id),
+                                    CONSTRAINT ce_prompt_template_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                                    CONSTRAINT ce_prompt_template_state_not_blank CHECK (btrim(state_code) <> '')
 );
 CREATE INDEX idx_ce_prompt_template_lookup ON public.ce_prompt_template USING btree (response_type, intent_code, state_code, enabled);
 
 CREATE TABLE ce_response (
                              response_id bigserial NOT NULL,
-                             intent_code text NULL,
+                             intent_code text NOT NULL,
                              state_code text NOT NULL,
                              output_format text NOT NULL,
                              response_type text NOT NULL,
@@ -165,16 +181,18 @@ CREATE TABLE ce_response (
                              enabled bool DEFAULT true NOT NULL,
                              description text NULL,
                              created_at timestamptz DEFAULT now() NOT NULL,
-                             CONSTRAINT ce_response_pkey PRIMARY KEY (response_id)
+                             CONSTRAINT ce_response_pkey PRIMARY KEY (response_id),
+                             CONSTRAINT ce_response_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                             CONSTRAINT ce_response_state_not_blank CHECK (btrim(state_code) <> '')
 );
 CREATE INDEX idx_ce_response_intent_state ON public.ce_response USING btree (intent_code, state_code, enabled, priority);
 CREATE INDEX idx_ce_response_lookup ON public.ce_response USING btree (state_code, enabled, priority);
 
 CREATE TABLE ce_rule (
                          rule_id bigserial NOT NULL,
-                         phase text DEFAULT 'PIPELINE_RULES' NOT NULL,
-                         intent_code text NULL,
-                         state_code text NULL,
+                         phase text DEFAULT 'PRE_RESPONSE_RESOLUTION' NOT NULL,
+                         intent_code text NOT NULL,
+                         state_code text NOT NULL,
                          rule_type text NOT NULL,
                          match_pattern text NOT NULL,
                          "action" text NOT NULL,
@@ -183,14 +201,39 @@ CREATE TABLE ce_rule (
                          enabled bool DEFAULT true NOT NULL,
                          description text NULL,
                          created_at timestamptz DEFAULT now() NOT NULL,
-                         CONSTRAINT ce_rule_pkey PRIMARY KEY (rule_id)
+                         CONSTRAINT ce_rule_pkey PRIMARY KEY (rule_id),
+                         CONSTRAINT ce_rule_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                         CONSTRAINT ce_rule_state_not_blank CHECK (btrim(state_code) <> '')
 );
 CREATE INDEX idx_ce_rule_priority ON public.ce_rule USING btree (enabled, phase, state_code, priority);
 
+CREATE TABLE ce_verbose (
+                            verbose_id bigserial NOT NULL,
+                            intent_code text NOT NULL,
+                            state_code text NOT NULL,
+                            step_match text DEFAULT 'EXACT' NOT NULL,
+                            step_value text NOT NULL,
+                            determinant text NOT NULL,
+                            rule_id int8 NULL,
+                            tool_code text NULL,
+                            message text NULL,
+                            error_message text NULL,
+                            priority int4 DEFAULT 100 NOT NULL,
+                            enabled bool DEFAULT true NOT NULL,
+                            created_at timestamptz DEFAULT now() NOT NULL,
+                            CONSTRAINT ce_verbose_pkey PRIMARY KEY (verbose_id),
+                            CONSTRAINT ce_verbose_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                            CONSTRAINT ce_verbose_state_not_blank CHECK (btrim(state_code) <> ''),
+                            CONSTRAINT ce_verbose_step_match_not_blank CHECK (btrim(step_match) <> ''),
+                            CONSTRAINT ce_verbose_step_value_not_blank CHECK (btrim(step_value) <> ''),
+                            CONSTRAINT ce_verbose_determinant_not_blank CHECK (btrim(determinant) <> '')
+);
+CREATE INDEX idx_ce_verbose_lookup ON public.ce_verbose USING btree (enabled, intent_code, state_code, determinant, step_match, step_value, rule_id, tool_code, priority);
+
 CREATE TABLE ce_pending_action (
                                   pending_action_id bigserial NOT NULL,
-                                  intent_code text NULL,
-                                  state_code text NULL,
+                                  intent_code text NOT NULL,
+                                  state_code text NOT NULL,
                                   action_key text NOT NULL,
                                   bean_name text NOT NULL,
                                   method_names text NOT NULL,
@@ -198,7 +241,9 @@ CREATE TABLE ce_pending_action (
                                   enabled bool DEFAULT true NOT NULL,
                                   description text NULL,
                                   created_at timestamptz DEFAULT now() NOT NULL,
-                                  CONSTRAINT ce_pending_action_pkey PRIMARY KEY (pending_action_id)
+                                  CONSTRAINT ce_pending_action_pkey PRIMARY KEY (pending_action_id),
+                                  CONSTRAINT ce_pending_action_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                                  CONSTRAINT ce_pending_action_state_not_blank CHECK (btrim(state_code) <> '')
 );
 CREATE INDEX idx_ce_pending_action_lookup ON public.ce_pending_action USING btree (enabled, action_key, intent_code, state_code, priority);
 
@@ -238,3 +283,17 @@ CREATE TABLE ce_mcp_db_tool (
                                 CONSTRAINT ce_mcp_db_tool_tool_id_fkey FOREIGN KEY (tool_id) REFERENCES ce_mcp_tool(tool_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_ce_mcp_db_tool_dialect ON public.ce_mcp_db_tool USING btree (dialect);
+
+CREATE TABLE ce_mcp_planner (
+                                planner_id bigserial NOT NULL,
+                                intent_code text NOT NULL,
+                                state_code text NOT NULL,
+                                system_prompt text NOT NULL,
+                                user_prompt text NOT NULL,
+                                enabled bool DEFAULT true NOT NULL,
+                                created_at timestamptz DEFAULT now() NOT NULL,
+                                CONSTRAINT ce_mcp_planner_pkey PRIMARY KEY (planner_id),
+                                CONSTRAINT ce_mcp_planner_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                                CONSTRAINT ce_mcp_planner_state_not_blank CHECK (btrim(state_code) <> '')
+);
+CREATE INDEX idx_ce_mcp_planner_scope ON public.ce_mcp_planner USING btree (enabled, intent_code, state_code, planner_id);

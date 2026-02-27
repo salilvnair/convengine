@@ -23,10 +23,10 @@ public class CeMcpTool {
     @Column(name = "tool_group", nullable = false)
     private String toolGroup;
 
-    @Column(name = "intent_code")
+    @Column(name = "intent_code", nullable = false)
     private String intentCode;
 
-    @Column(name = "state_code")
+    @Column(name = "state_code", nullable = false)
     private String stateCode;
 
     @Column(name = "enabled", nullable = false)

@@ -24,7 +24,7 @@ public final class ConvEngineInputParamKey {
     public static final String RULE_EXECUTION_ORIGIN = "rule_execution_origin";
     public static final String RULE_PHASE = "rule_phase";
     public static final String RULE_AGENT_POST_INTENT = "rule_agent_post_intent";
-    public static final String RULE_MCP_POST_LLM = "rule_mcp_post_llm";
+    public static final String RULE_AGENT_POST_MCP = "rule_agent_post_mcp";
 
     public static final String DIALOGUE_ACT = "dialogue_act";
     public static final String DIALOGUE_ACT_CONFIDENCE = "dialogue_act_confidence";

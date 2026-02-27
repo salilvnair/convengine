@@ -8,6 +8,7 @@ import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.engine.model.EngineResult;
+import com.github.salilvnair.convengine.engine.model.StepInfo;
 import com.github.salilvnair.convengine.engine.model.StepTiming;
 import com.github.salilvnair.convengine.entity.CeConversation;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
@@ -78,6 +79,7 @@ public class EngineSession {
 
     private final ObjectMapper mapper;
     private final List<StepTiming> stepTimings = new ArrayList<>();
+    private final Map<String, StepInfo> stepInfos = new LinkedHashMap<>();
     private Map<String, Object> inputParams = new LinkedHashMap<>();
     private Map<String, Object> safeInputParamsForOutput = new LinkedHashMap<>();
     private boolean postIntentRule;
@@ -397,6 +399,7 @@ public class EngineSession {
         sessionMap.put("context", contextDict());
         sessionMap.put("schemaJson", schemaJson());
         sessionMap.put("lastLlmOutput", extractLastLlmOutputForSession());
+        sessionMap.put("stepInfos", stepInfos);
         return sessionMap;
     }
 
@@ -595,6 +598,7 @@ public class EngineSession {
         clearClarification();
         unlockIntent();
         this.inputParams.clear();
+        this.stepInfos.clear();
         this.safeInputParamsForOutput.clear();
         this.systemExtensions.clear();
         this.unknownSystemInputParamKeys.clear();
@@ -638,6 +642,67 @@ public class EngineSession {
 
     public static String valueOrDefaultString(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    public void recordStepEnter(String stepName, String stepClass, String determinant, long startedAtNs,
+            Map<String, Object> metadata) {
+        if (stepName == null || stepName.isBlank()) {
+            return;
+        }
+        StepInfo stepInfo = StepInfo.builder()
+                .stepName(stepName)
+                .stepClass(stepClass)
+                .determinant(determinant)
+                .status("IN_PROGRESS")
+                .startedAtNs(startedAtNs)
+                .metadata(valueOrDefaultMap(metadata))
+                .build();
+        stepInfos.put(stepName, stepInfo);
+    }
+
+    public void recordStepExit(String stepName, String determinant, long endedAtNs, long durationMs, String outcome,
+            Map<String, Object> metadata, Map<String, Object> data) {
+        StepInfo stepInfo = stepInfos.get(stepName);
+        if (stepInfo == null) {
+            stepInfo = StepInfo.builder()
+                    .stepName(stepName)
+                    .build();
+            stepInfos.put(stepName, stepInfo);
+        }
+        stepInfo.setDeterminant(determinant);
+        stepInfo.setStatus("SUCCESS");
+        stepInfo.setEndedAtNs(endedAtNs);
+        stepInfo.setDurationMs(durationMs);
+        stepInfo.setOutcome(outcome);
+        if (metadata != null) {
+            stepInfo.setMetadata(valueOrDefaultMap(metadata));
+        }
+        if (data != null) {
+            stepInfo.setData(valueOrDefaultMap(data));
+        }
+    }
+
+    public void recordStepError(String stepName, String determinant, long endedAtNs, long durationMs, Throwable error,
+            Map<String, Object> metadata, Map<String, Object> data) {
+        StepInfo stepInfo = stepInfos.get(stepName);
+        if (stepInfo == null) {
+            stepInfo = StepInfo.builder()
+                    .stepName(stepName)
+                    .build();
+            stepInfos.put(stepName, stepInfo);
+        }
+        stepInfo.setDeterminant(determinant);
+        stepInfo.setStatus("ERROR");
+        stepInfo.setEndedAtNs(endedAtNs);
+        stepInfo.setDurationMs(durationMs);
+        stepInfo.setErrorType(error == null ? null : error.getClass().getSimpleName());
+        stepInfo.setErrorMessage(error == null ? null : String.valueOf(error.getMessage()));
+        if (metadata != null) {
+            stepInfo.setMetadata(valueOrDefaultMap(metadata));
+        }
+        if (data != null) {
+            stepInfo.setData(valueOrDefaultMap(data));
+        }
     }
 
 }

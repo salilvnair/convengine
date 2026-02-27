@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp.executor;
 
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.CalculatorTransformExecutorAdapter;
+import com.github.salilvnair.convengine.engine.mcp.McpConstants;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ public class McpCalculatorTransformToolExecutor implements McpToolExecutor {
 
     @Override
     public String toolGroup() {
-        return "CALCULATOR_TRANSFORM";
+        return McpConstants.TOOL_GROUP_CALCULATOR_TRANSFORM;
     }
 
     @Override
@@ -26,4 +27,3 @@ public class McpCalculatorTransformToolExecutor implements McpToolExecutor {
                 .orElseThrow(() -> new IllegalStateException("No CalculatorTransformExecutorAdapter configured"));
     }
 }
-

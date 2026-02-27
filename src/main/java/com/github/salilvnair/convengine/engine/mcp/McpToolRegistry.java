@@ -27,22 +27,24 @@ public class McpToolRegistry {
 
     public CeMcpDbTool requireDbTool(String toolCode) {
         return staticCacheService.findMcpDbTool(toolCode)
-                .orElseThrow(() -> new IllegalStateException("Missing enabled DB tool: " + toolCode));
+                .orElseThrow(() -> new IllegalStateException(
+                        "Missing enabled DB tool in ce_mcp_db_tool for toolCode=" + toolCode
+                                + ". This row is required only when no matching DbToolHandler is registered."));
     }
 
     public String normalizeToolGroup(String toolGroup) {
         if (toolGroup == null || toolGroup.isBlank()) {
-            return "DB";
+            return McpConstants.TOOL_GROUP_DB;
         }
         String normalized = toolGroup.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
-            case "DB", "MCP_DB", "DATABASE", "SQL" -> "DB";
-            case "HTTP", "HTTP_API", "API" -> "HTTP_API";
-            case "ACTION", "WORKFLOW_ACTION", "WORKFLOW" -> "WORKFLOW_ACTION";
-            case "DOC", "DOCUMENT", "DOCUMENT_RETRIEVAL", "RAG" -> "DOCUMENT_RETRIEVAL";
-            case "CALC", "CALCULATOR", "TRANSFORM", "CALCULATOR_TRANSFORM" -> "CALCULATOR_TRANSFORM";
-            case "NOTIFY", "NOTIFICATION" -> "NOTIFICATION";
-            case "FILE", "FILES" -> "FILES";
+            case "DB", "MCP_DB", "DATABASE", "SQL" -> McpConstants.TOOL_GROUP_DB;
+            case "HTTP", "HTTP_API", "API" -> McpConstants.TOOL_GROUP_HTTP_API;
+            case "ACTION", "WORKFLOW_ACTION", "WORKFLOW" -> McpConstants.TOOL_GROUP_WORKFLOW_ACTION;
+            case "DOC", "DOCUMENT", "DOCUMENT_RETRIEVAL", "RAG" -> McpConstants.TOOL_GROUP_DOCUMENT_RETRIEVAL;
+            case "CALC", "CALCULATOR", "TRANSFORM", "CALCULATOR_TRANSFORM" -> McpConstants.TOOL_GROUP_CALCULATOR_TRANSFORM;
+            case "NOTIFY", "NOTIFICATION" -> McpConstants.TOOL_GROUP_NOTIFICATION;
+            case "FILE", "FILES" -> McpConstants.TOOL_GROUP_FILES;
             default -> normalized;
         };
     }

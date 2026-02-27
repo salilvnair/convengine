@@ -11,6 +11,7 @@ import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConve
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
 import com.github.salilvnair.convengine.intent.CompositeIntentResolver;
+import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class IntentResolutionStep implements EngineStep {
     private final AuditService audit;
     private final StaticConfigurationCacheService staticCacheService;
     private final CeConfigResolver configResolver;
+    private final VerboseMessagePublisher verbosePublisher;
 
     private static final Set<String> RESET_COMMANDS = Set.of(
             "reset",
@@ -127,6 +129,8 @@ public class IntentResolutionStep implements EngineStep {
                 ConvEngineAuditStage.intentResolvedBy(result.source().name()),
                 session.getConversationId(),
                 result);
+        verbosePublisher.publish(session, "IntentResolutionStep", "INTENT_RESOLVED", null, null, false,
+                Map.of("source", result.source().name(), "resolvedIntent", result.resolvedIntent()));
 
         return new StepResult.Continue();
     }

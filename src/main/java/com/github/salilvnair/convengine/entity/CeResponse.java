@@ -15,10 +15,10 @@ public class CeResponse {
     @Column(name = "response_id")
     private Long responseId;
 
-    @Column(name = "intent_code")
+    @Column(name = "intent_code", nullable = false)
     private String intentCode;
 
-    @Column(name = "state_code")
+    @Column(name = "state_code", nullable = false)
     private String stateCode;
 
     @Column(name = "output_format")

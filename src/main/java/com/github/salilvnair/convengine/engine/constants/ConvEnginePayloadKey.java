@@ -61,7 +61,7 @@ public final class ConvEnginePayloadKey {
     public static final String RULE_EXECUTION_ORIGIN = "ruleExecutionOrigin";
     public static final String RULE_EXECUTION_SOURCE = "ruleExecutionSource";
     public static final String RULE_ID = "ruleId";
-    public static final String RULE_MCP_POST_LLM = "ruleMcpPostLlm";
+    public static final String RULE_AGENT_POST_MCP = "ruleAgentPostMcp";
     public static final String RULE_TOOL_POST_EXECUTION = "ruleToolPostExecution";
     public static final String RULE_PHASE = "rulePhase";
     public static final String RULE_STATE_CODE = "ruleStateCode";

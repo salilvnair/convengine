@@ -284,6 +284,8 @@ public class EnginePipelineFactory {
                     .startedAtNs(start)
                     .success(false)
                     .build();
+            session.recordStepEnter(stepName, stepClass, "STEP_ENTER", start,
+                    stepMetaMap(session));
 
             audit.audit(
                     "STEP_ENTER",
@@ -305,6 +307,9 @@ public class EnginePipelineFactory {
                 timing.setDurationMs((end - start) / 1_000_000);
                 timing.setSuccess(true);
                 session.getStepTimings().add(timing);
+                session.recordStepExit(stepName, "STEP_EXIT", end, timing.getDurationMs(), r.getClass().getSimpleName(),
+                        stepMetaMap(session),
+                        mapOfNullable("resultType", r.getClass().getSimpleName()));
                 for (EngineStepHook hook : stepHooks) {
                     runHookSafely(() -> {
                         if (hook.supports(typedStepName, session)) {
@@ -332,6 +337,11 @@ public class EnginePipelineFactory {
                 timing.setDurationMs((end - start) / 1_000_000);
                 timing.setError(e.getClass().getSimpleName() + ": " + e.getMessage());
                 session.getStepTimings().add(timing);
+                session.recordStepError(stepName, "STEP_ERROR", end, timing.getDurationMs(), e,
+                        stepMetaMap(session),
+                        mapOfNullable(
+                                "errorType", e.getClass().getSimpleName(),
+                                "errorMessage", String.valueOf(e.getMessage())));
                 for (EngineStepHook hook : stepHooks) {
                     runHookSafely(() -> {
                         if (hook.supports(typedStepName, session)) {
@@ -412,6 +422,23 @@ public class EnginePipelineFactory {
             payload.put(ConvEnginePayloadKey.META, stepMeta);
 
             return payload;
+        }
+
+        private Map<String, Object> stepMetaMap(EngineSession session) {
+            return mapOfNullable(
+                    "intent", session.getIntent(),
+                    "state", session.getState());
+        }
+
+        private Map<String, Object> mapOfNullable(Object... keyValues) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            if (keyValues == null) {
+                return out;
+            }
+            for (int i = 0; i + 1 < keyValues.length; i += 2) {
+                out.put(String.valueOf(keyValues[i]), keyValues[i + 1]);
+            }
+            return out;
         }
     }
 }

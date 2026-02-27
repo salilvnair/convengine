@@ -76,7 +76,7 @@ Never generate runtime table data:
 ### `ce_rule`
 
 - `rule_type`: `EXACT`, `REGEX`, `JSON_PATH`
-- `phase`: `PIPELINE_RULES`, `AGENT_POST_INTENT`, `MCP_POST_LLM`, `TOOL_POST_EXECUTION`
+- `phase`: `PIPELINE_RULES`, `AGENT_POST_INTENT`, `AGENT_POST_MCP`, `TOOL_POST_EXECUTION`
 - `action`: `SET_INTENT`, `SET_STATE`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`
 
 ### `ce_intent_classifier`

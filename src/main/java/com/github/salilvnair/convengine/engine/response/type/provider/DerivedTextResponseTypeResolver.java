@@ -30,7 +30,7 @@ public class DerivedTextResponseTypeResolver implements ResponseTypeResolver {
 
     @Override
     public void resolve(EngineSession session, PromptTemplate template, ResponseTemplate response) {
-        OutputFormatResolver resolver = formatFactory.get(response.getOutputFormat());
+        OutputFormatResolver resolver = formatFactory.get(response.getOutputFormat(), session);
         Map<String, Object> payload = new LinkedHashMap<>();
         if(template.getTemplateId() != null) {
             payload.put(ConvEnginePayloadKey.TEMPLATE_ID, template.getTemplateId());
