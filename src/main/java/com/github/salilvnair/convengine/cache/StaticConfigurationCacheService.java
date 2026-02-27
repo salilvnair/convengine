@@ -1,9 +1,12 @@
 package com.github.salilvnair.convengine.cache;
 
 import com.github.salilvnair.convengine.entity.*;
+import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.repo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -26,8 +29,12 @@ public class StaticConfigurationCacheService {
     private final ContainerConfigRepository containerConfigRepo;
     private final McpToolRepository mcpToolRepo;
     private final McpDbToolRepository mcpDbToolRepo;
+    private final McpPlannerRepository mcpPlannerRepo;
     private final PolicyRepository policyRepo;
+    private final VerboseRepository verboseRepo;
     private final CeConfigRepository ceConfigRepo;
+    @Autowired
+    private ObjectProvider<StaticConfigurationCacheService> selfProvider;
 
     // --- Base Caching Methods ---
 
@@ -91,10 +98,24 @@ public class StaticConfigurationCacheService {
         return policyRepo.findAll();
     }
 
+    @Cacheable("ce_mcp_planner")
+    public List<CeMcpPlanner> getAllMcpPlanners() {
+        return mcpPlannerRepo.findAll();
+    }
+
+    @Cacheable("ce_verbose")
+    public List<CeVerbose> getAllVerboses() {
+        return verboseRepo.findAll();
+    }
+
     // --- Helper Filter Methods ---
 
+    private StaticConfigurationCacheService self() {
+        return selfProvider.getObject();
+    }
+
     public List<CeConfig> findConfigParams(String type, String configKey) {
-        return getAllConfigs().stream()
+        return self().getAllConfigs().stream()
                 .filter(CeConfig::isEnabled)
                 .filter(c -> c.getConfigType() != null && c.getConfigType().equalsIgnoreCase(type))
                 .filter(c -> c.getConfigKey() != null && c.getConfigKey().equalsIgnoreCase(configKey))
@@ -103,9 +124,10 @@ public class StaticConfigurationCacheService {
 
     // Rules
     public List<CeRule> findEligibleRulesByPhaseAndState(String phase, String state) {
-        return getAllRules().stream()
+        String normalizedPhase = RulePhase.normalize(phase);
+        return self().getAllRules().stream()
                 .filter(CeRule::isEnabled)
-                .filter(r -> r.getPhase() != null && r.getPhase().equalsIgnoreCase(phase))
+                .filter(r -> r.getPhase() != null && RulePhase.normalize(r.getPhase()).equalsIgnoreCase(normalizedPhase))
                 .filter(r -> isEligibleState(r.getStateCode(), state))
                 .sorted(Comparator.comparing(CeRule::getPriority))
                 .toList();
@@ -113,7 +135,7 @@ public class StaticConfigurationCacheService {
 
     // Pending Actions
     public List<CePendingAction> findEligiblePendingActionsByIntentAndState(String intent, String state) {
-        return getAllPendingActions().stream()
+        return self().getAllPendingActions().stream()
                 .filter(CePendingAction::isEnabled)
                 .filter(p -> isEligibleIntent(p.getIntentCode(), intent))
                 .filter(p -> isEligibleState(p.getStateCode(), state))
@@ -124,7 +146,7 @@ public class StaticConfigurationCacheService {
 
     public List<CePendingAction> findEligiblePendingActionsByActionIntentAndState(String actionKey, String intent,
             String state) {
-        return getAllPendingActions().stream()
+        return self().getAllPendingActions().stream()
                 .filter(CePendingAction::isEnabled)
                 .filter(p -> p.getActionKey() != null && p.getActionKey().equalsIgnoreCase(actionKey))
                 .filter(p -> isEligibleIntent(p.getIntentCode(), intent))
@@ -136,7 +158,7 @@ public class StaticConfigurationCacheService {
 
     // Container Configs
     public List<CeContainerConfig> findContainerConfigsByIntentAndState(String intentCode, String stateCode) {
-        return getAllContainerConfigs().stream()
+        return self().getAllContainerConfigs().stream()
                 .filter(CeContainerConfig::isEnabled)
                 .filter(c -> c.getIntentCode() != null && c.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(c -> c.getStateCode() != null && c.getStateCode().equalsIgnoreCase(stateCode))
@@ -145,26 +167,26 @@ public class StaticConfigurationCacheService {
     }
 
     public List<CeContainerConfig> findContainerConfigsFallbackByState(String stateCode) {
-        return getAllContainerConfigs().stream()
+        return self().getAllContainerConfigs().stream()
                 .filter(CeContainerConfig::isEnabled)
-                .filter(c -> c.getIntentCode() == null || c.getIntentCode().trim().isEmpty())
+                .filter(c -> c.getIntentCode() != null && c.getIntentCode().equalsIgnoreCase("ANY"))
                 .filter(c -> c.getStateCode() != null && c.getStateCode().equalsIgnoreCase(stateCode))
                 .sorted(Comparator.comparing(CeContainerConfig::getPriority))
                 .toList();
     }
 
     public List<CeContainerConfig> findContainerConfigsGlobalFallback() {
-        return getAllContainerConfigs().stream()
+        return self().getAllContainerConfigs().stream()
                 .filter(CeContainerConfig::isEnabled)
-                .filter(c -> c.getIntentCode() == null || c.getIntentCode().trim().isEmpty())
-                .filter(c -> c.getStateCode() == null || c.getStateCode().trim().isEmpty())
+                .filter(c -> c.getIntentCode() != null && c.getIntentCode().equalsIgnoreCase("ANY"))
+                .filter(c -> c.getStateCode() != null && c.getStateCode().equalsIgnoreCase("ANY"))
                 .sorted(Comparator.comparing(CeContainerConfig::getPriority))
                 .toList();
     }
 
     // Output Schema
     public Optional<CeOutputSchema> findFirstOutputSchema(String intentCode, String stateCode) {
-        return getAllOutputSchemas().stream()
+        return self().getAllOutputSchemas().stream()
                 .filter(CeOutputSchema::isEnabled)
                 .filter(s -> s.getIntentCode() != null && s.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(s -> s.getStateCode() != null && s.getStateCode().equalsIgnoreCase(stateCode))
@@ -174,7 +196,7 @@ public class StaticConfigurationCacheService {
     // Prompt Template
     public Optional<CePromptTemplate> findFirstPromptTemplate(String responseType, String intentCode,
             String stateCode) {
-        return getAllPromptTemplates().stream()
+        return self().getAllPromptTemplates().stream()
                 .filter(CePromptTemplate::isEnabled)
                 .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
@@ -183,24 +205,24 @@ public class StaticConfigurationCacheService {
     }
 
     public Optional<CePromptTemplate> findFirstPromptTemplate(String responseType, String intentCode) {
-        return getAllPromptTemplates().stream()
+        return self().getAllPromptTemplates().stream()
                 .filter(CePromptTemplate::isEnabled)
                 .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
-                .filter(p -> p.getStateCode() == null || p.getStateCode().trim().isEmpty())
+                .filter(p -> p.getStateCode() != null && p.getStateCode().equalsIgnoreCase("ANY"))
                 .max(Comparator.comparing(CePromptTemplate::getCreatedAt));
     }
 
     // Intents
     public List<CeIntent> findEnabledIntents() {
-        return getAllIntents().stream()
+        return self().getAllIntents().stream()
                 .filter(CeIntent::isEnabled)
                 .sorted(Comparator.comparing(CeIntent::getPriority))
                 .toList();
     }
 
     public Optional<CeIntent> findIntent(String intentCode) {
-        return getAllIntents().stream()
+        return self().getAllIntents().stream()
                 .filter(CeIntent::isEnabled)
                 .filter(i -> i.getIntentCode() != null && i.getIntentCode().equalsIgnoreCase(intentCode))
                 .findFirst();
@@ -208,7 +230,7 @@ public class StaticConfigurationCacheService {
 
     // Intent Classifiers
     public List<CeIntentClassifier> findEnabledIntentClassifiers() {
-        return getAllIntentClassifiers().stream()
+        return self().getAllIntentClassifiers().stream()
                 .filter(CeIntentClassifier::isEnabled)
                 .sorted(Comparator.comparing(CeIntentClassifier::getPriority))
                 .toList();
@@ -216,7 +238,7 @@ public class StaticConfigurationCacheService {
 
     // Policies
     public List<CePolicy> findEnabledPolicies() {
-        return getAllPolicies().stream()
+        return self().getAllPolicies().stream()
                 .filter(CePolicy::isEnabled)
                 .sorted(Comparator.comparing(CePolicy::getPriority))
                 .toList();
@@ -224,32 +246,57 @@ public class StaticConfigurationCacheService {
 
     // MCP Tools
     public List<CeMcpTool> findEnabledMcpTools(String intentCode, String stateCode) {
-        return getAllMcpTools().stream()
+        return self().getAllMcpTools().stream()
                 .filter(CeMcpTool::isEnabled)
-                .filter(t -> isEligibleIntent(t.getIntentCode(), intentCode))
-                .filter(t -> isEligibleState(t.getStateCode(), stateCode))
+                .filter(t -> isEligibleMcpScopeCode(t.getIntentCode(), intentCode))
+                .filter(t -> isEligibleMcpScopeCode(t.getStateCode(), stateCode))
                 .toList(); // Not explicitly ordered in previous JPQL
     }
 
     public Optional<CeMcpTool> findMcpTool(String toolCode, String intentCode, String stateCode) {
-        return getAllMcpTools().stream()
+        return self().getAllMcpTools().stream()
                 .filter(CeMcpTool::isEnabled)
                 .filter(t -> t.getToolCode() != null && t.getToolCode().equalsIgnoreCase(toolCode))
-                .filter(t -> isEligibleIntent(t.getIntentCode(), intentCode))
-                .filter(t -> isEligibleState(t.getStateCode(), stateCode))
+                .filter(t -> isEligibleMcpScopeCode(t.getIntentCode(), intentCode))
+                .filter(t -> isEligibleMcpScopeCode(t.getStateCode(), stateCode))
                 .findFirst();
     }
 
     public Optional<CeMcpDbTool> findMcpDbTool(String toolCode) {
-        return getAllMcpDbTools().stream()
+        return self().getAllMcpDbTools().stream()
                 .filter(d -> d.getTool() != null && d.getTool().isEnabled())
                 .filter(d -> d.getTool().getToolCode() != null && d.getTool().getToolCode().equalsIgnoreCase(toolCode))
                 .findFirst();
     }
 
+    public Optional<CeMcpPlanner> findFirstMcpPlanner(String intentCode, String stateCode) {
+        return self().getAllMcpPlanners().stream()
+                .filter(CeMcpPlanner::isEnabled)
+                .filter(p -> isEligibleIntent(p.getIntentCode(), intentCode))
+                .filter(p -> isEligibleState(p.getStateCode(), stateCode))
+                .sorted(
+                        Comparator
+                                .comparingInt((CeMcpPlanner p) -> plannerSpecificityScore(p, intentCode, stateCode))
+                                .reversed()
+                                .thenComparing(CeMcpPlanner::getPlannerId, Comparator.nullsLast(Comparator.reverseOrder())))
+                .findFirst();
+    }
+
+    // Verbose mappings
+    public List<CeVerbose> findEligibleVerboseMessages(String intentCode, String stateCode) {
+        return self().getAllVerboses().stream()
+                .filter(CeVerbose::isEnabled)
+                .filter(v -> isEligibleIntent(v.getIntentCode(), intentCode))
+                .filter(v -> isEligibleState(v.getStateCode(), stateCode))
+                .sorted(
+                        Comparator.comparing((CeVerbose v) -> v.getPriority() == null ? Integer.MAX_VALUE : v.getPriority())
+                                .thenComparing(CeVerbose::getVerboseId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+    }
+
     // Responses
     public Optional<CeResponse> findFirstResponse(String stateCode, String intentCode) {
-        return getAllResponses().stream()
+        return self().getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> r.getStateCode() != null && r.getStateCode().equalsIgnoreCase(stateCode))
                 .filter(r -> r.getIntentCode() != null && r.getIntentCode().equalsIgnoreCase(intentCode))
@@ -257,15 +304,15 @@ public class StaticConfigurationCacheService {
     }
 
     public Optional<CeResponse> findFirstResponseFallbackIntent(String stateCode) {
-        return getAllResponses().stream()
+        return self().getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> r.getStateCode() != null && r.getStateCode().equalsIgnoreCase(stateCode))
-                .filter(r -> r.getIntentCode() == null || r.getIntentCode().trim().isEmpty())
+                .filter(r -> r.getIntentCode() != null && r.getIntentCode().equalsIgnoreCase("ANY"))
                 .min(Comparator.comparing(CeResponse::getPriority));
     }
 
     public Optional<CeResponse> findFirstResponseAnyIntent(String stateCode) {
-        return getAllResponses().stream()
+        return self().getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> r.getStateCode() != null && r.getStateCode().equalsIgnoreCase(stateCode))
                 .min(Comparator.comparing(CeResponse::getPriority));
@@ -274,20 +321,68 @@ public class StaticConfigurationCacheService {
     // --- Private Evaluators ---
 
     private boolean isEligibleState(String dbValue, String userValue) {
-        if (dbValue == null)
-            return true;
+        if (dbValue == null) {
+            return false;
+        }
         dbValue = dbValue.trim();
-        if (dbValue.isEmpty() || dbValue.equalsIgnoreCase("ANY"))
+        if (dbValue.isEmpty()) {
+            return false;
+        }
+        if (dbValue.equalsIgnoreCase("ANY")) {
             return true;
-        return dbValue.equalsIgnoreCase(userValue);
+        }
+        if (userValue == null || userValue.trim().isEmpty()) {
+            return false;
+        }
+        return dbValue.equalsIgnoreCase(userValue.trim());
     }
 
     private boolean isEligibleIntent(String dbValue, String userValue) {
-        if (dbValue == null)
-            return true;
+        if (dbValue == null) {
+            return false;
+        }
         dbValue = dbValue.trim();
-        if (dbValue.isEmpty() || dbValue.equalsIgnoreCase("ANY"))
+        if (dbValue.isEmpty()) {
+            return false;
+        }
+        if (dbValue.equalsIgnoreCase("ANY")) {
             return true;
-        return dbValue.equalsIgnoreCase(userValue);
+        }
+        if (userValue == null || userValue.trim().isEmpty()) {
+            return false;
+        }
+        return dbValue.equalsIgnoreCase(userValue.trim());
+    }
+
+    private boolean isEligibleMcpScopeCode(String dbValue, String userValue) {
+        if (dbValue == null) {
+            return false;
+        }
+        String normalizedDbValue = dbValue.trim();
+        if (normalizedDbValue.isEmpty()) {
+            return false;
+        }
+        if (normalizedDbValue.equalsIgnoreCase("ANY")) {
+            return true;
+        }
+        if (userValue == null || userValue.trim().isEmpty()) {
+            return false;
+        }
+        return normalizedDbValue.equalsIgnoreCase(userValue.trim());
+    }
+
+    private int plannerSpecificityScore(CeMcpPlanner planner, String intentCode, String stateCode) {
+        int score = 0;
+        if (planner.getIntentCode() != null
+                && !planner.getIntentCode().isBlank()
+                && planner.getIntentCode().equalsIgnoreCase(intentCode)) {
+            score += 2;
+        }
+        if (planner.getStateCode() != null
+                && !planner.getStateCode().isBlank()
+                && planner.getStateCode().equalsIgnoreCase(stateCode)) {
+            score += 1;
+        }
+        return score;
     }
 }

@@ -38,7 +38,6 @@ public class EngineSessionFactory {
             CeConversation conversation = CeConversation.builder()
                     .conversationId(conversationId)
                     .status("RUNNING")
-                    .stateCode("UNKNOWN")
                     .contextJson("{}")
                     .inputParamsJson("{}")
                     .createdAt(now)

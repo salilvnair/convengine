@@ -67,11 +67,6 @@ public class PersistConversationStep implements EngineStep {
     }
 
     private void sanitizeConversationForPostgres(EngineSession session) {
-        if (session.getState() == null || session.getState().isBlank()) {
-            session.setState("UNKNOWN");
-        }
-        session.getConversation().setStateCode(session.getState());
-
         String contextJson = session.getConversation().getContextJson();
         if (contextJson == null || contextJson.isBlank() || JsonUtil.parseOrNull(contextJson).isNull()) {
             session.getConversation().setContextJson("{}");

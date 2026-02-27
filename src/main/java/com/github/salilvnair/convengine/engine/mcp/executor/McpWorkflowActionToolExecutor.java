@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp.executor;
 
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.WorkflowActionExecutorAdapter;
+import com.github.salilvnair.convengine.engine.mcp.McpConstants;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ public class McpWorkflowActionToolExecutor implements McpToolExecutor {
 
     @Override
     public String toolGroup() {
-        return "WORKFLOW_ACTION";
+        return McpConstants.TOOL_GROUP_WORKFLOW_ACTION;
     }
 
     @Override
@@ -26,4 +27,3 @@ public class McpWorkflowActionToolExecutor implements McpToolExecutor {
                 .orElseThrow(() -> new IllegalStateException("No WorkflowActionExecutorAdapter configured"));
     }
 }
-

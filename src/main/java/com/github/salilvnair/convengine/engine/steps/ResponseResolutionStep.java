@@ -19,6 +19,7 @@ import com.github.salilvnair.convengine.entity.CePromptTemplate;
 import com.github.salilvnair.convengine.entity.CeResponse;
 import com.github.salilvnair.convengine.intent.AgentIntentResolver;
 import com.github.salilvnair.convengine.intent.AgentIntentCollisionResolver;
+import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import com.github.salilvnair.convengine.model.*;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class ResponseResolutionStep implements EngineStep {
     private final ConversationHistoryProvider historyProvider;
     private final AgentIntentCollisionResolver agentIntentCollisionResolver;
     private final ResponseTransformerService responseTransformerService;
+    private final VerboseMessagePublisher verbosePublisher;
 
     @Override
     public StepResult execute(EngineSession session) {
@@ -82,6 +84,7 @@ public class ResponseResolutionStep implements EngineStep {
                 ConvEngineAuditStage.RESOLVE_RESPONSE,
                 session.getConversationId(),
                 responsePayload);
+        verbosePublisher.publish(session, "ResponseResolutionStep", "RESOLVE_RESPONSE", null, null, false, responsePayload);
 
         CePromptTemplate template = null;
         if (ResponseType.DERIVED.name().equalsIgnoreCase(resp.getResponseType())) {
@@ -98,7 +101,7 @@ public class ResponseResolutionStep implements EngineStep {
                                     + session.getState()));
         }
         typeFactory
-                .get(resp.getResponseType())
+                .get(resp.getResponseType(), session)
                 .resolve(session, PromptTemplate.initFrom(template), ResponseTemplate.initFrom(resp));
 
         OutputPayload transformedOutput = responseTransformerService.transformIfApplicable(session.getPayload(),

@@ -65,7 +65,7 @@ public class AgentIntentCollisionResolver implements IntentCollisionResolver {
     @Override
     public void resolve(EngineSession session) {
         typeFactory
-                .get(ResponseType.DERIVED.name())
+                .get(ResponseType.DERIVED.name(), session)
                 .resolve(session, PromptTemplate.initFrom(SYSTEM_PROMPT, USER_PROMPT, OutputType.TEXT.name(), "templateFromCeConfig (AgentIntentCollisionResolver)"), ResponseTemplate.initFrom(DERIVATION_HINT, OutputType.TEXT.name()));
         Object payloadValue = switch (session.getPayload()) {
             case TextPayload(String text) -> text;

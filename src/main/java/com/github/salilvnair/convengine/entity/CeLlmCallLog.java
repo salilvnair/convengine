@@ -23,10 +23,10 @@ public class CeLlmCallLog {
     @Column(name = "conversation_id", nullable = false)
     private UUID conversationId;
 
-    @Column(name = "intent_code")
+    @Column(name = "intent_code", nullable = false)
     private String intentCode;
 
-    @Column(name = "state_code")
+    @Column(name = "state_code", nullable = false)
     private String stateCode;
 
     @Column(name = "provider", nullable = false)
@@ -55,4 +55,15 @@ public class CeLlmCallLog {
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    @PrePersist
+    @PreUpdate
+    private void ensureIntentAndState() {
+        if (intentCode == null || intentCode.isBlank()) {
+            intentCode = "UNKNOWN";
+        }
+        if (stateCode == null || stateCode.isBlank()) {
+            stateCode = "UNKNOWN";
+        }
+    }
 }

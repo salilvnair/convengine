@@ -146,7 +146,7 @@ Do not treat ConvEngine as an unconstrained chatbot runtime.
 
 ## Current Baseline
 
-- Library version: `2.0.5`
+- Library version: `2.0.8`
 - Property namespace for flow tuning: `convengine.flow.*`
 
 ## Core Operating Model
@@ -190,8 +190,8 @@ No `prompt_template_code`.
 ### `ce_rule`
 
 - `rule_type`: `EXACT | REGEX | JSON_PATH`
-- `phase`: `PIPELINE_RULES | AGENT_POST_INTENT | MCP_POST_LLM | TOOL_POST_EXECUTION`
-- `state_code`: `NULL | ANY | exact`
+- `phase`: `PRE_RESPONSE_RESOLUTION | POST_AGENT_INTENT | POST_AGENT_MCP | POST_TOOL_EXECUTION`
+- `state_code`: `ANY | UNKNOWN | exact`
 
 ### `ce_pending_action`
 
@@ -214,7 +214,7 @@ Runtime lifecycle (`OPEN`, `IN_PROGRESS`, `EXECUTED`, `REJECTED`, `EXPIRED`) is 
 Before adding Java branching:
 
 - check if behavior can be expressed via `ce_rule`
-- check phase-specific rules (`AGENT_POST_INTENT`, `MCP_POST_LLM`, `TOOL_POST_EXECUTION`)
+- check phase-specific rules (`POST_AGENT_INTENT`, `POST_AGENT_MCP`, `POST_TOOL_EXECUTION`)
 - check whether action can be `SET_TASK`
 
 ## Audit Expectations
@@ -233,8 +233,8 @@ At minimum ensure visibility for:
 
 ## MCP + Tooling
 
-Tool routing is by `tool_group` with executor adapters. 
-**CRITICAL**: As of v2.0.0, ALL Tools *must* respect conversational scope. Tools should specify an `intent_code` and `state_code` to restrict when the planner is allowed to call them. Avoid creating "global" tools where `intent_code` IS NULL unless absolutely required (e.g., FAQ searching).
+Tool routing is by `tool_group` with executor adapters.
+**CRITICAL**: All tools must use explicit scope values. Use `intent_code` / `state_code` with concrete values or `ANY` / `UNKNOWN`. Do not use null scope values.
 
 Supported canonical groups:
 
@@ -248,6 +248,24 @@ Supported canonical groups:
 
 Prefer adapters/interfaces; avoid hardcoding transport logic in steps.
 
+### MCP extensions (v2.0.7)
+
+- `DB` now supports per-tool handlers via `DbToolHandler` before fallback to `ce_mcp_db_tool.sql_template`.
+- MCP planner prompts are now use-case scoped in `ce_mcp_planner` (`intent_code` + `state_code`) with legacy `ce_config` fallback.
+- Optional built-in DB knowledge graph tool (`DbKnowledgeGraphToolHandler`) can read consumer-managed query/schema knowledge tables (`convengine.mcp.db.knowledge.*`) and return ranked semantic matches.
+- `HTTP_API` now supports `HttpApiRequestingToolHandler` and framework-managed invocation via `HttpApiToolInvoker` for retries, backoff, circuit breaker, timeout, auth provider injection, and response mapping.
+
+### CE verbose + stream envelope extensions (v2.0.8)
+
+- New control-plane table `ce_verbose` drives user-facing runtime progress and error messaging by `intent_code`, `state_code`, `step_match`, `step_value`, and `determinant`.
+- New standalone SQL assets:
+  - `src/main/resources/sql/verbose_ddl.sql`
+  - `src/main/resources/sql/verbose_seed.sql`
+  plus merged rows in all dialect main `ddl_*` and `seed_*` files.
+- `EngineSession` now carries `stepInfos` (`StepInfo`) with step enter/exit/error timings and outcomes; preserve this shape when extending session metadata.
+- Streaming payload contract changed: `AuditStreamEventResponse` now includes `eventType` and optional `verbose` payload. Both SSE and STOMP can emit `AUDIT` and `VERBOSE`.
+- MCP now supports deterministic schema-incomplete skip (`MCP_SKIPPED_SCHEMA_INCOMPLETE`, `STATUS_SKIPPED_SCHEMA_INCOMPLETE`) in `McpToolStep`.
+
 ## Documentation Discipline
 
 When behavior changes:
@@ -257,7 +275,7 @@ When behavior changes:
 3. Update `src/main/resources/prompts/SQL_GENERATION_AGENT.md` if SQL contracts changed
 4. Keep examples runnable and enum-accurate
 
-## Framework Performance Patterns (v2.0.5+)
+## Framework Performance Patterns (v2.0.7+)
 
 Do not introduce synchronous Relational DB reads/writes into the core engine lifecycle path:
 - **Static Configuration**: All `ce_*` configuration tables must be resolved via the `StaticConfigurationCacheService` interface, NOT direct JpaRepository `.find()` hits. The application strictly maintains a 0-latency pre-loaded RAM cache.
@@ -271,3 +289,4 @@ Do not introduce synchronous Relational DB reads/writes into the core engine lif
 - New input param keys centralized in constants
 - New audit stages centralized in enum
 - No stale config prefixes in docs (`convengine.flow.*` only)
+- `ce_verbose` rows validated for `step_match` (`EXACT|REGEX|JSON_PATH`) and non-empty `step_value`/`determinant`

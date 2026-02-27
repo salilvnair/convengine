@@ -20,6 +20,9 @@ public class CeIntentClassifier {
     @Column(name = "intent_code", nullable = false)
     private String intentCode;
 
+    @Column(name = "state_code", nullable = false)
+    private String stateCode = "UNKNOWN";
+
     @Column(name = "rule_type", nullable = false)
     private String ruleType; // REGEX | CONTAINS | STARTS_WITH
 
