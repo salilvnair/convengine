@@ -4,6 +4,7 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
@@ -30,7 +31,7 @@ import java.util.Objects;
 
 @RequiredArgsConstructor
 @Component
-@MustRunAfter(AutoAdvanceStep.class)
+@MustRunAfter({AutoAdvanceStep.class, McpToolStep.class})
 @MustRunBefore(ResponseResolutionStep.class)
 public class RulesStep implements EngineStep {
 
@@ -77,35 +78,25 @@ public class RulesStep implements EngineStep {
         session.putInputParam(ConvEngineInputParamKey.RULE_TOOL_POST_EXECUTION, toolPostExecutionPhase);
 
         boolean anyMatched = false;
+        boolean evaluatedAnyRule = false;
         int maxPasses = 5;
         for (int pass = 0; pass < maxPasses; pass++) {
             boolean passChanged = false;
             String passIntent = session.getIntent();
             String passState = session.getState();
-            List<CeRule> allRules = staticCacheService.findEligibleRulesByPhaseAndState(phase, passState);
+            List<CeRule> allRules = staticCacheService.findEligibleRules(passIntent, passState, phase);
 
             for (CeRule rule : allRules) {
-
-                if (rule.getIntentCode() != null &&
-                        !rule.getIntentCode().equalsIgnoreCase(passIntent)) {
-                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, agentPostMcpPhase,
-                            toolPostExecutionPhase, rule, "INTENT_MISMATCH");
-                    continue;
-                }
-                if (!matchesState(rule.getStateCode(), passState)) {
-                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, agentPostMcpPhase,
-                            toolPostExecutionPhase, rule, "STATE_MISMATCH");
-                    continue;
-                }
+                evaluatedAnyRule = true;
 
                 RuleTypeResolver typeResolver = typeFactory.get(rule.getRuleType());
                 if (typeResolver == null) {
-                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, agentPostMcpPhase,
+                    auditRuleNoMatch(session, source, origin, phase, passState, agentPostIntentPhase, agentPostMcpPhase,
                             toolPostExecutionPhase, rule, "TYPE_RESOLVER_MISSING");
                     continue;
                 }
                 if (!typeResolver.resolve(session, rule)) {
-                    auditRuleNoMatch(session, source, origin, phase, agentPostIntentPhase, agentPostMcpPhase,
+                    auditRuleNoMatch(session, source, origin, phase, passState, agentPostIntentPhase, agentPostMcpPhase,
                             toolPostExecutionPhase, rule, "TYPE_CONDITION_NOT_MET");
                     continue;
                 }
@@ -169,7 +160,7 @@ public class RulesStep implements EngineStep {
             }
         }
 
-        if (!anyMatched) {
+        if (!anyMatched && !evaluatedAnyRule) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
             payload.put(ConvEnginePayloadKey.STATE, session.getState());
@@ -180,6 +171,7 @@ public class RulesStep implements EngineStep {
             payload.put(ConvEnginePayloadKey.RULE_AGENT_POST_MCP, agentPostMcpPhase);
             payload.put(ConvEnginePayloadKey.RULE_TOOL_POST_EXECUTION, toolPostExecutionPhase);
             audit.audit(ConvEngineAuditStage.RULE_NO_MATCH.withStage(source), session.getConversationId(), payload);
+            verbosePublisher.publish(session, "RulesStep", "RULE_NO_MATCH", null, null, false, payload);
         }
     }
 
@@ -187,7 +179,7 @@ public class RulesStep implements EngineStep {
         if (ruleStateCode == null || ruleStateCode.isBlank()) {
             return true;
         }
-        if ("ANY".equalsIgnoreCase(ruleStateCode.trim())) {
+        if (ConvEngineValue.ANY.equalsIgnoreCase(ruleStateCode.trim())) {
             return true;
         }
         if (sessionState == null || sessionState.isBlank()) {
@@ -201,6 +193,7 @@ public class RulesStep implements EngineStep {
             String source,
             String origin,
             String phase,
+            String evaluatedState,
             boolean agentPostIntentPhase,
             boolean agentPostMcpPhase,
             boolean toolPostExecutionPhase,
@@ -214,10 +207,12 @@ public class RulesStep implements EngineStep {
         payload.put(ConvEnginePayloadKey.ACTION, rule.getAction());
         payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
         payload.put(ConvEnginePayloadKey.STATE, session.getState());
-        payload.put("reason", reason);
+        payload.put(ConvEnginePayloadKey.EVALUATED_STATE, evaluatedState);
+        payload.put(ConvEnginePayloadKey.REASON, reason);
         payload.put(ConvEnginePayloadKey.RULE_EXECUTION_SOURCE, source);
         payload.put(ConvEnginePayloadKey.RULE_EXECUTION_ORIGIN, origin);
         payload.put(ConvEnginePayloadKey.RULE_PHASE, phase);
+        payload.put(ConvEnginePayloadKey.RULE_DB_PHASE, rule.getPhase());
         payload.put(ConvEnginePayloadKey.RULE_AGENT_POST_INTENT, agentPostIntentPhase);
         payload.put(ConvEnginePayloadKey.RULE_AGENT_POST_MCP, agentPostMcpPhase);
         payload.put(ConvEnginePayloadKey.RULE_TOOL_POST_EXECUTION, toolPostExecutionPhase);

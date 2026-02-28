@@ -6,6 +6,8 @@ import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.action.PendingActionStatus;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineSyntaxConstants;
+import com.github.salilvnair.convengine.engine.constants.PendingActionConstants;
 import com.github.salilvnair.convengine.engine.dialogue.InteractionPolicyDecision;
 import com.github.salilvnair.convengine.engine.helper.SessionContextHelper;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
@@ -55,16 +57,16 @@ public class PendingActionStep implements EngineStep {
         }
 
         Map<String, Object> context = session.contextDict();
-        Object pendingAction = context.get("pending_action");
+        Object pendingAction = context.get(PendingActionConstants.CONTEXT_PENDING_ACTION);
         if (pendingAction == null) {
-            pendingAction = context.get("pendingAction");
+            pendingAction = context.get(PendingActionConstants.CONTEXT_PENDING_ACTION_CAMEL);
         }
 
         String actionKey = resolveActionKey(session, context, pendingAction);
         String actionRef = resolveActionReference(session, pendingAction, actionKey);
         if (actionRef == null || actionRef.isBlank()) {
             Map<String, Object> payload = basePayload(session, decision, null);
-            payload.put("actionKey", actionKey);
+            payload.put(ConvEnginePayloadKey.ACTION_KEY, actionKey);
             payload.put(ConvEnginePayloadKey.REASON, actionKey == null || actionKey.isBlank()
                     ? "pending action reference not found or ambiguous registry mapping"
                     : "pending action reference not found");
@@ -73,19 +75,19 @@ public class PendingActionStep implements EngineStep {
         }
 
         if (decision == InteractionPolicyDecision.REJECT_PENDING_ACTION) {
-            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RESULT, "REJECTED");
+            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RESULT, PendingActionStatus.REJECTED.name());
             updateRuntimeStatus(session, PendingActionStatus.REJECTED);
             Map<String, Object> payload = basePayload(session, decision, actionRef);
-            payload.put(ConvEnginePayloadKey.PENDING_ACTION_RESULT, "REJECTED");
+            payload.put(ConvEnginePayloadKey.PENDING_ACTION_RESULT, PendingActionStatus.REJECTED.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_REJECTED, session.getConversationId(), payload);
             return new StepResult.Continue();
         }
 
         String[] taskRef = parseTaskReference(actionRef);
         if (taskRef == null) {
-            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RESULT, "FAILED");
+            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RESULT, PendingActionConstants.RESULT_FAILED);
             Map<String, Object> payload = basePayload(session, decision, actionRef);
-            payload.put(ConvEnginePayloadKey.PENDING_ACTION_RESULT, "FAILED");
+            payload.put(ConvEnginePayloadKey.PENDING_ACTION_RESULT, PendingActionConstants.RESULT_FAILED);
             payload.put(ConvEnginePayloadKey.REASON, "invalid pending action reference");
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_FAILED, session.getConversationId(), payload);
             return new StepResult.Continue();
@@ -93,20 +95,20 @@ public class PendingActionStep implements EngineStep {
 
         Object executionResult = ceTaskExecutor.execute(taskRef[0], taskRef[1], session);
         if (executionResult == null) {
-            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RESULT, "FAILED");
+            session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RESULT, PendingActionConstants.RESULT_FAILED);
             Map<String, Object> payload = basePayload(session, decision, actionRef);
-            payload.put(ConvEnginePayloadKey.PENDING_ACTION_RESULT, "FAILED");
+            payload.put(ConvEnginePayloadKey.PENDING_ACTION_RESULT, PendingActionConstants.RESULT_FAILED);
             payload.put(ConvEnginePayloadKey.REASON, "task execution returned null");
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_FAILED, session.getConversationId(), payload);
             return new StepResult.Continue();
         }
 
-        session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RESULT, "EXECUTED");
+        session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RESULT, PendingActionStatus.EXECUTED.name());
         updateRuntimeStatus(session, PendingActionStatus.EXECUTED);
         Map<String, Object> payload = basePayload(session, decision, actionRef);
-        payload.put(ConvEnginePayloadKey.PENDING_ACTION_RESULT, "EXECUTED");
-        payload.put("taskBean", taskRef[0]);
-        payload.put("taskMethods", taskRef[1]);
+        payload.put(ConvEnginePayloadKey.PENDING_ACTION_RESULT, PendingActionStatus.EXECUTED.name());
+        payload.put(ConvEnginePayloadKey.TASK_BEAN, taskRef[0]);
+        payload.put(ConvEnginePayloadKey.TASK_METHODS, taskRef[1]);
         audit.audit(ConvEngineAuditStage.PENDING_ACTION_EXECUTED, session.getConversationId(), payload);
 
         return new StepResult.Continue();
@@ -198,16 +200,17 @@ public class PendingActionStep implements EngineStep {
             return fromInput.trim();
         }
 
-        Object fromContext = context.get("pending_action_key");
+        Object fromContext = context.get(PendingActionConstants.CONTEXT_PENDING_ACTION_KEY);
         if (!(fromContext instanceof String)) {
-            fromContext = context.get("pendingActionKey");
+            fromContext = context.get(PendingActionConstants.CONTEXT_PENDING_ACTION_KEY_CAMEL);
         }
         if (fromContext instanceof String s && !s.isBlank()) {
             return s.trim();
         }
 
         if (pendingAction instanceof Map<?, ?> map) {
-            String key = firstText(map, "action_key", "actionKey", "key", "type");
+            String key = firstText(map, PendingActionConstants.RUNTIME_ACTION_KEY, ConvEnginePayloadKey.ACTION_KEY,
+                    ConvEnginePayloadKey.KEY, ConvEnginePayloadKey.TYPE);
             if (key != null && !key.isBlank()) {
                 return key.trim();
             }
@@ -229,10 +232,10 @@ public class PendingActionStep implements EngineStep {
         if (actionRef == null || actionRef.isBlank()) {
             return null;
         }
-        if (!actionRef.contains(":")) {
+        if (!actionRef.contains(ConvEngineSyntaxConstants.KEY_VALUE_SEPARATOR)) {
             return new String[] { actionRef.trim(), actionRef.trim() };
         }
-        String[] parts = actionRef.split(":", 2);
+        String[] parts = actionRef.split(ConvEngineSyntaxConstants.KEY_VALUE_SEPARATOR, 2);
         String bean = parts[0] == null ? "" : parts[0].trim();
         String methods = parts.length > 1 && parts[1] != null ? parts[1].trim() : "";
         if (bean.isBlank() || methods.isBlank()) {
@@ -244,8 +247,8 @@ public class PendingActionStep implements EngineStep {
     private void updateRuntimeStatus(EngineSession session, PendingActionStatus status) {
         try {
             ObjectNode root = contextHelper.readRoot(session);
-            ObjectNode runtime = contextHelper.ensureObject(root, "pending_action_runtime");
-            runtime.put("status", status.name());
+            ObjectNode runtime = contextHelper.ensureObject(root, PendingActionConstants.CONTEXT_PENDING_ACTION_RUNTIME);
+            runtime.put(PendingActionConstants.RUNTIME_STATUS, status.name());
             contextHelper.writeRoot(session, root);
             session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS, status.name());
         } catch (Exception ignored) {

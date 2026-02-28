@@ -139,6 +139,8 @@ CREATE TABLE ce_prompt_template (
   system_prompt TEXT NOT NULL,
   user_prompt TEXT NOT NULL,
   temperature NUMERIC(3,2) NOT NULL DEFAULT 0.0,
+  interaction_mode TEXT,
+  interaction_contract TEXT,
   enabled BOOLEAN NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );

@@ -1,7 +1,8 @@
 package com.github.salilvnair.convengine.cache;
 
-import com.github.salilvnair.convengine.entity.*;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
+import com.github.salilvnair.convengine.entity.*;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.repo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,8 +11,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -46,6 +51,21 @@ public class StaticConfigurationCacheService {
     @Cacheable("ce_rule")
     public List<CeRule> getAllRules() {
         return ruleRepo.findAll();
+    }
+
+    @Cacheable("ce_rule_lookup")
+    public Map<String, List<CeRule>> getRuleLookupMap() {
+        Map<String, List<CeRule>> lookup = new LinkedHashMap<>();
+        self().getAllRules().stream()
+                .filter(CeRule::isEnabled)
+                .sorted(Comparator.comparing(CeRule::getPriority)
+                        .thenComparing(CeRule::getRuleId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .forEach(rule -> {
+                    String key = buildRuleLookupKey(rule.getIntentCode(), rule.getStateCode(), rule.getPhase());
+                    lookup.computeIfAbsent(key, ignored -> new ArrayList<>()).add(rule);
+                });
+        lookup.replaceAll((ignored, value) -> List.copyOf(value));
+        return Collections.unmodifiableMap(lookup);
     }
 
     @Cacheable("ce_pending_action")
@@ -122,14 +142,24 @@ public class StaticConfigurationCacheService {
                 .toList();
     }
 
-    // Rules
-    public List<CeRule> findEligibleRulesByPhaseAndState(String phase, String state) {
-        String normalizedPhase = RulePhase.normalize(phase);
-        return self().getAllRules().stream()
-                .filter(CeRule::isEnabled)
-                .filter(r -> r.getPhase() != null && RulePhase.normalize(r.getPhase()).equalsIgnoreCase(normalizedPhase))
-                .filter(r -> isEligibleState(r.getStateCode(), state))
-                .sorted(Comparator.comparing(CeRule::getPriority))
+    public List<CeRule> findEligibleRules(String intentCode, String stateCode, String phase) {
+        Map<String, List<CeRule>> lookup = self().getRuleLookupMap();
+        List<CeRule> rules = new ArrayList<>();
+        String normalizedIntent = normalizeRuleLookupKeyPart(intentCode);
+        String normalizedState = normalizeRuleLookupKeyPart(stateCode);
+        String normalizedPhase = normalizeRuleLookupKeyPart(RulePhase.normalize(phase));
+
+        addRulesForKey(lookup, rules, normalizedIntent, normalizedState, normalizedPhase);
+        addRulesForKey(lookup, rules, normalizedIntent, ConvEngineValue.ANY, normalizedPhase);
+        addRulesForKey(lookup, rules, ConvEngineValue.ANY, normalizedState, normalizedPhase);
+        addRulesForKey(lookup, rules, ConvEngineValue.ANY, ConvEngineValue.ANY, normalizedPhase);
+
+        if (rules.isEmpty()) {
+            return List.of();
+        }
+
+        return rules.stream()
+                .distinct()
                 .toList();
     }
 
@@ -169,7 +199,7 @@ public class StaticConfigurationCacheService {
     public List<CeContainerConfig> findContainerConfigsFallbackByState(String stateCode) {
         return self().getAllContainerConfigs().stream()
                 .filter(CeContainerConfig::isEnabled)
-                .filter(c -> c.getIntentCode() != null && c.getIntentCode().equalsIgnoreCase("ANY"))
+                .filter(c -> c.getIntentCode() != null && c.getIntentCode().equalsIgnoreCase(ConvEngineValue.ANY))
                 .filter(c -> c.getStateCode() != null && c.getStateCode().equalsIgnoreCase(stateCode))
                 .sorted(Comparator.comparing(CeContainerConfig::getPriority))
                 .toList();
@@ -178,8 +208,8 @@ public class StaticConfigurationCacheService {
     public List<CeContainerConfig> findContainerConfigsGlobalFallback() {
         return self().getAllContainerConfigs().stream()
                 .filter(CeContainerConfig::isEnabled)
-                .filter(c -> c.getIntentCode() != null && c.getIntentCode().equalsIgnoreCase("ANY"))
-                .filter(c -> c.getStateCode() != null && c.getStateCode().equalsIgnoreCase("ANY"))
+                .filter(c -> c.getIntentCode() != null && c.getIntentCode().equalsIgnoreCase(ConvEngineValue.ANY))
+                .filter(c -> c.getStateCode() != null && c.getStateCode().equalsIgnoreCase(ConvEngineValue.ANY))
                 .sorted(Comparator.comparing(CeContainerConfig::getPriority))
                 .toList();
     }
@@ -191,6 +221,16 @@ public class StaticConfigurationCacheService {
                 .filter(s -> s.getIntentCode() != null && s.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(s -> s.getStateCode() != null && s.getStateCode().equalsIgnoreCase(stateCode))
                 .min(Comparator.comparing(CeOutputSchema::getPriority));
+    }
+
+    public Optional<CeOutputSchema> findOutputSchemaById(Long schemaId) {
+        if (schemaId == null) {
+            return Optional.empty();
+        }
+        return self().getAllOutputSchemas().stream()
+                .filter(CeOutputSchema::isEnabled)
+                .filter(s -> s.getSchemaId() != null && s.getSchemaId().equals(schemaId))
+                .findFirst();
     }
 
     // Prompt Template
@@ -209,8 +249,21 @@ public class StaticConfigurationCacheService {
                 .filter(CePromptTemplate::isEnabled)
                 .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
-                .filter(p -> p.getStateCode() != null && p.getStateCode().equalsIgnoreCase("ANY"))
+                .filter(p -> p.getStateCode() != null && p.getStateCode().equalsIgnoreCase(ConvEngineValue.ANY))
                 .max(Comparator.comparing(CePromptTemplate::getCreatedAt));
+    }
+
+    public Optional<CePromptTemplate> findInteractionTemplate(String intentCode, String stateCode) {
+        return self().getAllPromptTemplates().stream()
+                .filter(CePromptTemplate::isEnabled)
+                .filter(CePromptTemplate::hasInteractionSemantics)
+                .filter(p -> isEligibleIntent(p.getIntentCode(), intentCode))
+                .filter(p -> isEligibleState(p.getStateCode(), stateCode))
+                .sorted(Comparator
+                        .comparingInt((CePromptTemplate p) -> promptTemplateSpecificity(p, intentCode, stateCode))
+                        .reversed()
+                        .thenComparing(CePromptTemplate::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .findFirst();
     }
 
     // Intents
@@ -307,7 +360,7 @@ public class StaticConfigurationCacheService {
         return self().getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> r.getStateCode() != null && r.getStateCode().equalsIgnoreCase(stateCode))
-                .filter(r -> r.getIntentCode() != null && r.getIntentCode().equalsIgnoreCase("ANY"))
+                .filter(r -> r.getIntentCode() != null && r.getIntentCode().equalsIgnoreCase(ConvEngineValue.ANY))
                 .min(Comparator.comparing(CeResponse::getPriority));
     }
 
@@ -328,13 +381,26 @@ public class StaticConfigurationCacheService {
         if (dbValue.isEmpty()) {
             return false;
         }
-        if (dbValue.equalsIgnoreCase("ANY")) {
+        if (dbValue.equalsIgnoreCase(ConvEngineValue.ANY)) {
             return true;
         }
         if (userValue == null || userValue.trim().isEmpty()) {
             return false;
         }
         return dbValue.equalsIgnoreCase(userValue.trim());
+    }
+
+    private int promptTemplateSpecificity(CePromptTemplate template, String intentCode, String stateCode) {
+        int score = 0;
+        if (template.getIntentCode() != null && intentCode != null
+                && template.getIntentCode().equalsIgnoreCase(intentCode)) {
+            score += 2;
+        }
+        if (template.getStateCode() != null && stateCode != null
+                && template.getStateCode().equalsIgnoreCase(stateCode)) {
+            score += 1;
+        }
+        return score;
     }
 
     private boolean isEligibleIntent(String dbValue, String userValue) {
@@ -345,7 +411,7 @@ public class StaticConfigurationCacheService {
         if (dbValue.isEmpty()) {
             return false;
         }
-        if (dbValue.equalsIgnoreCase("ANY")) {
+        if (dbValue.equalsIgnoreCase(ConvEngineValue.ANY)) {
             return true;
         }
         if (userValue == null || userValue.trim().isEmpty()) {
@@ -362,7 +428,7 @@ public class StaticConfigurationCacheService {
         if (normalizedDbValue.isEmpty()) {
             return false;
         }
-        if (normalizedDbValue.equalsIgnoreCase("ANY")) {
+        if (normalizedDbValue.equalsIgnoreCase(ConvEngineValue.ANY)) {
             return true;
         }
         if (userValue == null || userValue.trim().isEmpty()) {
@@ -384,5 +450,28 @@ public class StaticConfigurationCacheService {
             score += 1;
         }
         return score;
+    }
+
+    private void addRulesForKey(Map<String, List<CeRule>> lookup, List<CeRule> rules,
+            String intentCode, String stateCode, String phase) {
+        List<CeRule> bucket = lookup.get(buildRuleLookupKey(intentCode, stateCode, phase));
+        if (bucket != null && !bucket.isEmpty()) {
+            rules.addAll(bucket);
+        }
+    }
+
+    private String buildRuleLookupKey(String intentCode, String stateCode, String phase) {
+        return normalizeRuleLookupKeyPart(intentCode)
+                + "|"
+                + normalizeRuleLookupKeyPart(stateCode)
+                + "|"
+                + normalizeRuleLookupKeyPart(phase);
+    }
+
+    private String normalizeRuleLookupKeyPart(String value) {
+        if (value == null || value.isBlank()) {
+            return ConvEngineValue.ANY;
+        }
+        return value.trim().toUpperCase();
     }
 }

@@ -160,6 +160,8 @@ CREATE TABLE ce_prompt_template (
                                     system_prompt text NOT NULL,
                                     user_prompt text NOT NULL,
                                     temperature numeric(3, 2) DEFAULT 0.0 NOT NULL,
+                                    interaction_mode text,
+                                    interaction_contract text,
                                     enabled bool DEFAULT true NOT NULL,
                                     created_at timestamptz DEFAULT now() NOT NULL,
                                     CONSTRAINT ce_prompt_template_pkey PRIMARY KEY (template_id),

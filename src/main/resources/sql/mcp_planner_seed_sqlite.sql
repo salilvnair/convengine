@@ -92,7 +92,8 @@ VALUES
 -- -----------------------------------------------------------------------------
 -- Prompt templates
 -- -----------------------------------------------------------------------------
-INSERT INTO ce_prompt_template (intent_code, state_code, response_type, system_prompt, user_prompt, temperature, enabled)
+INSERT INTO ce_prompt_template (intent_code, state_code, response_type, system_prompt, user_prompt, temperature,
+                                interaction_mode, interaction_contract, enabled)
 VALUES
 (
     'ORDER_DIAGNOSTICS',
@@ -101,6 +102,8 @@ VALUES
     'You are an order diagnostics summarizer.',
     'Context JSON:\n{{context}}\n\nRead context.mcp.observations and context.mcp.finalAnswer. Summarize order status and callback diagnostics using only observed evidence.',
     0.00,
+    'REVIEW',
+    '{"allows":["retry","reset"],"expects":[]}',
     1
 ),
 (
@@ -110,6 +113,8 @@ VALUES
     'You are an order diagnostics summarizer.',
     'Context JSON:\n{{context}}\n\nUse context.mcp.finalAnswer as primary final response. Use context.mcp.observations only for supporting details.',
     0.00,
+    'FINAL',
+    '{"allows":["reset"],"expects":[]}',
     1
 ),
 (
@@ -119,6 +124,8 @@ VALUES
     'You are a strict structured extractor for loan application fields.',
     'User input:\n{{user_input}}\n\nContext JSON:\n{{context}}\n\nExtract only: customerId, requestedAmount, tenureMonths.\nFor each field: return actual value only if explicitly present in input/context; otherwise return null.\nNever invent values.\nNever use placeholders like "", 0, or 0.0 for missing values.\nReturn valid JSON only.',
     0.00,
+    'COLLECT',
+    '{"allows":["reset"],"expects":["structured_input"]}',
     1
 ),
 (
@@ -128,6 +135,8 @@ VALUES
     'You are a strict loan decision summarizer.',
     'Context JSON:\n{{context}}\n\nIf schema is incomplete, respond with exactly which required fields are missing using {{missing_fields}} and ask only for those fields. If schema is complete, read context.mcp.observations and context.mcp.finalAnswer when present. Mention rating, fraud flag, dti, availableCredit, and applicationId when available.',
     0.00,
+    'COLLECT',
+    '{"allows":["reset"],"expects":["structured_input"]}',
     1
 ),
 (
@@ -137,6 +146,8 @@ VALUES
     'You are a strict loan decision summarizer.',
     'Context JSON:\n{{context}}\n\nUse context.mcp.finalAnswer as primary final answer. Use context.mcp.observations only to validate details.',
     0.00,
+    'FINAL',
+    '{"allows":["reset"],"expects":[]}',
     1
 );
 

@@ -4,6 +4,7 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
@@ -66,7 +67,7 @@ public class IntentResolutionStep implements EngineStep {
 
         if (session.isIntentLocked() || isActiveSchemaCollection(session)) {
             if (!session.isIntentLocked()) {
-                session.lockIntent("SCHEMA_INCOMPLETE");
+                session.lockIntent(ConvEngineValue.SCHEMA_INCOMPLETE);
             }
             session.clearClarification();
             if (session.getConversation() != null) {
@@ -158,7 +159,7 @@ public class IntentResolutionStep implements EngineStep {
                 schema = staticCacheService
                         .findFirstOutputSchema(
                                 session.getIntent(),
-                                "ANY");
+                                ConvEngineValue.ANY);
             }
             if (schema.isEmpty() || schema.get().getJsonSchema() == null) {
                 return false;
@@ -195,11 +196,11 @@ public class IntentResolutionStep implements EngineStep {
     }
 
     private boolean hasResolvedIntent(String intent) {
-        return intent != null && !intent.isBlank() && !"UNKNOWN".equalsIgnoreCase(intent);
+        return intent != null && !intent.isBlank() && !ConvEngineValue.UNKNOWN.equalsIgnoreCase(intent);
     }
 
     private boolean hasResolvedState(String state) {
-        return state != null && !state.isBlank() && !"UNKNOWN".equalsIgnoreCase(state);
+        return state != null && !state.isBlank() && !ConvEngineValue.UNKNOWN.equalsIgnoreCase(state);
     }
 
     private boolean shouldForceIntentResolution(EngineSession session) {

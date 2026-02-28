@@ -1,7 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp.executor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiApiProcessorToolHandler;
+import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiProcessorToolHandler;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiExecutorAdapter;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiRequestingToolHandler;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiToolHandler;
@@ -45,7 +45,7 @@ public class McpHttpApiToolExecutor implements McpToolExecutor {
         for (HttpApiToolHandler handler : toolHandlers) {
                 String candidate = handler.toolCode();
                 if (candidate != null && candidate.trim().equalsIgnoreCase(toolCode)) {
-                    if (handler instanceof HttpApiApiProcessorToolHandler apiProcessorHandler) {
+                    if (handler instanceof HttpApiProcessorToolHandler apiProcessorHandler) {
                         return normalizeResult(invoker.invokeUsingApiProcessor(toolCode, apiProcessorHandler, tool, safeArgs, session));
                     }
                     if (handler instanceof HttpApiRequestingToolHandler requestingHandler) {
