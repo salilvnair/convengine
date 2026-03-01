@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.engine.response.format.provider;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.OutputFormatConstants;
 import com.github.salilvnair.convengine.engine.response.format.core.OutputFormatResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
@@ -12,6 +13,7 @@ import com.github.salilvnair.convengine.model.ResponseTemplate;
 import com.github.salilvnair.convengine.model.TextPayload;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
+import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -28,10 +30,11 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
         private final LlmClient llm;
         private final PromptTemplateRenderer renderer;
         private final AuditService audit;
+        private final VerboseMessagePublisher verbosePublisher;
 
         @Override
         public String format() {
-                return "TEXT";
+                return OutputFormatConstants.TEXT;
         }
 
         @Override
@@ -49,6 +52,8 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
                                                         .userPrompt(template.getUserPrompt())
                                                         .context(session.getContextJson())
                                                         .userInput(session.getUserText())
+                                                        .resolvedUserInput(session.getResolvedUserInput())
+                                                        .standaloneQuery(session.getStandaloneQuery())
                                                         .schemaJson(session.getResolvedSchema() != null
                                                                 ? session.getResolvedSchema().getJsonSchema()
                                                                 : null)
@@ -73,17 +78,28 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
                 inputPayload.put(ConvEnginePayloadKey.DERIVATION_HINT, safe(response.getDerivationHint()));
                 inputPayload.put(ConvEnginePayloadKey.SESSION, session.eject());
                 audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_INPUT, session.getConversationId(), inputPayload);
+                verbosePublisher.publish(session, "TextOutputFormatResolver", "RESOLVE_RESPONSE_LLM_INPUT", null, null,
+                                false, inputPayload);
 
-                String text = llm.generateText(
-                                systemPrompt + "\n\n" + userPrompt + "\n\n" +
-                                                safe(response.getDerivationHint()),
-                                JsonUtil.toJson(session.contextDict()));
+                String text;
+                try {
+                        text = llm.generateText(
+                                        systemPrompt + "\n\n" + userPrompt + "\n\n" +
+                                                        safe(response.getDerivationHint()),
+                                        JsonUtil.toJson(session.contextDict()));
+                } catch (Exception e) {
+                        verbosePublisher.publish(session, "TextOutputFormatResolver", "RESOLVE_RESPONSE_LLM_ERROR",
+                                        null, null, true, Map.of("error", String.valueOf(e.getMessage())));
+                        throw e;
+                }
                 session.setLastLlmOutput(text);
                 session.setLastLlmStage("RESPONSE_TEXT");
                 Map<String, Object> outputPayload = new LinkedHashMap<>();
                 outputPayload.put(ConvEnginePayloadKey.OUTPUT, text);
                 audit.audit(ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT, session.getConversationId(),
                                 outputPayload);
+                verbosePublisher.publish(session, "TextOutputFormatResolver", "RESOLVE_RESPONSE_LLM_OUTPUT", null, null,
+                                false, outputPayload);
 
                 session.setPayload(new TextPayload(text));
                 session.getConversation().setLastAssistantJson(

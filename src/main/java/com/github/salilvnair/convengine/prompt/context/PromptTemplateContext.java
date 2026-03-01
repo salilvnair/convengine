@@ -20,6 +20,14 @@ public class PromptTemplateContext {
     @PromptVar({ "user_input", "userInput", "user_text", "userText", "input_text", "inputText", "input", "user_message", "userMessage" })
     private String userInput;
 
+    @PromptVar({ "resolved_user_input", "resolvedUserInput", "resolved_input", "resolvedInput", "effective_input",
+            "effectiveInput", "final_user_input", "finalUserInput" })
+    private String resolvedUserInput;
+
+    @PromptVar({ "standalone_query", "standaloneQuery", "rewritten_query", "rewrittenQuery", "query_rewrite",
+            "queryRewrite" })
+    private String standaloneQuery;
+
     @PromptVar({ "schema", "json_schema", "schema_json", "data_schema", "dataSchema", "jsonSchema", "schemaJson" })
     private String schemaJson;
 

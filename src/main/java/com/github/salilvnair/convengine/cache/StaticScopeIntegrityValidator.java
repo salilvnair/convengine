@@ -1,5 +1,8 @@
 package com.github.salilvnair.convengine.cache;
 
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
+import com.github.salilvnair.convengine.engine.constants.MatchTypeConstants;
+import com.github.salilvnair.convengine.engine.type.RuleAction;
 import com.github.salilvnair.convengine.entity.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -14,9 +17,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class StaticScopeIntegrityValidator {
 
-    private static final String ANY = "ANY";
-    private static final String UNKNOWN = "UNKNOWN";
-
     private final StaticConfigurationCacheService staticCacheService;
 
     public void validateOrThrow() {
@@ -27,8 +27,8 @@ public class StaticScopeIntegrityValidator {
                 .map(this::normalize)
                 .filter(v -> !v.isEmpty())
                 .forEach(allowedIntents::add);
-        allowedIntents.add(ANY);
-        allowedIntents.add(UNKNOWN);
+        allowedIntents.add(ConvEngineValue.ANY);
+        allowedIntents.add(ConvEngineValue.UNKNOWN);
 
         Set<String> allowedStates = new LinkedHashSet<>();
         staticCacheService.getAllRules().stream()
@@ -39,13 +39,13 @@ public class StaticScopeIntegrityValidator {
                 .forEach(allowedStates::add);
         staticCacheService.getAllRules().stream()
                 .filter(CeRule::isEnabled)
-                .filter(v -> "SET_STATE".equalsIgnoreCase(v.getAction()))
+                .filter(v -> RuleAction.SET_STATE.name().equalsIgnoreCase(v.getAction()))
                 .map(CeRule::getActionValue)
                 .map(this::normalize)
                 .filter(v -> !v.isEmpty())
                 .forEach(allowedStates::add);
-        allowedStates.add(ANY);
-        allowedStates.add(UNKNOWN);
+        allowedStates.add(ConvEngineValue.ANY);
+        allowedStates.add(ConvEngineValue.UNKNOWN);
 
         List<String> violations = new ArrayList<>();
         validateScope("ce_rule", staticCacheService.getAllRules().stream().filter(CeRule::isEnabled).toList(), CeRule::getRuleId, CeRule::getIntentCode,
@@ -116,7 +116,8 @@ public class StaticScopeIntegrityValidator {
     }
 
     private void validateVerboseRows(List<CeVerbose> rows, List<String> violations) {
-        Set<String> allowedMatches = Set.of("EXACT", "REGEX", "JSON_PATH");
+        Set<String> allowedMatches = Set.of(MatchTypeConstants.EXACT, MatchTypeConstants.REGEX,
+                MatchTypeConstants.JSON_PATH);
         for (CeVerbose row : rows) {
             String id = String.valueOf(row.getVerboseId());
             String stepMatch = normalize(row.getStepMatch());

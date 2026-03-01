@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.engine.steps;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineFlowConfig;
+import com.github.salilvnair.convengine.engine.constants.ClarificationConstants;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.dialogue.InteractionPolicyDecision;
@@ -131,13 +132,13 @@ public class DisambiguationStep implements EngineStep {
         QuestionResult questionResult = buildQuestion(session, top, options);
         String question = questionResult.question();
         session.setPendingClarificationQuestion(question);
-        session.setPendingClarificationReason("PENDING_ACTION_DISAMBIGUATION");
+        session.setPendingClarificationReason(ClarificationConstants.REASON_PENDING_ACTION_DISAMBIGUATION);
         session.putInputParam(ConvEngineInputParamKey.POLICY_DECISION,
                 InteractionPolicyDecision.RECLASSIFY_INTENT.name());
         session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_DISAMBIGUATION_REQUIRED, true);
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put(ConvEnginePayloadKey.REASON, "MULTIPLE_PENDING_ACTIONS");
+        payload.put(ConvEnginePayloadKey.REASON, ClarificationConstants.MULTIPLE_PENDING_ACTIONS);
         payload.put(ConvEnginePayloadKey.QUESTION, question);
         payload.put(ConvEnginePayloadKey.CANDIDATE_COUNT, top.size());
         payload.put(ConvEnginePayloadKey.OPTIONS, new ArrayList<>(options));
@@ -171,6 +172,8 @@ public class DisambiguationStep implements EngineStep {
                     .userPrompt(llmUserPrompt)
                     .context(session.getContextJson())
                     .userInput(session.getUserText())
+                    .resolvedUserInput(session.getResolvedUserInput())
+                    .standaloneQuery(session.getStandaloneQuery())
                     .extra(disambiguationPromptVars(session, top, options))
                     .session(session)
                     .build();
@@ -195,6 +198,8 @@ public class DisambiguationStep implements EngineStep {
                     .userPrompt(questionTemplate)
                     .context(session.getContextJson())
                     .userInput(session.getUserText())
+                    .resolvedUserInput(session.getResolvedUserInput())
+                    .standaloneQuery(session.getStandaloneQuery())
                     .extra(disambiguationPromptVars(session, top, options))
                     .session(session)
                     .build();

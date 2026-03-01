@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.engine.steps;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.MatchTypeConstants;
 import com.github.salilvnair.convengine.engine.model.EngineResult;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
@@ -63,7 +64,7 @@ public class PolicyEnforcementStep implements EngineStep {
         if (type == null || pattern == null || text == null)
             return false;
         return switch (type.trim().toUpperCase()) {
-            case "REGEX" -> Pattern.compile(pattern, Pattern.CASE_INSENSITIVE).matcher(text).find();
+            case MatchTypeConstants.REGEX -> Pattern.compile(pattern, Pattern.CASE_INSENSITIVE).matcher(text).find();
             case "CONTAINS" -> text.toLowerCase().contains(pattern.toLowerCase());
             case "STARTS_WITH" -> text.toLowerCase().startsWith(pattern.toLowerCase());
             default -> false;

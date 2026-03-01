@@ -7,7 +7,7 @@ import com.github.salilvnair.api.processor.rest.handler.RestWebServiceHandler;
 import com.github.salilvnair.api.processor.rest.model.RestWebServiceRequest;
 import com.github.salilvnair.api.processor.rest.model.RestWebServiceResponse;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
-import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiApiProcessorToolHandler;
+import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiProcessorToolHandler;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
 import com.jayway.jsonpath.JsonPath;
@@ -115,7 +115,7 @@ public class HttpApiToolInvoker {
 
     public Object invokeUsingApiProcessor(
             String toolCode,
-            HttpApiApiProcessorToolHandler toolHandler,
+            HttpApiProcessorToolHandler toolHandler,
             CeMcpTool tool,
             Map<String, Object> args,
             EngineSession session

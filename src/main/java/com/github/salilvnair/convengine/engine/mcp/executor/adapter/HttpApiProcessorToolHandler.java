@@ -12,7 +12,7 @@ import java.util.Map;
  * HTTP_API SPI for consumers who want api-processor flow:
  * RestWebServiceFacade -> delegate.invoke -> handler.processResponse.
  */
-public interface HttpApiApiProcessorToolHandler extends HttpApiToolHandler {
+public interface HttpApiProcessorToolHandler extends HttpApiToolHandler {
 
     RestWebServiceHandler wsHandler(CeMcpTool tool, Map<String, Object> args, EngineSession session);
 

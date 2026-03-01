@@ -3,7 +3,9 @@ package com.github.salilvnair.convengine.intent;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.MatchTypeConstants;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeIntentClassifier;
 import lombok.RequiredArgsConstructor;
@@ -80,7 +82,7 @@ public class ClassifierIntentResolver implements IntentResolver {
     private boolean matches(String type, String pattern, String text) {
         if (type == null || pattern == null || text == null) return false;
         return switch (type.trim().toUpperCase()) {
-            case "REGEX" -> Pattern.compile(pattern, Pattern.CASE_INSENSITIVE).matcher(text).find();
+            case MatchTypeConstants.REGEX -> Pattern.compile(pattern, Pattern.CASE_INSENSITIVE).matcher(text).find();
             case "CONTAINS" -> text.toLowerCase().contains(pattern.toLowerCase());
             case "STARTS_WITH" -> text.toLowerCase().startsWith(pattern.toLowerCase());
             default -> false;
@@ -89,7 +91,7 @@ public class ClassifierIntentResolver implements IntentResolver {
 
     private String normalizeState(String stateCode) {
         if (stateCode == null || stateCode.isBlank()) {
-            return "UNKNOWN";
+            return ConvEngineValue.UNKNOWN;
         }
         return stateCode.trim().toUpperCase(Locale.ROOT);
     }

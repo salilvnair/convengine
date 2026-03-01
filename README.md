@@ -6,7 +6,29 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `2.0.8`
+- Current library version: `2.0.9`
+
+### Hybrid Prompt Rendering, Correction Routing, and Consumer Verbose Adapter (v2.0.9)
+- **Thymeleaf-backed prompt and verbose rendering**: Prompt templates and DB-backed `ce_verbose` messages now resolve through the shared `ThymeleafTemplateRenderer`, with session-aware variables and support for legacy `{{...}}`, `#{...}`, and `[${...}]` styles.
+- **Prompt/session variable upgrades**: `PromptTemplateContext` and session prompt vars now include `standalone_query` and `resolved_user_input`, with `resolved_user_input` preferring `standaloneQuery` over `user_input`.
+- **Rule engine expansion**:
+  - new `SET_INPUT_PARAM` action for setting runtime values directly from rules
+  - new phases: `POST_SCHEMA_EXTRACTION` and `PRE_AGENT_MCP`
+  - cached rule lookup by phase/state for lower repeated lookup overhead
+- **Dialogue and confirmation routing upgrades**:
+  - new `DialogueAct.ANSWER`
+  - new `CorrectionStep` before intent/schema resolution
+  - deterministic `routing_decision` flags for confirmation routing
+  - confirmation `AFFIRM` can proceed without re-running schema extraction
+  - confirmation `EDIT` can patch a single field in-place
+- **Verbose and audit coverage expansion**:
+  - added LLM input/output/error verbose stages across dialogue act, intent, schema extraction, MCP planning, and response generation
+  - `MCP_TOOL_CALL` now emits richer tool/action/intent/state metadata
+  - new `ConvEngineVerboseAdapter` lets consumer hooks, transformers, and custom beans publish DB-resolved or direct UI verbose events
+- **Constant hygiene and control-path cleanup**:
+  - centralized routing, correction, syntax, pending-action, guardrail, response/output, and verbose keys in constants
+  - removed hardcoded dialogue-act checks in runtime control flow
+  - pending-action and guardrail runtime/audit payload keys are now centralized
 
 ### CE Verbose Telemetry, Stream Envelope, and MCP Guardrails (v2.0.8)
 - **Database-driven verbose messaging (`ce_verbose`)**: Added `ce_verbose` as a first-class control table with entity/repository/cache support (`CeVerbose`, `VerboseRepository`, `StaticConfigurationCacheService#getAllVerboses`), startup preload, and scope validation (`intent_code`, `state_code`, `step_match`, `step_value`, `determinant`).
@@ -77,6 +99,7 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - **`DialogueActStep`**: A brand new classification pipeline step heavily augmenting the traditional NLP pass. Instead of relying purely on heavy LLM intent classification for simple operational conversational shifts, this step evaluates the user's raw input against fast strict Pattern Regex patterns (`AFFIRM`, `NEGATE`, `EDIT`, `RESET`) before triggering fallback heuristic LLM logic.
 - **Dialogue Act Taxonomy**: Standardized ENUM classification integrated precisely into `ConvEngineInputParamKey.DIALOGUE_ACT` including `AFFIRM` (yes, proceed), `NEGATE` (no, cancel), `EDIT` (change something), `RESET` (start over), `QUESTION` (inquiry), and `NEW_REQUEST` (topic switch).
 - **`DialogueActResolveMode` Enum**: Explicit execution evaluation modes (`REGEX_ONLY`, `REGEX_THEN_LLM`, `LLM_ONLY`) allowing the system to rapidly identify acts using extremely fast regex thresholds prior to paying LLM generation costs.
+- **Dialogue Act Audit Coverage**: LLM-backed dialogue-act resolution now audits `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, and `DIALOGUE_ACT_LLM_ERROR` in addition to the final `DIALOGUE_ACT_CLASSIFIED` checkpoint.
 - **`InteractionPolicyStep` & `InteractionPolicyDecision`**: The primary "brain" of the v2 matrix routing implementation. This step evaluates the `DialogueAct` alongside the current discrete `SessionState`. For instance, if a pending action is marked `IN_PROGRESS` in memory, and the new turn evaluates to the act `AFFIRM`, it makes an instantaneous deterministic policy decision `EXECUTE_PENDING_ACTION`. If it evaluates to `NEGATE`, it selects `REJECT_PENDING_ACTION`. If it's `QUESTION`, it evaluates to `FILL_PENDING_SLOT`. This massive enhancement completely bypasses stochastic LLM generative behaviors for discrete boolean pathing.
 
 ### 5. Strict MCP Tool Management and Orchestration Scoping
@@ -136,15 +159,16 @@ Main runtime stages:
 3. User input audit + policy checks
 4. Dialogue-act classification
 5. Interaction policy decision
-6. Action lifecycle/disambiguation/guardrail
-7. Intent resolution + fallback/reset handling
-8. Container data and MCP/tool orchestration
-9. Schema extraction + auto-advance facts
-10. Rules execution (multi-pass)
-11. State graph validation (validate mode)
-12. Response resolution
-13. Memory update
-14. Persist + pipeline end guard
+6. Confirmation routing / in-place correction (`CorrectionStep`)
+7. Action lifecycle/disambiguation/guardrail
+8. Intent resolution + fallback/reset handling
+9. Container data and MCP/tool orchestration
+10. Schema extraction + auto-advance facts
+11. Rules execution (multi-pass, including `POST_SCHEMA_EXTRACTION` / `PRE_AGENT_MCP`)
+12. State graph validation (validate mode)
+13. Response resolution
+14. Memory update
+15. Persist + pipeline end guard
 
 ## Data Model
 
@@ -182,17 +206,26 @@ Main runtime stages:
 ### `ce_prompt_template`
 
 - `response_type`: `TEXT`, `JSON`, `SCHEMA_JSON`
+- `interaction_mode`: `NORMAL`, `IDLE`, `COLLECT`, `CONFIRM`, `PROCESSING`, `FINAL`, `ERROR`, `DISAMBIGUATE`, `FOLLOW_UP`, `PENDING_ACTION`, `REVIEW`
+- `interaction_contract`: JSON text for extensible turn behavior. Recommended shape:
+  `{"allows":["affirm","edit","retry","reset"],"expects":["structured_input"]}`
+  Extend the arrays for new capabilities instead of adding new columns.
 
 ### `ce_rule`
 
 - `rule_type`: `EXACT`, `REGEX`, `JSON_PATH`
-- `phase`: `PRE_RESPONSE_RESOLUTION`, `POST_AGENT_INTENT`, `POST_AGENT_MCP`, `POST_TOOL_EXECUTION`
-- `action`: `SET_INTENT`, `SET_STATE`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`
+- `phase`: `POST_DIALOGUE_ACT`, `PRE_RESPONSE_RESOLUTION`, `POST_AGENT_INTENT`, `POST_SCHEMA_EXTRACTION`, `PRE_AGENT_MCP`, `POST_AGENT_MCP`, `POST_TOOL_EXECUTION`
+- `action`: `SET_INTENT`, `SET_STATE`, `SET_DIALOGUE_ACT`, `SET_JSON`, `GET_CONTEXT`, `GET_SCHEMA_JSON`, `GET_SESSION`, `SET_TASK`, `SET_INPUT_PARAM`
 - `state_code`: `ANY`, `UNKNOWN`, or exact state
 
 ### `ce_intent_classifier`
 
 - `rule_type`: `REGEX`, `CONTAINS`, `STARTS_WITH`
+
+### `ce_verbose`
+
+- `step_match`: `EXACT`, `REGEX`, `JSON_PATH`
+- `determinant`: use emitted runtime determinants such as `STEP_ENTER`, `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, `DIALOGUE_ACT_LLM_ERROR`, `MCP_TOOL_CALL`, `RESOLVE_RESPONSE_LLM_OUTPUT`
 
 ## Flow Configuration (application.yml)
 

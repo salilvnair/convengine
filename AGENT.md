@@ -146,7 +146,7 @@ Do not treat ConvEngine as an unconstrained chatbot runtime.
 
 ## Current Baseline
 
-- Library version: `2.0.8`
+- Library version: `2.0.9`
 - Property namespace for flow tuning: `convengine.flow.*`
 
 ## Core Operating Model
@@ -175,7 +175,15 @@ If docs/examples conflict with DDL, DDL wins.
 
 Columns include:
 
-- `template_id`, `intent_code`, `state_code`, `response_type`, `system_prompt`, `user_prompt`, `temperature`, `enabled`
+- `template_id`, `intent_code`, `state_code`, `response_type`, `system_prompt`, `user_prompt`, `temperature`, `interaction_mode`, `interaction_contract`, `enabled`
+
+`interaction_mode` is the coarse semantic bucket for the turn. Supported values:
+
+- `NORMAL`, `IDLE`, `COLLECT`, `CONFIRM`, `PROCESSING`, `FINAL`, `ERROR`, `DISAMBIGUATE`, `FOLLOW_UP`, `PENDING_ACTION`, `REVIEW`
+
+`interaction_contract` is JSON text used for extensible capabilities and expectations. Recommended shape:
+
+- `{"allows":["affirm","edit","retry","reset"],"expects":["structured_input"]}`
 
 No `template_code`.
 
@@ -190,8 +198,9 @@ No `prompt_template_code`.
 ### `ce_rule`
 
 - `rule_type`: `EXACT | REGEX | JSON_PATH`
-- `phase`: `PRE_RESPONSE_RESOLUTION | POST_AGENT_INTENT | POST_AGENT_MCP | POST_TOOL_EXECUTION`
+- `phase`: `PRE_RESPONSE_RESOLUTION | POST_AGENT_INTENT | POST_SCHEMA_EXTRACTION | PRE_AGENT_MCP | POST_AGENT_MCP | POST_TOOL_EXECUTION`
 - `state_code`: `ANY | UNKNOWN | exact`
+- `action`: `SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK | SET_INPUT_PARAM`
 
 ### `ce_pending_action`
 
@@ -214,8 +223,8 @@ Runtime lifecycle (`OPEN`, `IN_PROGRESS`, `EXECUTED`, `REJECTED`, `EXPIRED`) is 
 Before adding Java branching:
 
 - check if behavior can be expressed via `ce_rule`
-- check phase-specific rules (`POST_AGENT_INTENT`, `POST_AGENT_MCP`, `POST_TOOL_EXECUTION`)
-- check whether action can be `SET_TASK`
+- check phase-specific rules (`POST_AGENT_INTENT`, `POST_SCHEMA_EXTRACTION`, `PRE_AGENT_MCP`, `POST_AGENT_MCP`, `POST_TOOL_EXECUTION`)
+- check whether action can be `SET_TASK` or `SET_INPUT_PARAM`
 
 ## Audit Expectations
 
@@ -266,6 +275,17 @@ Prefer adapters/interfaces; avoid hardcoding transport logic in steps.
 - Streaming payload contract changed: `AuditStreamEventResponse` now includes `eventType` and optional `verbose` payload. Both SSE and STOMP can emit `AUDIT` and `VERBOSE`.
 - MCP now supports deterministic schema-incomplete skip (`MCP_SKIPPED_SCHEMA_INCOMPLETE`, `STATUS_SKIPPED_SCHEMA_INCOMPLETE`) in `McpToolStep`.
 
+### Prompt + correction extensions (v2.0.9)
+
+- Prompt rendering is now shared through `ThymeleafTemplateRenderer`; use Thymeleaf text expressions in prompts and `ce_verbose` messages when you need conditional/default rendering. Legacy `{{var}}` forms still work.
+- `PromptTemplateContext` and session prompt vars now include `standalone_query` and `resolved_user_input`.
+- `DialogueAct` now includes `ANSWER`.
+- `DialogueActStep` now audits `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, and `DIALOGUE_ACT_LLM_ERROR` whenever the LLM path is used.
+- `DialogueActStep` now exposes regex and LLM candidate dialogue-act values in session input params and runs `POST_DIALOGUE_ACT` rules before `InteractionPolicyStep`.
+- `CorrectionStep` runs before intent/schema resolution and can route confirmation affirmations forward without re-extracting schema and patch single-field confirmation edits in-place.
+- Use `routing_decision` (not `turn_mode`) for downstream flow routing.
+- Consumers can emit UI verbose events directly through `ConvEngineVerboseAdapter` from hooks, transformers, and custom beans.
+
 ## Documentation Discipline
 
 When behavior changes:
@@ -286,7 +306,10 @@ Do not introduce synchronous Relational DB reads/writes into the core engine lif
 
 - DDL/seed aligned
 - Rule phase enum aligned across code/docs
+- Dialogue-act post-processing rule phase and action enum aligned across code/docs
 - New input param keys centralized in constants
 - New audit stages centralized in enum
+- `ce_verbose` docs/examples aligned with actual emitted determinants
 - No stale config prefixes in docs (`convengine.flow.*` only)
 - `ce_verbose` rows validated for `step_match` (`EXACT|REGEX|JSON_PATH`) and non-empty `step_value`/`determinant`
+- Prompt and verbose rendering changes should reuse `ThymeleafTemplateRenderer`; do not add parallel ad hoc renderers

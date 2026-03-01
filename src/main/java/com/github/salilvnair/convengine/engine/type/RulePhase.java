@@ -1,6 +1,9 @@
 package com.github.salilvnair.convengine.engine.type;
 
 public enum RulePhase {
+    POST_DIALOGUE_ACT,
+    POST_SCHEMA_EXTRACTION,
+    PRE_AGENT_MCP,
     PRE_RESPONSE_RESOLUTION,
     POST_AGENT_INTENT,
     POST_AGENT_MCP,

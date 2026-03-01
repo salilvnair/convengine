@@ -7,6 +7,8 @@ import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineFlowConfig;
 import com.github.salilvnair.convengine.engine.action.PendingActionStatus;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
+import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.PendingActionConstants;
 import com.github.salilvnair.convengine.engine.dialogue.InteractionPolicyDecision;
 import com.github.salilvnair.convengine.engine.helper.SessionContextHelper;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
@@ -32,8 +34,6 @@ import java.util.Map;
 @MustRunBefore(PendingActionStep.class)
 public class ActionLifecycleStep implements EngineStep {
 
-    private static final String RUNTIME_NODE = "pending_action_runtime";
-
     private final ConvEngineFlowConfig flowConfig;
     private final StaticConfigurationCacheService staticCacheService;
     private final SessionContextHelper contextHelper;
@@ -46,22 +46,23 @@ public class ActionLifecycleStep implements EngineStep {
         }
 
         ObjectNode root = contextHelper.readRoot(session);
-        ObjectNode runtime = contextHelper.ensureObject(root, RUNTIME_NODE);
+        ObjectNode runtime = contextHelper.ensureObject(root, PendingActionConstants.CONTEXT_PENDING_ACTION_RUNTIME);
         int currentTurn = session.conversionHistory().size() + 1;
         long now = Instant.now().toEpochMilli();
 
-        PendingActionStatus currentStatus = PendingActionStatus.from(runtime.path("status").asText(null), null);
+        PendingActionStatus currentStatus = PendingActionStatus.from(
+                runtime.path(PendingActionConstants.RUNTIME_STATUS).asText(null), null);
         if (isExpired(runtime, currentTurn, now)
                 && (currentStatus == PendingActionStatus.OPEN || currentStatus == PendingActionStatus.IN_PROGRESS)) {
-            runtime.put("status", PendingActionStatus.EXPIRED.name());
-            runtime.put("expired_turn", currentTurn);
-            runtime.put("expired_at_epoch_ms", now);
+            runtime.put(PendingActionConstants.RUNTIME_STATUS, PendingActionStatus.EXPIRED.name());
+            runtime.put(PendingActionConstants.RUNTIME_EXPIRED_TURN, currentTurn);
+            runtime.put(PendingActionConstants.RUNTIME_EXPIRED_AT_EPOCH_MS, now);
             session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS,
                     PendingActionStatus.EXPIRED.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_LIFECYCLE, session.getConversationId(), mapOf(
-                    "event", "EXPIRED",
-                    "status", PendingActionStatus.EXPIRED.name(),
-                    "turn", currentTurn));
+                    ConvEnginePayloadKey.EVENT, PendingActionStatus.EXPIRED.name(),
+                    PendingActionConstants.RUNTIME_STATUS, PendingActionStatus.EXPIRED.name(),
+                    ConvEnginePayloadKey.TURN, currentTurn));
         }
 
         String actionKey = resolveActionKey(session);
@@ -73,50 +74,50 @@ public class ActionLifecycleStep implements EngineStep {
 
         boolean isNewRuntime = isRuntimeNew(runtime, actionKey, actionRef);
         if (isNewRuntime) {
-            runtime.put("action_key", actionKey == null ? "" : actionKey);
-            runtime.put("action_ref", actionRef);
-            runtime.put("status", PendingActionStatus.OPEN.name());
-            runtime.put("created_turn", currentTurn);
-            runtime.put("created_at_epoch_ms", now);
-            runtime.put("expires_turn", flowConfig.getActionLifecycle().getTtlTurns() > 0
+            runtime.put(PendingActionConstants.RUNTIME_ACTION_KEY, actionKey == null ? "" : actionKey);
+            runtime.put(PendingActionConstants.RUNTIME_ACTION_REF, actionRef);
+            runtime.put(PendingActionConstants.RUNTIME_STATUS, PendingActionStatus.OPEN.name());
+            runtime.put(PendingActionConstants.RUNTIME_CREATED_TURN, currentTurn);
+            runtime.put(PendingActionConstants.RUNTIME_CREATED_AT_EPOCH_MS, now);
+            runtime.put(PendingActionConstants.RUNTIME_EXPIRES_TURN, flowConfig.getActionLifecycle().getTtlTurns() > 0
                     ? currentTurn + flowConfig.getActionLifecycle().getTtlTurns()
                     : -1);
-            runtime.put("expires_at_epoch_ms", flowConfig.getActionLifecycle().getTtlMinutes() > 0
+            runtime.put(PendingActionConstants.RUNTIME_EXPIRES_AT_EPOCH_MS, flowConfig.getActionLifecycle().getTtlMinutes() > 0
                     ? now + (flowConfig.getActionLifecycle().getTtlMinutes() * 60_000L)
                     : -1);
             session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS,
                     PendingActionStatus.OPEN.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_LIFECYCLE, session.getConversationId(), mapOf(
-                    "event", "OPEN",
-                    "status", PendingActionStatus.OPEN.name(),
-                    "actionKey", actionKey,
-                    "actionRef", actionRef));
+                    ConvEnginePayloadKey.EVENT, PendingActionStatus.OPEN.name(),
+                    PendingActionConstants.RUNTIME_STATUS, PendingActionStatus.OPEN.name(),
+                    ConvEnginePayloadKey.ACTION_KEY, actionKey,
+                    ConvEnginePayloadKey.ACTION_REF, actionRef));
         }
 
         InteractionPolicyDecision decision = parseDecision(
                 session.inputParamAsString(ConvEngineInputParamKey.POLICY_DECISION));
         if (decision == InteractionPolicyDecision.EXECUTE_PENDING_ACTION) {
-            runtime.put("status", PendingActionStatus.IN_PROGRESS.name());
-            runtime.put("in_progress_turn", currentTurn);
-            runtime.put("in_progress_at_epoch_ms", now);
+            runtime.put(PendingActionConstants.RUNTIME_STATUS, PendingActionStatus.IN_PROGRESS.name());
+            runtime.put(PendingActionConstants.RUNTIME_IN_PROGRESS_TURN, currentTurn);
+            runtime.put(PendingActionConstants.RUNTIME_IN_PROGRESS_AT_EPOCH_MS, now);
             session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS,
                     PendingActionStatus.IN_PROGRESS.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_LIFECYCLE, session.getConversationId(), mapOf(
-                    "event", "IN_PROGRESS",
-                    "status", PendingActionStatus.IN_PROGRESS.name(),
-                    "actionKey", actionKey,
-                    "actionRef", actionRef));
+                    ConvEnginePayloadKey.EVENT, PendingActionStatus.IN_PROGRESS.name(),
+                    PendingActionConstants.RUNTIME_STATUS, PendingActionStatus.IN_PROGRESS.name(),
+                    ConvEnginePayloadKey.ACTION_KEY, actionKey,
+                    ConvEnginePayloadKey.ACTION_REF, actionRef));
         } else if (decision == InteractionPolicyDecision.REJECT_PENDING_ACTION) {
-            runtime.put("status", PendingActionStatus.REJECTED.name());
-            runtime.put("rejected_turn", currentTurn);
-            runtime.put("rejected_at_epoch_ms", now);
+            runtime.put(PendingActionConstants.RUNTIME_STATUS, PendingActionStatus.REJECTED.name());
+            runtime.put(PendingActionConstants.RUNTIME_REJECTED_TURN, currentTurn);
+            runtime.put(PendingActionConstants.RUNTIME_REJECTED_AT_EPOCH_MS, now);
             session.putInputParam(ConvEngineInputParamKey.PENDING_ACTION_RUNTIME_STATUS,
                     PendingActionStatus.REJECTED.name());
             audit.audit(ConvEngineAuditStage.PENDING_ACTION_LIFECYCLE, session.getConversationId(), mapOf(
-                    "event", "REJECTED",
-                    "status", PendingActionStatus.REJECTED.name(),
-                    "actionKey", actionKey,
-                    "actionRef", actionRef));
+                    ConvEnginePayloadKey.EVENT, PendingActionStatus.REJECTED.name(),
+                    PendingActionConstants.RUNTIME_STATUS, PendingActionStatus.REJECTED.name(),
+                    ConvEnginePayloadKey.ACTION_KEY, actionKey,
+                    ConvEnginePayloadKey.ACTION_REF, actionRef));
         }
 
         contextHelper.writeRoot(session, root);
@@ -127,9 +128,10 @@ public class ActionLifecycleStep implements EngineStep {
         if (runtime.isEmpty()) {
             return true;
         }
-        String existingActionRef = runtime.path("action_ref").asText("");
-        String existingActionKey = runtime.path("action_key").asText("");
-        PendingActionStatus existingStatus = PendingActionStatus.from(runtime.path("status").asText(null), null);
+        String existingActionRef = runtime.path(PendingActionConstants.RUNTIME_ACTION_REF).asText("");
+        String existingActionKey = runtime.path(PendingActionConstants.RUNTIME_ACTION_KEY).asText("");
+        PendingActionStatus existingStatus = PendingActionStatus.from(
+                runtime.path(PendingActionConstants.RUNTIME_STATUS).asText(null), null);
         return !actionRef.equals(existingActionRef)
                 || !(actionKey == null ? "" : actionKey).equals(existingActionKey)
                 || existingStatus == null
@@ -139,8 +141,8 @@ public class ActionLifecycleStep implements EngineStep {
     }
 
     private boolean isExpired(ObjectNode runtime, int currentTurn, long nowEpochMs) {
-        JsonNode expiresTurn = runtime.get("expires_turn");
-        JsonNode expiresAt = runtime.get("expires_at_epoch_ms");
+        JsonNode expiresTurn = runtime.get(PendingActionConstants.RUNTIME_EXPIRES_TURN);
+        JsonNode expiresAt = runtime.get(PendingActionConstants.RUNTIME_EXPIRES_AT_EPOCH_MS);
         boolean turnExpired = expiresTurn != null && expiresTurn.canConvertToInt() && expiresTurn.asInt(-1) >= 0
                 && currentTurn >= expiresTurn.asInt();
         boolean timeExpired = expiresAt != null && expiresAt.canConvertToLong() && expiresAt.asLong(-1L) >= 0
@@ -154,16 +156,16 @@ public class ActionLifecycleStep implements EngineStep {
             return fromInput.trim();
         }
         Map<String, Object> context = session.contextDict();
-        Object fromContext = context.get("pending_action_key");
+        Object fromContext = context.get(PendingActionConstants.CONTEXT_PENDING_ACTION_KEY);
         if (!(fromContext instanceof String)) {
-            fromContext = context.get("pendingActionKey");
+            fromContext = context.get(PendingActionConstants.CONTEXT_PENDING_ACTION_KEY_CAMEL);
         }
         if (fromContext instanceof String s && !s.isBlank()) {
             return s.trim();
         }
-        Object pendingAction = context.get("pending_action");
+        Object pendingAction = context.get(PendingActionConstants.CONTEXT_PENDING_ACTION);
         if (pendingAction instanceof Map<?, ?> map) {
-            Object k = map.get("action_key");
+            Object k = map.get(PendingActionConstants.RUNTIME_ACTION_KEY);
             if (k instanceof String s && !s.isBlank()) {
                 return s.trim();
             }
