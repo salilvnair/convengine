@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ClarificationConstants;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
@@ -143,6 +144,8 @@ public class AgentIntentResolver implements IntentResolver {
                 .userPrompt(USER_PROMPT)
                 .context(session.getContextJson())
                 .userInput(session.getUserText())
+                .resolvedUserInput(session.getResolvedUserInput())
+                .standaloneQuery(session.getStandaloneQuery())
                 .allowedIntents(allowedIntents)
                 .pendingClarification(pendingClarification)
                 .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
@@ -158,18 +161,28 @@ public class AgentIntentResolver implements IntentResolver {
         llmInput.put("systemPrompt", systemPrompt);
         llmInput.put("userPrompt", userPrompt);
         audit.audit(ConvEngineAuditStage.INTENT_AGENT_LLM_INPUT, conversationId, llmInput);
+        verbosePublisher.publish(session, "AgentIntentResolver", "INTENT_AGENT_LLM_INPUT", null, null, false, llmInput);
 
         LlmInvocationContext.set(conversationId, session.getIntent(), session.getState());
-        String output = llm.generateJson(
-                systemPrompt + "\n\n" + userPrompt,
-                null,
-                session.getContextJson());
+        String output;
+        try {
+            output = llm.generateJson(
+                    systemPrompt + "\n\n" + userPrompt,
+                    null,
+                    session.getContextJson());
+        } catch (Exception e) {
+            verbosePublisher.publish(session, "AgentIntentResolver", "INTENT_AGENT_LLM_ERROR", null, null, true,
+                    Map.of("error", String.valueOf(e.getMessage())));
+            throw e;
+        }
 
         session.setLastLlmOutput(output);
         session.setLastLlmStage("INTENT_AGENT");
         session.setPayload(new JsonPayload(output));
         session.getConversation().setLastAssistantJson(output);
         audit.audit(ConvEngineAuditStage.INTENT_AGENT_LLM_OUTPUT, conversationId, Map.of("json", output));
+        verbosePublisher.publish(session, "AgentIntentResolver", "INTENT_AGENT_LLM_OUTPUT", null, null, false,
+                Map.of("json", output));
 
         JsonNode node = parseNode(output);
         if (node == null || !node.isObject()) {
@@ -255,7 +268,7 @@ public class AgentIntentResolver implements IntentResolver {
             }
 
             session.setPendingClarificationQuestion(clarificationQuestion);
-            session.setPendingClarificationReason("AGENT");
+            session.setPendingClarificationReason(ClarificationConstants.REASON_AGENT);
             session.addClarificationHistory();
             if (intent != null && !intent.isBlank()) {
                 session.setIntent(intent);

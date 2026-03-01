@@ -150,6 +150,8 @@ CREATE TABLE ce_prompt_template (
   system_prompt CLOB NOT NULL,
   user_prompt CLOB NOT NULL,
   temperature NUMBER(3,2) DEFAULT 0.0 NOT NULL,
+  interaction_mode VARCHAR2(50),
+  interaction_contract CLOB,
   enabled NUMBER(1) DEFAULT 1 NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   CONSTRAINT ce_prompt_template_intent_not_blank CHECK (TRIM(intent_code) IS NOT NULL),

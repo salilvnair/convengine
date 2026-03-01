@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.engine.response.type.provider;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.ResponseTypeConstants;
 import com.github.salilvnair.convengine.engine.response.format.core.OutputFormatResolver;
 import com.github.salilvnair.convengine.engine.response.format.factory.OutputFormatResolverFactory;
 import com.github.salilvnair.convengine.engine.response.type.core.ResponseTypeResolver;
@@ -25,7 +26,7 @@ public class DerivedTextResponseTypeResolver implements ResponseTypeResolver {
 
     @Override
     public String type() {
-        return "DERIVED";
+        return ResponseTypeConstants.DERIVED;
     }
 
     @Override

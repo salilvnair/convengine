@@ -3,6 +3,12 @@ package com.github.salilvnair.convengine.transport.verbose.resolve.provider;
 import com.github.salilvnair.convengine.api.dto.VerboseStreamPayload;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.entity.CeVerbose;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineSyntaxConstants;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
+import com.github.salilvnair.convengine.engine.constants.MatchTypeConstants;
+import com.github.salilvnair.convengine.engine.constants.ProcessingStatusConstants;
+import com.github.salilvnair.convengine.template.ThymeleafTemplateRenderer;
+import com.github.salilvnair.convengine.transport.verbose.VerboseConstants;
 import com.github.salilvnair.convengine.transport.verbose.resolve.MessageResolver;
 import com.github.salilvnair.convengine.transport.verbose.resolve.VerboseResolveRequest;
 import com.jayway.jsonpath.JsonPath;
@@ -23,6 +29,7 @@ import java.util.regex.Pattern;
 public class DbVerboseMessageResolver implements MessageResolver {
 
     private final StaticConfigurationCacheService staticCacheService;
+    private final ThymeleafTemplateRenderer templateRenderer;
 
     @Override
     public Optional<VerboseStreamPayload> resolve(VerboseResolveRequest request) {
@@ -48,10 +55,17 @@ public class DbVerboseMessageResolver implements MessageResolver {
             return Optional.empty();
         }
 
-        String text = request.error()
+        String rawText = request.error()
                 ? firstNonBlank(selected.getErrorMessage(), selected.getMessage())
                 : firstNonBlank(selected.getMessage(), selected.getErrorMessage());
-        if (isBlank(text)) {
+        if (isBlank(rawText)) {
+            return Optional.empty();
+        }
+        String renderedText = templateRenderer.render(rawText, request.session(), request.metadata());
+        String renderedMessage = templateRenderer.render(selected.getMessage(), request.session(), request.metadata());
+        String renderedErrorMessage = templateRenderer.render(selected.getErrorMessage(), request.session(),
+                request.metadata());
+        if (isBlank(renderedText)) {
             return Optional.empty();
         }
 
@@ -59,24 +73,27 @@ public class DbVerboseMessageResolver implements MessageResolver {
         if (request.metadata() != null) {
             metadata.putAll(request.metadata());
         }
-        metadata.putIfAbsent("severity", request.error() ? "ERROR" : "INFO");
-        metadata.putIfAbsent("theme", request.error() ? "danger" : "progress");
-        metadata.putIfAbsent("icon", request.error() ? "warning" : "spark");
+        metadata.putIfAbsent(VerboseConstants.METADATA_SEVERITY,
+                request.error() ? ProcessingStatusConstants.ERROR : ProcessingStatusConstants.INFO);
+        metadata.putIfAbsent(VerboseConstants.METADATA_THEME,
+                request.error() ? VerboseConstants.THEME_DANGER : VerboseConstants.THEME_PROGRESS);
+        metadata.putIfAbsent(VerboseConstants.METADATA_ICON,
+                request.error() ? VerboseConstants.ICON_WARNING : VerboseConstants.ICON_SPARK);
 
         return Optional.of(
                 VerboseStreamPayload.builder()
                         .verboseId(selected.getVerboseId())
-                        .eventType("VERBOSE_PROGRESS")
+                        .eventType(VerboseConstants.EVENT_TYPE_VERBOSE_PROGRESS)
                         .stepName(request.stepName())
                         .determinant(request.determinant())
                         .intent(request.intent())
                         .state(request.state())
                         .ruleId(request.ruleId())
                         .toolCode(request.toolCode())
-                        .level(request.error() ? "ERROR" : "INFO")
-                        .text(text)
-                        .message(selected.getMessage())
-                        .errorMessage(selected.getErrorMessage())
+                        .level(request.error() ? ProcessingStatusConstants.ERROR : ProcessingStatusConstants.INFO)
+                        .text(renderedText)
+                        .message(renderedMessage)
+                        .errorMessage(renderedErrorMessage)
                         .metadata(metadata)
                         .build());
     }
@@ -92,7 +109,7 @@ public class DbVerboseMessageResolver implements MessageResolver {
         if (isBlank(verbose.getDeterminant())) {
             return true;
         }
-        return "ANY".equalsIgnoreCase(verbose.getDeterminant().trim())
+        return ConvEngineValue.ANY.equalsIgnoreCase(verbose.getDeterminant().trim())
                 || verbose.getDeterminant().trim().equalsIgnoreCase(determinant.trim());
     }
 
@@ -103,10 +120,10 @@ public class DbVerboseMessageResolver implements MessageResolver {
         String match = normalizeStepMatch(verbose.getStepMatch());
         String value = verbose.getStepValue().trim();
         return switch (match) {
-            case "REGEX" -> matchesRegex(value, request.stepName());
-            case "JSON_PATH" -> matchesJsonPath(value, request.metadata());
+            case MatchTypeConstants.REGEX -> matchesRegex(value, request.stepName());
+            case MatchTypeConstants.JSON_PATH -> matchesJsonPath(value, request.metadata());
             default -> value.equalsIgnoreCase(request.stepName().trim())
-                    || "ANY".equalsIgnoreCase(value);
+                    || ConvEngineValue.ANY.equalsIgnoreCase(value);
         };
     }
 
@@ -128,7 +145,8 @@ public class DbVerboseMessageResolver implements MessageResolver {
             if (value instanceof Boolean b) {
                 return b;
             }
-            return !String.valueOf(value).isBlank() && !"false".equalsIgnoreCase(String.valueOf(value));
+            return !String.valueOf(value).isBlank()
+                    && !ConvEngineSyntaxConstants.BOOLEAN_FALSE.equalsIgnoreCase(String.valueOf(value));
         } catch (Exception e) {
             return false;
         }
@@ -149,17 +167,17 @@ public class DbVerboseMessageResolver implements MessageResolver {
         if (!isBlank(verbose.getStateCode()) && verbose.getStateCode().equalsIgnoreCase(request.state())) {
             score += 300;
         }
-        if (!isBlank(verbose.getDeterminant()) && !"ANY".equalsIgnoreCase(verbose.getDeterminant())
+        if (!isBlank(verbose.getDeterminant()) && !ConvEngineValue.ANY.equalsIgnoreCase(verbose.getDeterminant())
                 && verbose.getDeterminant().equalsIgnoreCase(request.determinant())) {
             score += 250;
         }
         String stepMatch = normalizeStepMatch(verbose.getStepMatch());
-        if ("EXACT".equals(stepMatch) && !isBlank(verbose.getStepValue())
+        if (MatchTypeConstants.EXACT.equals(stepMatch) && !isBlank(verbose.getStepValue())
                 && verbose.getStepValue().equalsIgnoreCase(request.stepName())) {
             score += 225;
-        } else if ("REGEX".equals(stepMatch) && !isBlank(verbose.getStepValue())) {
+        } else if (MatchTypeConstants.REGEX.equals(stepMatch) && !isBlank(verbose.getStepValue())) {
             score += 150;
-        } else if ("JSON_PATH".equals(stepMatch) && !isBlank(verbose.getStepValue())) {
+        } else if (MatchTypeConstants.JSON_PATH.equals(stepMatch) && !isBlank(verbose.getStepValue())) {
             score += 100;
         }
         if (verbose.getRuleId() != null && request.ruleId() != null && verbose.getRuleId().equals(request.ruleId())) {
@@ -192,11 +210,13 @@ public class DbVerboseMessageResolver implements MessageResolver {
 
     private String normalizeStepMatch(String stepMatch) {
         if (isBlank(stepMatch)) {
-            return "EXACT";
+            return MatchTypeConstants.EXACT;
         }
         String normalized = stepMatch.trim().toUpperCase(Locale.ROOT);
-        if (!"EXACT".equals(normalized) && !"REGEX".equals(normalized) && !"JSON_PATH".equals(normalized)) {
-            return "EXACT";
+        if (!MatchTypeConstants.EXACT.equals(normalized)
+                && !MatchTypeConstants.REGEX.equals(normalized)
+                && !MatchTypeConstants.JSON_PATH.equals(normalized)) {
+            return MatchTypeConstants.EXACT;
         }
         return normalized;
     }

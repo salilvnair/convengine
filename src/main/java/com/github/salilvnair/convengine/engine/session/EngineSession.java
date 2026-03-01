@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
@@ -39,6 +40,7 @@ public class EngineSession {
     // This is useful in cases where we want to rewrite the query based
     // on conversation history and then use that rewritten query for intent detection and other things
     private String standaloneQuery;
+    private String resolvedUserInput;
     private String intent;
     private String state;
     private boolean intentLocked;
@@ -103,7 +105,23 @@ public class EngineSession {
             ConvEngineInputParamKey.INTENT_TOP3,
             ConvEngineInputParamKey.INTENT_COLLISION_CANDIDATES,
             ConvEngineInputParamKey.FOLLOWUPS,
-            ConvEngineInputParamKey.AGENT_RESOLVER);
+            ConvEngineInputParamKey.AGENT_RESOLVER,
+            ConvEngineInputParamKey.DIALOGUE_ACT,
+            ConvEngineInputParamKey.DIALOGUE_ACT_CONFIDENCE,
+            ConvEngineInputParamKey.DIALOGUE_ACT_SOURCE,
+            ConvEngineInputParamKey.DIALOGUE_ACT_REGEX,
+            ConvEngineInputParamKey.DIALOGUE_ACT_REGEX_CONFIDENCE,
+            ConvEngineInputParamKey.DIALOGUE_ACT_LLM_CANDIDATE,
+            ConvEngineInputParamKey.DIALOGUE_ACT_LLM_CONFIDENCE,
+            ConvEngineInputParamKey.DIALOGUE_ACT_LLM_STANDALONE_QUERY,
+            ConvEngineInputParamKey.DIALOGUE_ACT_GUARD_APPLIED,
+            ConvEngineInputParamKey.DIALOGUE_ACT_GUARD_REASON,
+            ConvEngineInputParamKey.STANDALONE_QUERY,
+            ConvEngineInputParamKey.RESOLVED_USER_INPUT,
+            ConvEngineInputParamKey.ROUTING_DECISION,
+            ConvEngineInputParamKey.SKIP_SCHEMA_EXTRACTION,
+            ConvEngineInputParamKey.CORRECTION_APPLIED,
+            ConvEngineInputParamKey.CORRECTION_TARGET_FIELD);
     private static final Pattern SAFE_INPUT_KEY_PATTERN = Pattern.compile("^[a-zA-Z0-9_.-]{1,120}$");
     private static final Set<String> RESET_CONTROL_KEYS = Set.of("reset", "restart", "conversation_reset");
 
@@ -139,6 +157,27 @@ public class EngineSession {
         if (engineContext.getInputParams() != null) {
             mergeInputParams(engineContext.getInputParams(), true, false);
         }
+        syncDerivedPromptInputs();
+    }
+
+    public void setUserText(String userText) {
+        this.userText = userText;
+        syncDerivedPromptInputs();
+    }
+
+    public void setStandaloneQuery(String standaloneQuery) {
+        this.standaloneQuery = standaloneQuery;
+        syncDerivedPromptInputs();
+    }
+
+    private void syncDerivedPromptInputs() {
+        this.resolvedUserInput = hasText(standaloneQuery) ? standaloneQuery : userText;
+        putInputParam(ConvEngineInputParamKey.STANDALONE_QUERY, hasText(standaloneQuery) ? standaloneQuery : null);
+        putInputParam(ConvEngineInputParamKey.RESOLVED_USER_INPUT, resolvedUserInput);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private void mergeInputParams(Map<String, Object> params, boolean overwrite, boolean fromSystemWrite) {
@@ -391,6 +430,8 @@ public class EngineSession {
         sessionMap.put("missingRequiredFields", missingRequiredFields);
         sessionMap.put("missingFieldOptions", missingFieldOptions);
         sessionMap.put("userText", userText);
+        sessionMap.put("standaloneQuery", standaloneQuery);
+        sessionMap.put("resolvedUserInput", resolvedUserInput);
         sessionMap.put("pendingClarificationQuestion", pendingClarificationQuestion);
         sessionMap.put("lastLlmStage", lastLlmStage);
         sessionMap.put("postIntentRule", postIntentRule);
@@ -561,7 +602,7 @@ public class EngineSession {
 
     public void lockIntent(String reason) {
         this.intentLocked = true;
-        this.intentLockReason = reason == null || reason.isBlank() ? "UNKNOWN" : reason;
+        this.intentLockReason = reason == null || reason.isBlank() ? ConvEngineValue.UNKNOWN : reason;
     }
 
     public void unlockIntent() {
@@ -570,9 +611,11 @@ public class EngineSession {
     }
 
     public void resetForConversationRestart() {
-        this.intent = "UNKNOWN";
-        this.state = "UNKNOWN";
+        this.intent = ConvEngineValue.UNKNOWN;
+        this.state = ConvEngineValue.UNKNOWN;
         this.contextJson = "{}";
+        this.standaloneQuery = null;
+        this.resolvedUserInput = null;
         this.resolvedSchema = null;
         this.schemaComplete = false;
         this.schemaHasAnyValue = false;
@@ -615,6 +658,7 @@ public class EngineSession {
             }
             mergeInputParams(requestParams, true, false);
         }
+        syncDerivedPromptInputs();
     }
 
     @SuppressWarnings("unchecked")

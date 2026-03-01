@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.salilvnair</groupId>
     <artifactId>convengine</artifactId>
-    <version>2.0.8</version>
+    <version>2.0.9</version>
     <name>ConversationEngine Framework</name>
     <description>ConvEngine is a deterministic, database-configured conversational engine designed for enterprise workflows.</description>
     <url>https://github.com/salilvnair/convengine</url>
@@ -101,6 +101,11 @@
             <artifactId>spring-messaging</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.thymeleaf</groupId>
+            <artifactId>thymeleaf-spring6</artifactId>
+        </dependency>
+
         <!-- JPA -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -157,6 +162,12 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
             <version>${version.common-lang3}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
 
     </dependencies>

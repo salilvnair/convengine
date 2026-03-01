@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
@@ -72,7 +73,7 @@ public class ResponseResolutionStep implements EngineStep {
                     "No response found for intent=" + session.getIntent() + ", state=" + session.getState());
         }
         CeResponse resp = responseOptional.get();
-        if (!matches(resp.getStateCode(), session.getState()) && !matches(resp.getStateCode(), "ANY")) {
+        if (!matches(resp.getStateCode(), session.getState()) && !matches(resp.getStateCode(), ConvEngineValue.ANY)) {
             session.setState(resp.getStateCode());
             session.getConversation().setStateCode(resp.getStateCode());
         }
@@ -85,6 +86,8 @@ public class ResponseResolutionStep implements EngineStep {
                 session.getConversationId(),
                 responsePayload);
         verbosePublisher.publish(session, "ResponseResolutionStep", "RESOLVE_RESPONSE", null, null, false, responsePayload);
+        verbosePublisher.publish(session, "ResponseResolutionStep", "RESOLVE_RESPONSE_SELECTED", null, null, false,
+                responsePayload);
 
         CePromptTemplate template = null;
         if (ResponseType.DERIVED.name().equalsIgnoreCase(resp.getResponseType())) {
@@ -93,7 +96,7 @@ public class ResponseResolutionStep implements EngineStep {
                     .filter(t -> resp.getOutputFormat().equalsIgnoreCase(t.getResponseType()))
                     .filter(t -> matchesOrNull(t.getIntentCode(), session.getIntent()))
                     .filter(t -> matchesOrNull(t.getStateCode(), session.getState())
-                            || matches(t.getStateCode(), "ANY"))
+                            || matches(t.getStateCode(), ConvEngineValue.ANY))
                     .max(Comparator.comparingInt(t -> score(t, session)))
                     .orElseThrow(() -> new IllegalStateException(
                             "No ce_prompt_template found for response_type=" +
@@ -132,7 +135,7 @@ public class ResponseResolutionStep implements EngineStep {
         List<CeResponse> candidates = staticCacheService.getAllResponses().stream()
                 .filter(CeResponse::isEnabled)
                 .filter(r -> matches(r.getIntentCode(), session.getIntent()) || r.getIntentCode() == null)
-                .filter(r -> matches(r.getStateCode(), session.getState()) || matches(r.getStateCode(), "ANY"))
+                .filter(r -> matches(r.getStateCode(), session.getState()) || matches(r.getStateCode(), ConvEngineValue.ANY))
                 .collect(Collectors.toList());
 
         if (candidates.isEmpty()) {
@@ -153,7 +156,7 @@ public class ResponseResolutionStep implements EngineStep {
     private int responseScore(CeResponse response, EngineSession session) {
         int exactState = matches(response.getStateCode(), session.getState()) ? 1 : 0;
         int exactIntent = matches(response.getIntentCode(), session.getIntent()) ? 1 : 0;
-        int anyState = matches(response.getStateCode(), "ANY") ? 1 : 0;
+        int anyState = matches(response.getStateCode(), ConvEngineValue.ANY) ? 1 : 0;
         int anyIntent = response.getIntentCode() == null ? 1 : 0;
         int priority = response.getPriority() == null ? 999999 : response.getPriority();
         return (exactState * 1000) + (exactIntent * 100) + (anyState * 10) + anyIntent - priority;
@@ -167,7 +170,7 @@ public class ResponseResolutionStep implements EngineStep {
         int intentScore = matches(template.getIntentCode(), session.getIntent()) ? 2 : 1;
         int stateScore = matches(template.getStateCode(), session.getState())
                 ? 2
-                : (matches(template.getStateCode(), "ANY") ? 1 : 0);
+                : (matches(template.getStateCode(), ConvEngineValue.ANY) ? 1 : 0);
         return (intentScore * 10) + (stateScore * 5);
     }
 }

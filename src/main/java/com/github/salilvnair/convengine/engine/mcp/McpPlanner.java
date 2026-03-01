@@ -15,6 +15,7 @@ import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
+import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -82,6 +83,7 @@ public class McpPlanner {
     private final LlmClient llm;
     private final AuditService audit;
     private final CeConfigResolver configResolver;
+    private final VerboseMessagePublisher verbosePublisher;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -99,6 +101,8 @@ public class McpPlanner {
                 .userPrompt(promptSet.userPrompt())
                 .context(session.getContextJson())
                 .userInput(session.getUserText())
+                .resolvedUserInput(session.getResolvedUserInput())
+                .standaloneQuery(session.getStandaloneQuery())
                 .mcpTools(toolsJson)
                 .mcpObservations(obsJson)
                 .extra(session.promptTemplateVars())
@@ -128,17 +132,26 @@ public class McpPlanner {
         inputPayload.put(ConvEnginePayloadKey.USER_PROMPT, userPrompt);
         inputPayload.put(ConvEnginePayloadKey.SCHEMA, schema);
         audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_INPUT, session.getConversationId(), inputPayload);
+        verbosePublisher.publish(session, "McpPlanner", "MCP_PLAN_LLM_INPUT", null, null, false, inputPayload);
 
         LlmInvocationContext.set(
                 session.getConversationId(),
                 session.getIntent(),
                 session.getState());
 
-        String out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
+        String out;
+        try {
+            out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
+        } catch (Exception e) {
+            verbosePublisher.publish(session, "McpPlanner", "MCP_PLAN_LLM_ERROR", null, null, true,
+                    Map.of("error", String.valueOf(e.getMessage())));
+            throw e;
+        }
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
         outputPayload.put(ConvEnginePayloadKey.JSON, out);
         audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT, session.getConversationId(), outputPayload);
+        verbosePublisher.publish(session, "McpPlanner", "MCP_PLAN_LLM_OUTPUT", null, null, false, outputPayload);
 
         try {
             return mapper.readValue(out, McpPlan.class);

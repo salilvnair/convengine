@@ -8,6 +8,7 @@ public interface EngineStep {
     enum Name {
         AuditUserInputStep,
         DialogueActStep,
+        CorrectionStep,
         InteractionPolicyStep,
         ActionLifecycleStep,
         DisambiguationStep,

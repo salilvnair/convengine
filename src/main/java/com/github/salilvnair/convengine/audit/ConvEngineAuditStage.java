@@ -3,6 +3,9 @@ package com.github.salilvnair.convengine.audit;
 public enum ConvEngineAuditStage {
     USER_INPUT,
     DIALOGUE_ACT_CLASSIFIED,
+    DIALOGUE_ACT_LLM_INPUT,
+    DIALOGUE_ACT_LLM_OUTPUT,
+    DIALOGUE_ACT_LLM_ERROR,
     INTERACTION_POLICY_DECIDED,
     PENDING_ACTION_SKIPPED,
     PENDING_ACTION_EXECUTED,

@@ -5,6 +5,8 @@ import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineFlowConfig;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.PendingActionConstants;
+import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.dialogue.DialogueAct;
 import com.github.salilvnair.convengine.engine.dialogue.InteractionPolicyDecision;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
@@ -40,21 +42,21 @@ public class InteractionPolicyStep implements EngineStep {
         Map<String, Object> context = session.contextDict();
         Map<String, Object> inputParams = session.getInputParams();
 
-        boolean hasPendingAction = hasValue(context.get("pending_action"))
-                || hasValue(context.get("pendingAction"))
-                || hasValue(inputParams.get("pending_action"))
-                || hasValue(inputParams.get("pendingAction"))
+        boolean hasPendingAction = hasValue(context.get(PendingActionConstants.CONTEXT_PENDING_ACTION))
+                || hasValue(context.get(PendingActionConstants.CONTEXT_PENDING_ACTION_CAMEL))
+                || hasValue(inputParams.get(PendingActionConstants.CONTEXT_PENDING_ACTION))
+                || hasValue(inputParams.get(PendingActionConstants.CONTEXT_PENDING_ACTION_CAMEL))
                 || hasValue(inputParams.get(ConvEngineInputParamKey.PENDING_ACTION_KEY))
-                || hasValue(inputParams.get("pending_action_task"))
+                || hasValue(inputParams.get(PendingActionConstants.INPUT_PENDING_ACTION_TASK))
                 || hasPendingActionFromRegistry(session);
         boolean hasPendingSlot = hasValue(context.get("pending_slot"))
                 || hasValue(context.get("pendingSlot"));
         boolean hasResolvedIntent = session.getIntent() != null
                 && !session.getIntent().isBlank()
-                && !"UNKNOWN".equalsIgnoreCase(session.getIntent());
+                && !ConvEngineValue.UNKNOWN.equalsIgnoreCase(session.getIntent());
         boolean hasResolvedState = session.getState() != null
                 && !session.getState().isBlank()
-                && !"UNKNOWN".equalsIgnoreCase(session.getState());
+                && !ConvEngineValue.UNKNOWN.equalsIgnoreCase(session.getState());
         boolean requireResolvedIntentAndState = flowConfig.getInteractionPolicy().isRequireResolvedIntentAndState();
         boolean hasResolvedContext = !requireResolvedIntentAndState || (hasResolvedIntent && hasResolvedState);
 
@@ -92,8 +94,8 @@ public class InteractionPolicyStep implements EngineStep {
         payload.put(ConvEnginePayloadKey.DIALOGUE_ACT, dialogueAct.name());
         payload.put(ConvEnginePayloadKey.POLICY_DECISION, decision.name());
         payload.put(ConvEnginePayloadKey.SKIP_INTENT_RESOLUTION, skipIntentResolution);
-        payload.put("hasPendingAction", hasPendingAction);
-        payload.put("hasPendingSlot", hasPendingSlot);
+        payload.put(ConvEnginePayloadKey.HAS_PENDING_ACTION, hasPendingAction);
+        payload.put(ConvEnginePayloadKey.HAS_PENDING_SLOT, hasPendingSlot);
         payload.put(ConvEnginePayloadKey.INTENT, session.getIntent());
         payload.put(ConvEnginePayloadKey.STATE, session.getState());
         audit.audit(ConvEngineAuditStage.INTERACTION_POLICY_DECIDED, session.getConversationId(), payload);
@@ -131,8 +133,8 @@ public class InteractionPolicyStep implements EngineStep {
     private boolean hasPendingActionFromRegistry(EngineSession session) {
         if (session.getIntent() == null || session.getIntent().isBlank()
                 || session.getState() == null || session.getState().isBlank()
-                || "UNKNOWN".equalsIgnoreCase(session.getIntent())
-                || "UNKNOWN".equalsIgnoreCase(session.getState())) {
+                || ConvEngineValue.UNKNOWN.equalsIgnoreCase(session.getIntent())
+                || ConvEngineValue.UNKNOWN.equalsIgnoreCase(session.getState())) {
             return false;
         }
         try {

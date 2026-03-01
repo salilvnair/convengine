@@ -248,15 +248,16 @@ If you want `RestWebServiceFacade` flow, implement `HttpApiApiProcessorToolHandl
 
 ```java
 import com.github.salilvnair.api.processor.rest.handler.RestWebServiceHandler;
-import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiApiProcessorToolHandler;
+import com.github.salilvnair.convengine.engine.mcp.executor.adapter.HttpApiProcessorToolHandler;
 import com.github.salilvnair.convengine.engine.mcp.executor.http.ApiProcessorInvocationContext;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
 import org.springframework.stereotype.Component;
+
 import java.util.Map;
 
 @Component
-public class LoanCreditRatingWsToolHandler implements HttpApiApiProcessorToolHandler {
+public class LoanCreditRatingWsToolHandler implements HttpApiProcessorToolHandler {
 
     private final LoanCreditRatingRestWebServiceHandler wsHandler;
 

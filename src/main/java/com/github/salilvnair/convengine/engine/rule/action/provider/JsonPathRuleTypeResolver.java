@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.rule.action.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.salilvnair.convengine.engine.constants.MatchTypeConstants;
 import com.github.salilvnair.convengine.engine.rule.action.helper.RuleConditionEvaluator;
 import com.github.salilvnair.convengine.engine.rule.type.core.RuleTypeResolver;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
@@ -21,7 +22,7 @@ public class JsonPathRuleTypeResolver implements RuleTypeResolver {
     private final RuleConditionEvaluator ruleConditionEvaluator;
     @Override
     public String type() {
-        return "JSON_PATH";
+        return MatchTypeConstants.JSON_PATH;
     }
 
     @Override
