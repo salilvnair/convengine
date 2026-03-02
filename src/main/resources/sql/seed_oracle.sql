@@ -285,3 +285,11 @@ INSERT INTO ce_verbose
 (verbose_id, intent_code, state_code, step_match, step_value, determinant, rule_id, tool_code, message, error_message, priority, enabled)
 VALUES
 (20, 'ANY', 'ANY', 'EXACT', 'OutputFormatResolverFactory', 'OUTPUT_FORMAT_RESOLVER_NOT_FOUND', NULL, NULL, 'No output formatter matched.', 'No output format resolver found.', 10, 1);
+INSERT INTO ce_verbose
+(verbose_id, intent_code, state_code, step_match, step_value, determinant, rule_id, tool_code, message, error_message, priority, enabled)
+VALUES
+(21, 'ANY', 'ANY', 'EXACT', 'McpDbExecutor', 'MCP_DB_SQL_EXECUTION', NULL, NULL, 'Executing MCP database query.', 'MCP database query failed.', 15, 1);
+INSERT INTO ce_verbose
+(verbose_id, intent_code, state_code, step_match, step_value, determinant, rule_id, tool_code, message, error_message, priority, enabled)
+VALUES
+(22, 'ANY', 'ANY', 'EXACT', 'DbkgQueryTemplateStepExecutor', 'DBKG_QUERY_SQL_EXECUTION', NULL, NULL, 'Running Database Knowledge Graph query template.', 'Database Knowledge Graph query template failed.', 15, 1);

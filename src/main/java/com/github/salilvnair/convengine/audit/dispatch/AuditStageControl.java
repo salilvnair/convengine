@@ -20,7 +20,7 @@ public class AuditStageControl {
     private final Map<String, WindowCounter> rateBuckets = new ConcurrentHashMap<>();
     private final AtomicLong droppedByRate = new AtomicLong();
 
-    public boolean shouldAudit(String stage, UUID conversationId) {
+    public boolean shouldAudit(String stage, UUID conversationId, String intentCode) {
         if (!auditConfig.isEnabled()) {
             return false;
         }
@@ -29,6 +29,9 @@ public class AuditStageControl {
             return false;
         }
         if (!allowByIncludeExclude(normalized)) {
+            return false;
+        }
+        if (!allowByIntentIncludeExclude(intentCode)) {
             return false;
         }
         return allowByRateLimit(normalized, conversationId);
@@ -64,6 +67,27 @@ public class AuditStageControl {
             boolean excluded = auditConfig.getExcludeStages().stream()
                     .map(this::normalize)
                     .anyMatch(pattern -> matches(pattern, stage));
+            if (excluded) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean allowByIntentIncludeExclude(String intentCode) {
+        String normalizedIntent = normalize(intentCode);
+        if (!auditConfig.getIncludeIntents().isEmpty()) {
+            boolean anyMatch = auditConfig.getIncludeIntents().stream()
+                    .map(this::normalize)
+                    .anyMatch(pattern -> matches(pattern, normalizedIntent));
+            if (!anyMatch) {
+                return false;
+            }
+        }
+        if (!auditConfig.getExcludeIntents().isEmpty()) {
+            boolean excluded = auditConfig.getExcludeIntents().stream()
+                    .map(this::normalize)
+                    .anyMatch(pattern -> matches(pattern, normalizedIntent));
             if (excluded) {
                 return false;
             }

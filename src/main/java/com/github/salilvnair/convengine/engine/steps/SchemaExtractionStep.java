@@ -1,5 +1,8 @@
 package com.github.salilvnair.convengine.engine.steps;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
@@ -34,6 +37,8 @@ import java.util.Map;
 @Component
 @RequiresConversationPersisted
 public class SchemaExtractionStep implements EngineStep {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private final StaticConfigurationCacheService staticCacheService;
     private final PromptTemplateRenderer renderer;
     private final LlmClient llm;
@@ -170,6 +175,7 @@ public class SchemaExtractionStep implements EngineStep {
                 llmOutputPayload);
 
         String merged = schemaResolver.mergeContextJson(session.getContextJson(), extractedJson);
+        merged = clearStaleMcpContextIfIdentifiersUpdated(merged, extractedJson);
         session.setContextJson(merged);
         session.getConversation().setContextJson(merged);
 
@@ -274,5 +280,45 @@ public class SchemaExtractionStep implements EngineStep {
 
     private int priorityOf(CeOutputSchema schema) {
         return schema.getPriority() == null ? Integer.MAX_VALUE : schema.getPriority();
+    }
+
+    private String clearStaleMcpContextIfIdentifiersUpdated(String mergedContextJson, String extractedJson) {
+        if (!hasFreshExtractedValues(extractedJson)) {
+            return mergedContextJson;
+        }
+        try {
+            JsonNode root = JsonUtil.parseOrNull(safeJson(mergedContextJson));
+            if (!(root instanceof ObjectNode objectNode)) {
+                return mergedContextJson;
+            }
+            objectNode.remove("mcp");
+            return MAPPER.writeValueAsString(objectNode);
+        } catch (Exception e) {
+            return mergedContextJson;
+        }
+    }
+
+    private boolean hasFreshExtractedValues(String extractedJson) {
+        try {
+            JsonNode extracted = JsonUtil.parseOrNull(extractedJson);
+            if (!extracted.isObject()) {
+                return false;
+            }
+            java.util.Iterator<Map.Entry<String, JsonNode>> fields = extracted.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                JsonNode value = field.getValue();
+                if (value == null || value.isNull()) {
+                    continue;
+                }
+                if (value.isTextual() && value.asText().isBlank()) {
+                    continue;
+                }
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

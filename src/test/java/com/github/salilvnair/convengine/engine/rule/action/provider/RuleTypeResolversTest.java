@@ -26,6 +26,15 @@ class RuleTypeResolversTest {
     }
 
     @Test
+    void exactRuleTypeResolverTreatsAnyAsWildcard() {
+        ExactRuleTypeResolver resolver = new ExactRuleTypeResolver();
+        EngineSession session = newSession("AccountId is UPSA100");
+        CeRule rule = rule("ANY");
+
+        assertTrue(resolver.resolve(session, rule));
+    }
+
+    @Test
     void regexRuleTypeResolverFindsPatternIgnoringCase() {
         RegexRuleTypeResolver resolver = new RegexRuleTypeResolver();
         EngineSession session = newSession("Please process the loan");

@@ -24,6 +24,7 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - **Verbose and audit coverage expansion**:
   - added LLM input/output/error verbose stages across dialogue act, intent, schema extraction, MCP planning, and response generation
   - `MCP_TOOL_CALL` now emits richer tool/action/intent/state metadata
+  - `MCP_DB_SQL_EXECUTION` and `DBKG_QUERY_SQL_EXECUTION` now emit audit + `ce_verbose` events with SQL text, bind params, row counts, and rows
   - new `ConvEngineVerboseAdapter` lets consumer hooks, transformers, and custom beans publish DB-resolved or direct UI verbose events
 - **Constant hygiene and control-path cleanup**:
   - centralized routing, correction, syntax, pending-action, guardrail, response/output, and verbose keys in constants
@@ -226,6 +227,10 @@ Main runtime stages:
 
 - `step_match`: `EXACT`, `REGEX`, `JSON_PATH`
 - `determinant`: use emitted runtime determinants such as `STEP_ENTER`, `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, `DIALOGUE_ACT_LLM_ERROR`, `MCP_TOOL_CALL`, `RESOLVE_RESPONSE_LLM_OUTPUT`
+- SQL observability determinants:
+  - `MCP_DB_SQL_EXECUTION` from `McpDbExecutor`
+  - `DBKG_QUERY_SQL_EXECUTION` from `DbkgQueryTemplateStepExecutor`
+  - metadata includes `sql`, `params`, `row_count`, and `rows`
 
 ## Flow Configuration (application.yml)
 

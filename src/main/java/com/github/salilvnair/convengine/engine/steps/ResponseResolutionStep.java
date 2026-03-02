@@ -93,7 +93,7 @@ public class ResponseResolutionStep implements EngineStep {
         if (ResponseType.DERIVED.name().equalsIgnoreCase(resp.getResponseType())) {
             template = staticCacheService.getAllPromptTemplates().stream()
                     .filter(CePromptTemplate::isEnabled)
-                    .filter(t -> resp.getOutputFormat().equalsIgnoreCase(t.getResponseType()))
+                    .filter(t -> resp.getResponseType().equalsIgnoreCase(t.getResponseType()))
                     .filter(t -> matchesOrNull(t.getIntentCode(), session.getIntent()))
                     .filter(t -> matchesOrNull(t.getStateCode(), session.getState())
                             || matches(t.getStateCode(), ConvEngineValue.ANY))

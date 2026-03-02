@@ -190,20 +190,21 @@ public class McpToolStep implements EngineStep {
                     observations.isEmpty() ? McpConstants.FLOW_START : observations.get(observations.size() - 1).toolCode());
             verbosePublisher.publish(session, "McpToolStep", "MCP_TOOL_CALL", null, toolCode, false, toolCallPayload);
 
-            if (!isAllowedByNextToolGuardrail(toolCode, observations)) {
+            String guardrailBlockReason = nextToolGuardrailBlockReason(toolCode, observations);
+            if (guardrailBlockReason != null) {
                 writeFinalAnswerToContext(session, McpConstants.FALLBACK_GUARDRAIL_BLOCKED);
                 session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, McpConstants.FALLBACK_GUARDRAIL_BLOCKED);
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_GUARDRAIL_BLOCKED);
                 writeLifecycleToContext(session, McpConstants.STATUS_GUARDRAIL_BLOCKED, McpConstants.OUTCOME_BLOCKED,
                         true, true, false, plan.action(), toolCode, null, args,
-                        "NEXT_TOOL_GUARDRAIL_BLOCKED");
-                verbosePublisher.publish(session, "McpToolStep", "MCP_TOOL_ERROR", null, toolCode, true, mapOf("tool_code", toolCode, "error", "NEXT_TOOL_GUARDRAIL_BLOCKED"));
+                        guardrailBlockReason);
+                verbosePublisher.publish(session, "McpToolStep", "MCP_TOOL_ERROR", null, toolCode, true, mapOf("tool_code", toolCode, "error", guardrailBlockReason));
                 audit.audit(
                         ConvEngineAuditStage.MCP_TOOL_ERROR,
                         session.getConversationId(),
                         mapOf(
                                 "tool_code", toolCode,
-                                "error", "NEXT_TOOL_GUARDRAIL_BLOCKED",
+                                "error", guardrailBlockReason,
                                 "current_observation_tool",
                                 observations.isEmpty() ? McpConstants.FLOW_START : observations.get(observations.size() - 1).toolCode()));
                 break;
@@ -372,6 +373,9 @@ public class McpToolStep implements EngineStep {
             }
 
             session.setContextJson(mapper.writeValueAsString(root));
+            if (session.getConversation() != null) {
+                session.getConversation().setContextJson(session.getContextJson());
+            }
 
             audit.audit(
                     McpConstants.AUDIT_STAGE_MCP_CONTEXT_CLEARED,
@@ -390,6 +394,20 @@ public class McpToolStep implements EngineStep {
     }
 
     private boolean isAllowedByNextToolGuardrail(String nextToolCode, List<McpObservation> observations) {
+        return nextToolGuardrailBlockReason(nextToolCode, observations) == null;
+    }
+
+    private String nextToolGuardrailBlockReason(String nextToolCode, List<McpObservation> observations) {
+        if (!isAllowedByDbkgValidationGuard(nextToolCode, observations)) {
+            return "DBKG_VALIDATION_REQUIRED_BEFORE_EXECUTION";
+        }
+        if (!isAllowedByConfiguredNextToolGuardrail(nextToolCode, observations)) {
+            return "NEXT_TOOL_GUARDRAIL_BLOCKED";
+        }
+        return null;
+    }
+
+    private boolean isAllowedByConfiguredNextToolGuardrail(String nextToolCode, List<McpObservation> observations) {
         ConvEngineMcpConfig.Guardrail guardrail =
                 mcpConfig == null || mcpConfig.getGuardrail() == null
                         ? new ConvEngineMcpConfig.Guardrail()
@@ -428,6 +446,45 @@ public class McpToolStep implements EngineStep {
             }
         }
         return allowedSet.contains(nextKey);
+    }
+
+    private boolean isAllowedByDbkgValidationGuard(String nextToolCode, List<McpObservation> observations) {
+        if (nextToolCode == null || nextToolCode.isBlank() || mcpConfig == null || mcpConfig.getDb() == null
+                || mcpConfig.getDb().getKnowledgeGraph() == null) {
+            return true;
+        }
+
+        ConvEngineMcpConfig.Db.KnowledgeGraph knowledgeGraph = mcpConfig.getDb().getKnowledgeGraph();
+        String executeToolCode = knowledgeGraph.getInvestigateExecuteToolCode();
+        if (!normalize(nextToolCode).equals(normalize(executeToolCode))) {
+            return true;
+        }
+
+        String validateToolCode = knowledgeGraph.getPlaybookValidateToolCode();
+        if (validateToolCode == null || validateToolCode.isBlank() || CollectionUtils.isEmpty(observations)) {
+            return false;
+        }
+
+        for (int i = observations.size() - 1; i >= 0; i--) {
+            McpObservation observation = observations.get(i);
+            if (!normalize(validateToolCode).equals(normalize(observation.toolCode()))) {
+                continue;
+            }
+            if (isSuccessfulDbkgValidationObservation(observation)) {
+                return true;
+            }
+            return false;
+        }
+        return false;
+    }
+
+    private boolean isSuccessfulDbkgValidationObservation(McpObservation observation) {
+        try {
+            JsonNode root = mapper.readTree(observation.json());
+            return root.path("valid").asBoolean(false) && root.path("canExecute").asBoolean(false);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private String normalize(String value) {

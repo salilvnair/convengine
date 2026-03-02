@@ -24,6 +24,8 @@ public class ConvEngineMcpConfig {
     @Setter
     public static class Db {
         private Knowledge knowledge = new Knowledge();
+        private KnowledgeGraph knowledgeGraph = new KnowledgeGraph();
+        private String sqlGuardrailTable = "ce_mcp_sql_guardrail";
 
         @Getter
         @Setter
@@ -46,6 +48,43 @@ public class ConvEngineMcpConfig {
             private String schemaColumnNameColumn = "column_name";
             private String schemaDescriptionColumn = "description";
             private String schemaTagsColumn = "tags";
+        }
+
+        @Getter
+        @Setter
+        public static class KnowledgeGraph {
+            private boolean enabled = false;
+            private int maxResults = 5;
+            private int scanLimit = 5000;
+            private boolean schemaIntrospectionEnabled = true;
+            private int schemaObjectLimit = 200;
+            private List<String> includedSchemas = new ArrayList<>(List.of("public"));
+            private List<String> excludedSchemas = new ArrayList<>(List.of("information_schema", "pg_catalog"));
+            private String caseResolveToolCode = "dbkg.case.resolve";
+            private String knowledgeLookupToolCode = "dbkg.knowledge.lookup";
+            private String investigatePlanToolCode = "dbkg.investigate.plan";
+            private String investigateExecuteToolCode = "dbkg.investigate.execute";
+            private String playbookValidateToolCode = "dbkg.playbook.validate";
+
+            private String caseTypeTable = "ce_mcp_case_type";
+            private String caseSignalTable = "ce_mcp_case_signal";
+            private String playbookTable = "ce_mcp_playbook";
+            private String playbookSignalTable = "ce_mcp_playbook_signal";
+            private String domainEntityTable = "ce_mcp_domain_entity";
+            private String domainRelationTable = "ce_mcp_domain_relation";
+            private String systemNodeTable = "ce_mcp_system_node";
+            private String systemRelationTable = "ce_mcp_system_relation";
+            private String apiFlowTable = "ce_mcp_api_flow";
+            private String dbObjectTable = "ce_mcp_db_object";
+            private String dbColumnTable = "ce_mcp_db_column";
+            private String dbJoinPathTable = "ce_mcp_db_join_path";
+            private String statusDictionaryTable = "ce_mcp_status_dictionary";
+            private String idLineageTable = "ce_mcp_id_lineage";
+            private String queryTemplateTable = "ce_mcp_query_template";
+            private String queryParamRuleTable = "ce_mcp_query_param_rule";
+            private String playbookStepTable = "ce_mcp_playbook_step";
+            private String playbookTransitionTable = "ce_mcp_playbook_transition";
+            private String outcomeRuleTable = "ce_mcp_outcome_rule";
         }
     }
 

@@ -20,7 +20,8 @@ public class PromptTemplateContext {
     @PromptVar({ "user_input", "userInput", "user_text", "userText", "input_text", "inputText", "input", "user_message", "userMessage" })
     private String userInput;
 
-    @PromptVar({ "resolved_user_input", "resolvedUserInput", "resolved_input", "resolvedInput", "effective_input",
+    @PromptVar({ "resolved_user_input", "resolvedUserInput", "resolved_input", "resolvedInput", "effective_input","effectiveInput",
+            "effective_user_input", "effectiveUserInput",
             "effectiveInput", "final_user_input", "finalUserInput" })
     private String resolvedUserInput;
 

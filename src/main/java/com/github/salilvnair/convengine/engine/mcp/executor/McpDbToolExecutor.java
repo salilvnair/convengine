@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp.executor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.mcp.McpDbExecutor;
 import com.github.salilvnair.convengine.engine.mcp.McpConstants;
 import com.github.salilvnair.convengine.engine.mcp.McpToolRegistry;
@@ -22,6 +23,7 @@ public class McpDbToolExecutor implements McpToolExecutor {
     private final McpDbExecutor dbExecutor;
     private final McpToolRegistry registry;
     private final List<DbToolHandler> toolHandlers;
+    private final ConvEngineMcpConfig mcpConfig;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -46,8 +48,30 @@ public class McpDbToolExecutor implements McpToolExecutor {
             throw new IllegalStateException(
                     "McpDbToolExecutor can execute only DB tools. toolCode=" + toolCode + ", toolGroup=" + toolGroup);
         }
+        if (isDbkgToolCode(toolCode)) {
+            throw new IllegalStateException(buildDbkgHandlerMissingMessage(toolCode));
+        }
         CeMcpDbTool dbTool = registry.requireDbTool(toolCode);
-        return dbExecutor.execute(dbTool, args);
+        return dbExecutor.execute(dbTool, args, session);
+    }
+
+    private boolean isDbkgToolCode(String toolCode) {
+        return toolCode != null && toolCode.trim().toLowerCase(java.util.Locale.ROOT).startsWith("dbkg.");
+    }
+
+    private String buildDbkgHandlerMissingMessage(String toolCode) {
+        boolean enabled = mcpConfig.getDb() != null
+                && mcpConfig.getDb().getKnowledgeGraph() != null
+                && mcpConfig.getDb().getKnowledgeGraph().isEnabled();
+        if (!enabled) {
+            return "Database Knowledge Graph (DBKG) tool handler is not registered for toolCode=" + toolCode
+                    + ". Enable convengine.mcp.db.knowledge-graph.enabled=true. "
+                    + "dbkg.* tools do not use ce_mcp_db_tool SQL-template rows.";
+        }
+        return "Database Knowledge Graph (DBKG) tool handler is not registered for toolCode=" + toolCode
+                + " even though convengine.mcp.db.knowledge-graph.enabled=true. "
+                + "Check component scanning / bean registration for DbToolHandler implementations. "
+                + "dbkg.* tools do not use ce_mcp_db_tool SQL-template rows.";
     }
 
     private String normalizeResult(Object value) {

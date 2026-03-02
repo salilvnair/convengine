@@ -227,4 +227,6 @@ VALUES
 (17, 'ANY', 'ANY', 'EXACT', 'ResponseTypeResolverFactory', 'RESPONSE_TYPE_RESOLVER_SELECTED', NULL, NULL, 'Selected response strategy.', 'Unable to select response strategy.', 25, 1),
 (18, 'ANY', 'ANY', 'EXACT', 'ResponseTypeResolverFactory', 'RESPONSE_TYPE_RESOLVER_NOT_FOUND', NULL, NULL, 'No response strategy matched.', 'No response type resolver found.', 10, 1),
 (19, 'ANY', 'ANY', 'EXACT', 'OutputFormatResolverFactory', 'OUTPUT_FORMAT_RESOLVER_SELECTED', NULL, NULL, 'Selected response output formatter.', 'Unable to select output formatter.', 25, 1),
-(20, 'ANY', 'ANY', 'EXACT', 'OutputFormatResolverFactory', 'OUTPUT_FORMAT_RESOLVER_NOT_FOUND', NULL, NULL, 'No output formatter matched.', 'No output format resolver found.', 10, 1);
+(20, 'ANY', 'ANY', 'EXACT', 'OutputFormatResolverFactory', 'OUTPUT_FORMAT_RESOLVER_NOT_FOUND', NULL, NULL, 'No output formatter matched.', 'No output format resolver found.', 10, 1),
+(21, 'ANY', 'ANY', 'EXACT', 'McpDbExecutor', 'MCP_DB_SQL_EXECUTION', NULL, NULL, 'Executing MCP database query.', 'MCP database query failed.', 15, 1),
+(22, 'ANY', 'ANY', 'EXACT', 'DbkgQueryTemplateStepExecutor', 'DBKG_QUERY_SQL_EXECUTION', NULL, NULL, 'Running Database Knowledge Graph query template.', 'Database Knowledge Graph query template failed.', 15, 1);

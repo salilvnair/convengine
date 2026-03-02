@@ -60,7 +60,9 @@ public class DbAuditService implements AuditService {
     @Override
     public void audit(String stage, UUID conversationId, String payloadJson) {
         try {
-            if (!stageControl.shouldAudit(stage, conversationId)) {
+            CeConversation conversation = cacheService.getConversation(conversationId).orElse(null);
+            String effectiveIntent = resolveIntentForAuditFilter(conversation);
+            if (!stageControl.shouldAudit(stage, conversationId, effectiveIntent)) {
                 return;
             }
             String normalizedPayload = normalizePayload(stage, conversationId, payloadJson);
@@ -82,6 +84,14 @@ public class DbAuditService implements AuditService {
             // We log and continue so APIs remain non-500 even when audit storage is
             // unavailable.
         }
+    }
+
+    private String resolveIntentForAuditFilter(CeConversation conversation) {
+        EngineSession session = AuditSessionContext.get();
+        if (session != null && session.getIntent() != null && !session.getIntent().isBlank()) {
+            return session.getIntent();
+        }
+        return conversation == null ? null : conversation.getIntentCode();
     }
 
     @Override
