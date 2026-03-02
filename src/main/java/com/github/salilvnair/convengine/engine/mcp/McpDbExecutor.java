@@ -9,6 +9,7 @@ import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublishe
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
@@ -39,8 +40,14 @@ public class McpDbExecutor {
             params.put("limit", Math.min(tool.getMaxRows(), 200));
         }
 
-        List<Map<String, Object>> rows = jdbc.queryForList(sql, params);
-        auditSqlExecution(tool, session, sql, params, rows);
+        List<Map<String, Object>> rows;
+        try {
+            rows = jdbc.queryForList(sql, params);
+            auditSqlExecution(tool, session, sql, params, rows, null);
+        } catch (Exception e) {
+            auditSqlExecution(tool, session, sql, params, List.of(), e);
+            throw e;
+        }
 
         try {
             return mapper.writeValueAsString(rows);
@@ -54,7 +61,8 @@ public class McpDbExecutor {
             EngineSession session,
             String sql,
             Map<String, Object> params,
-            List<Map<String, Object>> rows) {
+            List<Map<String, Object>> rows,
+            Exception error) {
         if (session == null || session.getConversationId() == null || tool == null || tool.getTool() == null) {
             return;
         }
@@ -63,10 +71,49 @@ public class McpDbExecutor {
         payload.put("tool_group", tool.getTool().getToolGroup());
         payload.put("sql", sql);
         payload.put("params", params);
+        payload.put("status", error == null ? "SUCCESS" : "ERROR");
+        payload.put("error", error == null ? null : error.getClass().getName() + ": " + error.getMessage());
+        if (error != null) {
+            payload.putAll(buildErrorPayload(error));
+        }
         payload.put("row_count", rows == null ? 0 : rows.size());
         payload.put("rows", rows == null ? List.of() : rows);
         audit.audit(ConvEngineAuditStage.MCP_DB_SQL_EXECUTION, session.getConversationId(), payload);
         verbosePublisher.publish(session, "McpDbExecutor", "MCP_DB_SQL_EXECUTION", null,
                 tool.getTool().getToolCode(), false, payload);
+    }
+
+    private Map<String, Object> buildErrorPayload(Exception error) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        Throwable root = rootCause(error);
+        details.put("error_class", error.getClass().getName());
+        details.put("error_message", error.getMessage());
+        details.put("root_cause_class", root == null ? null : root.getClass().getName());
+        details.put("root_cause_message", root == null ? null : root.getMessage());
+        SQLException sqlError = sqlException(error);
+        details.put("sql_state", sqlError == null ? null : sqlError.getSQLState());
+        details.put("sql_error_code", sqlError == null ? null : sqlError.getErrorCode());
+        return details;
+    }
+
+    private SQLException sqlException(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof SQLException sqlException) {
+                return sqlException;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private Throwable rootCause(Throwable error) {
+        Throwable current = error;
+        Throwable next = current == null ? null : current.getCause();
+        while (next != null && next != current) {
+            current = next;
+            next = current.getCause();
+        }
+        return current;
     }
 }

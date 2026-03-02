@@ -14,6 +14,7 @@ import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.constants.RoutingDecisionConstants;
 import com.github.salilvnair.convengine.engine.dialogue.DialogueAct;
+import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.mcp.McpConstants;
 import com.github.salilvnair.convengine.engine.mcp.McpPlanner;
 import com.github.salilvnair.convengine.engine.mcp.McpToolRegistry;
@@ -46,7 +47,7 @@ import java.util.Set;
 @MustRunBefore(ResponseResolutionStep.class)
 public class McpToolStep implements EngineStep {
 
-    private static final int MAX_LOOPS = 5;
+    private static final int DEFAULT_MAX_LOOPS = 5;
 
     private final McpToolRegistry registry;
     private final McpPlanner planner;
@@ -55,6 +56,7 @@ public class McpToolStep implements EngineStep {
     private final RulesStep rulesStep;
     private final ConvEngineMcpConfig mcpConfig;
     private final VerboseMessagePublisher verbosePublisher;
+    private final CeConfigResolver configResolver;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -135,7 +137,8 @@ public class McpToolStep implements EngineStep {
         List<McpObservation> observations = readObservationsFromContext(session);
         boolean mcpTouched = false;
 
-        for (int i = 0; i < MAX_LOOPS; i++) {
+        int maxLoops = resolveMaxLoops();
+        for (int i = 0; i < maxLoops; i++) {
 
             McpPlan plan = planner.plan(session, tools, observations);
             mcpTouched = true;
@@ -220,6 +223,7 @@ public class McpToolStep implements EngineStep {
             session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_GROUP, toolGroup);
 
             try {
+                applyToolDelay(i + 1);
                 McpToolExecutor executor = resolveExecutor(toolGroup);
                 String rowsJson = executor.execute(tool, args, session);
 
@@ -237,10 +241,12 @@ public class McpToolStep implements EngineStep {
                         mapOf("tool_code", toolCode, "tool_group", toolGroup, "rows", rowsJson));
 
             } catch (Exception e) {
+                Map<String, Object> errorDetails = buildErrorDetails(e);
                 Map<String, Object> toolErrorPayload = mapOf(
                         "tool_code", toolCode,
                         "tool_group", toolGroup,
                         "error", String.valueOf(e.getMessage()));
+                toolErrorPayload.putAll(errorDetails);
                 audit.audit(
                         ConvEngineAuditStage.MCP_TOOL_ERROR,
                         session.getConversationId(),
@@ -275,6 +281,53 @@ public class McpToolStep implements EngineStep {
             }
         }
         throw new IllegalStateException("No MCP tool executor found for tool group: " + normalizedToolGroup);
+    }
+
+    private int resolveMaxLoops() {
+        int yamlValue = mcpConfig == null ? DEFAULT_MAX_LOOPS : mcpConfig.getToolMaxLoops();
+        int resolved = configResolver.resolveInt(this, "MCP_TOOL_MAX_LOOPS", yamlValue);
+        return Math.max(1, resolved);
+    }
+
+    private void applyToolDelay(int callIndex) {
+        long baseDelayMs = resolveToolDelayMs();
+        if (baseDelayMs > 0) {
+            sleep(baseDelayMs);
+        }
+        DelayPolicy policy = resolveDelayPolicy();
+        if (callIndex > policy.delayAfterCalls && policy.delayAfterMs > 0) {
+            sleep(policy.delayAfterMs);
+        }
+    }
+
+    private long resolveToolDelayMs() {
+        long yamlValue = mcpConfig == null ? 0L : mcpConfig.getToolCallDelayMs();
+        int resolved = configResolver.resolveInt(this, "MCP_TOOL_CALL_DELAY_MS",
+                (int) Math.min(Integer.MAX_VALUE, yamlValue));
+        return Math.max(0L, resolved);
+    }
+
+    private DelayPolicy resolveDelayPolicy() {
+        int yamlCalls = mcpConfig == null ? 4 : mcpConfig.getToolCallDelayAfterCalls();
+        long yamlDelay = mcpConfig == null ? 5000L : mcpConfig.getToolCallDelayAfterMs();
+        int calls = configResolver.resolveInt(this, "MCP_TOOL_CALL_DELAY_AFTER_CALLS", yamlCalls);
+        int delayMs = configResolver.resolveInt(this, "MCP_TOOL_CALL_DELAY_AFTER_MS",
+                (int) Math.min(Integer.MAX_VALUE, yamlDelay));
+        return new DelayPolicy(Math.max(0, calls), Math.max(0L, delayMs));
+    }
+
+    private void sleep(long delayMs) {
+        if (delayMs <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(delayMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private record DelayPolicy(int delayAfterCalls, long delayAfterMs) {
     }
 
     private DialogueAct parseDialogueAct(String raw) {
@@ -545,6 +598,37 @@ public class McpToolStep implements EngineStep {
             session.setContextJson(mapper.writeValueAsString(root));
         } catch (Exception ignored) {
         }
+    }
+
+    private Map<String, Object> buildErrorDetails(Exception error) {
+        Map<String, Object> details = mapOf(
+                "error_class", error == null ? null : error.getClass().getName(),
+                "error_message", error == null ? null : error.getMessage());
+        Throwable root = rootCause(error);
+        details.put("root_cause_class", root == null ? null : root.getClass().getName());
+        details.put("root_cause_message", root == null ? null : root.getMessage());
+        details.put("error_stack_trace", stackTrace(error));
+        return details;
+    }
+
+    private String stackTrace(Throwable error) {
+        if (error == null) {
+            return null;
+        }
+        java.io.StringWriter writer = new java.io.StringWriter();
+        java.io.PrintWriter printer = new java.io.PrintWriter(writer);
+        error.printStackTrace(printer);
+        return writer.toString();
+    }
+
+    private Throwable rootCause(Throwable error) {
+        Throwable current = error;
+        Throwable next = current == null ? null : current.getCause();
+        while (next != null && next != current) {
+            current = next;
+            next = current.getCause();
+        }
+        return current;
     }
 
 }

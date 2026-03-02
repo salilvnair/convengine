@@ -19,6 +19,11 @@ public class ConvEngineMcpConfig {
     private Db db = new Db();
     private HttpApi httpApi = new HttpApi();
     private Guardrail guardrail = new Guardrail();
+    private int toolMaxLoops = 5;
+    private long toolCallDelayMs = 0L;
+    private int toolCallDelayAfterCalls = 4;
+    private long toolCallDelayAfterMs = 2000L;
+    private int plannerMaxObservationChars = 4000;
 
     @Getter
     @Setter
@@ -60,6 +65,8 @@ public class ConvEngineMcpConfig {
             private int schemaObjectLimit = 200;
             private List<String> includedSchemas = new ArrayList<>(List.of("public"));
             private List<String> excludedSchemas = new ArrayList<>(List.of("information_schema", "pg_catalog"));
+            private boolean sqlRefinementEnabled = false;
+            private String sqlDialect = "postgres";
             private String caseResolveToolCode = "dbkg.case.resolve";
             private String knowledgeLookupToolCode = "dbkg.knowledge.lookup";
             private String investigatePlanToolCode = "dbkg.investigate.plan";

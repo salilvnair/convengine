@@ -19,9 +19,13 @@ public class AuditPayloadMapper {
             }
             JsonNode root = mapper.readTree(payloadJson);
             if (!root.isObject()) {
+                if (root.isTextual()) {
+                    return Map.of("value", root.asText());
+                }
                 return Map.of("value", root.toString());
             }
-            return mapper.convertValue(root, new TypeReference<>() {});
+            return mapper.convertValue(root, new TypeReference<>() {
+            });
         } catch (Exception e) {
             return Map.of("raw_payload", payloadJson == null ? "" : payloadJson);
         }

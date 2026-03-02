@@ -11,6 +11,11 @@ import org.springframework.stereotype.Component;
 import java.sql.Timestamp;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -21,6 +26,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -95,11 +102,70 @@ public class DbkgSupportService {
         return normalized;
     }
 
+    public List<Map<String, Object>> normalizeRowValues(List<Map<String, Object>> rows) {
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                item.put(entry.getKey(), normalizeValue(entry.getValue()));
+            }
+            normalized.add(item);
+        }
+        return normalized;
+    }
+
     public Object normalizeValue(Object value) {
         if (value instanceof Timestamp ts) {
             return ts.toInstant().atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         }
+        if (value instanceof java.sql.Date date) {
+            return date.toLocalDate().toString();
+        }
+        if (value instanceof java.sql.Time time) {
+            return time.toLocalTime().toString();
+        }
+        if (value instanceof Instant instant) {
+            return instant.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        }
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        }
+        if (value instanceof ZonedDateTime zonedDateTime) {
+            return zonedDateTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        }
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        }
+        if (value instanceof LocalDate localDate) {
+            return localDate.toString();
+        }
+        if (value instanceof UUID uuid) {
+            return uuid.toString();
+        }
+        if (value instanceof byte[] bytes) {
+            return Base64.getEncoder().encodeToString(bytes);
+        }
+        Object pgValue = extractPgObjectValue(value);
+        if (pgValue != null) {
+            return pgValue;
+        }
         return value;
+    }
+
+    private Object extractPgObjectValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (!"org.postgresql.util.PGobject".equals(value.getClass().getName())) {
+            return null;
+        }
+        try {
+            java.lang.reflect.Method getValue = value.getClass().getMethod("getValue");
+            Object out = getValue.invoke(value);
+            return out == null ? null : String.valueOf(out);
+        } catch (Exception e) {
+            return String.valueOf(value);
+        }
     }
 
     public java.util.Optional<Map<String, Object>> findRowByKey(String tableName, String keyColumn, String value) {

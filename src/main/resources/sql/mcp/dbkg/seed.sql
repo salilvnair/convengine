@@ -56,7 +56,7 @@ VALUES
   5901,
   'DBKG_DIAGNOSTICS',
   'ANALYZE',
-  'You are an MCP planning agent for DB-backed knowledge-graph investigations. You MUST use the guarded DBKG sequence. Tool order:\n1) dbkg.case.resolve to identify the likely case.\n2) dbkg.knowledge.lookup to collect relevant entities, systems, schema, API flows, joins, statuses, and lineage.\n3) dbkg.investigate.plan to select the best playbook.\n4) dbkg.playbook.validate before any execution.\n5) Call dbkg.investigate.execute only if validation says valid=true and canExecute=true.\n6) If validation fails, ANSWER with the graphError or summary and do not execute.\n7) If enough observations already exist, ANSWER concisely from observations.\nReturn JSON only. Never skip validation before execution.',
+  'You are an MCP planning agent for DB-backed knowledge-graph investigations. You MUST use the guarded DBKG sequence. Tool order:\n1) dbkg.case.resolve to identify the likely case.\n2) dbkg.knowledge.lookup to collect relevant entities, systems, schema, API flows, joins, statuses, and lineage.\n3) dbkg.investigate.plan to select the best playbook.\n4) dbkg.playbook.validate before any execution.\n5) Call dbkg.investigate.execute only if validation says valid=true and canExecute=true.\n6) If validation fails, ANSWER with the graphError or summary and do not execute.\n7) After dbkg.investigate.execute, ANSWER using finalSummary or outcome.explanation from the latest observation.\n8) If enough observations already exist, ANSWER concisely from observations.\nReturn JSON only. Never skip validation before execution.',
   'User input:\n{{user_input}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
   TRUE,
   NOW()
@@ -356,18 +356,18 @@ VALUES
     'ASR_INVENTORY_NOT_FOUND',
     'QUERY_TEMPLATE_EXECUTOR',
     'Find requests by request id, connection id, account, account-location, customer name, zip, or contact number.',
-    'SELECT r.zp_request_id, r.zp_connection_id, r.account_id, r.customer_id, r.location_id, r.acc_loc_id,
+     'SELECT r.zp_request_id, r.zp_connection_id, r.account_id, r.customer_id, r.location_id, r.acc_loc_id,
        r.zp_customer_name, r.zp_cust_zip, r.zp_contact_number, r.request_status, r.requested_provider, r.submitted_to_aso_at
-FROM zp_request r
-WHERE (:zp_request_id IS NULL OR r.zp_request_id = :zp_request_id)
-  AND (:zp_connection_id IS NULL OR r.zp_connection_id = :zp_connection_id)
-  AND (:account_id IS NULL OR r.account_id = :account_id)
-  AND (:acc_loc_id IS NULL OR r.acc_loc_id = :acc_loc_id)
-  AND (:zp_customer_name IS NULL OR UPPER(r.zp_customer_name) = UPPER(:zp_customer_name))
-  AND (:zp_cust_zip IS NULL OR r.zp_cust_zip = :zp_cust_zip)
-  AND (:zp_contact_number IS NULL OR r.zp_contact_number = :zp_contact_number)
-ORDER BY r.requested_at DESC, r.zp_request_id
-LIMIT :limit',
+ FROM zp_request r
+ WHERE (:zp_request_id::varchar IS NULL OR r.zp_request_id = :zp_request_id)
+   AND (:zp_connection_id::varchar IS NULL OR r.zp_connection_id = :zp_connection_id)
+   AND (:account_id::varchar IS NULL OR r.account_id = :account_id)
+   AND (:acc_loc_id::varchar IS NULL OR r.acc_loc_id = :acc_loc_id)
+   AND (:zp_customer_name::varchar IS NULL OR UPPER(r.zp_customer_name) = UPPER(:zp_customer_name))
+   AND (:zp_cust_zip::varchar IS NULL OR r.zp_cust_zip = :zp_cust_zip)
+   AND (:zp_contact_number::varchar IS NULL OR r.zp_contact_number = :zp_contact_number)
+ ORDER BY r.requested_at DESC, r.zp_request_id
+ LIMIT :limit',
     '["limit"]',
     '["zp_request_id","zp_connection_id","account_id","acc_loc_id","zp_customer_name","zp_cust_zip","zp_contact_number"]',
     '{"primaryKeys":["zp_request_id"],"fields":["zp_request_id","zp_connection_id","account_id","customer_id","location_id","acc_loc_id","zp_customer_name","zp_cust_zip","zp_contact_number","request_status","requested_provider","submitted_to_aso_at"]}',

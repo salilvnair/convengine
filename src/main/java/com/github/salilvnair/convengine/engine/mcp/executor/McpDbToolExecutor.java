@@ -93,7 +93,59 @@ public class McpDbToolExecutor implements McpToolExecutor {
             }
             return mapper.writeValueAsString(value);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to serialize DB tool response", e);
+            String summary = describeValue(value);
+            String cause = e.getClass().getName() + ": " + e.getMessage();
+            throw new IllegalStateException("Failed to serialize DB tool response. value=" + summary + ", cause=" + cause, e);
         }
+    }
+
+    private String describeValue(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        if (value instanceof Map<?, ?> map) {
+            return "Map(size=" + map.size() + ", keys=" + summarizeKeys(map) + ")";
+        }
+        if (value instanceof List<?> list) {
+            return "List(size=" + list.size() + ", elementTypes=" + summarizeElementTypes(list) + ")";
+        }
+        return value.getClass().getName();
+    }
+
+    private String summarizeKeys(Map<?, ?> map) {
+        int limit = 10;
+        StringBuilder out = new StringBuilder("[");
+        int count = 0;
+        for (Object key : map.keySet()) {
+            if (count > 0) {
+                out.append(", ");
+            }
+            out.append(String.valueOf(key));
+            count++;
+            if (count >= limit) {
+                break;
+            }
+        }
+        if (map.size() > limit) {
+            out.append(", …");
+        }
+        out.append("]");
+        return out.toString();
+    }
+
+    private String summarizeElementTypes(List<?> list) {
+        int limit = 10;
+        java.util.LinkedHashSet<String> types = new java.util.LinkedHashSet<>();
+        for (Object item : list) {
+            if (item == null) {
+                types.add("null");
+            } else {
+                types.add(item.getClass().getName());
+            }
+            if (types.size() >= limit) {
+                break;
+            }
+        }
+        return types.toString();
     }
 }

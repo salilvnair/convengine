@@ -39,7 +39,6 @@ public class DbkgSummaryStepExecutor implements DbkgStepExecutor {
         out.put("completedSteps", completedSteps);
         out.put("placeholderSkipped", runtime.get("placeholderSkipped"));
         out.put("lastRowCount", runtime.getOrDefault("lastRowCount", 0));
-        out.put("stepOutputs", support.stepOutputs(runtime));
         return out;
     }
 }
