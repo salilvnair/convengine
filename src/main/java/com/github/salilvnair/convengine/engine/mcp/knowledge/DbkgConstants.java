@@ -24,6 +24,7 @@ public final class DbkgConstants {
     public static final String KEY_START_STEP_CODE = "startStepCode";
     public static final String KEY_VALID = "valid";
     public static final String KEY_SUMMARY = "summary";
+    public static final String KEY_DBKG_CAPSULE = "dbkgCapsule";
     public static final String KEY_STEP_COUNT = "stepCount";
     public static final String KEY_TRANSITION_COUNT = "transitionCount";
     public static final String KEY_ARGS = "args";

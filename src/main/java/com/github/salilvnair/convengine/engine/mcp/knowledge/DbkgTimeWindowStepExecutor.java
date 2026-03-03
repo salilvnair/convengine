@@ -4,7 +4,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -17,7 +16,8 @@ public class DbkgTimeWindowStepExecutor implements DbkgStepExecutor {
     }
 
     @Override
-    public Map<String, Object> execute(String stepCode, String templateCode, Map<String, Object> config, Map<String, Object> runtime) {
+    public Map<String, Object> execute(String stepCode, String templateCode, Map<String, Object> config,
+            Map<String, Object> runtime) {
         int hours = parseInt(config.get("hours"), 24);
         @SuppressWarnings("unchecked")
         Map<String, Object> args = (Map<String, Object>) runtime.getOrDefault("args", Map.of());
@@ -27,7 +27,7 @@ public class DbkgTimeWindowStepExecutor implements DbkgStepExecutor {
         OffsetDateTime from = OffsetDateTime.now(ZoneOffset.UTC).minusHours(hours);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("hours", hours);
-        out.put("fromTs", from.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+        out.put("fromTs", java.sql.Timestamp.from(from.toInstant()));
         runtime.put("timeWindow", out);
         return out;
     }

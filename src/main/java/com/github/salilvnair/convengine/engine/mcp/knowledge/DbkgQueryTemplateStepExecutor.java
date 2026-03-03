@@ -4,6 +4,7 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.mcp.McpSqlGuardrail;
+import com.github.salilvnair.convengine.engine.mcp.util.McpSqlAuditHelper;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
@@ -13,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,8 +37,10 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
     }
 
     @Override
-    public Map<String, Object> execute(String stepCode, String templateCode, Map<String, Object> config, Map<String, Object> runtime) {
-        Map<String, Object> template = support.findRowByKey(support.cfg().getQueryTemplateTable(), "query_code", templateCode).orElse(null);
+    public Map<String, Object> execute(String stepCode, String templateCode, Map<String, Object> config,
+            Map<String, Object> runtime) {
+        Map<String, Object> template = support
+                .findRowByKey(support.cfg().getQueryTemplateTable(), "query_code", templateCode).orElse(null);
         if (template == null) {
             return Map.of(
                     DbkgConstants.KEY_PLACEHOLDER_SKIPPED, false,
@@ -94,29 +96,28 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
             Map<String, Object> params,
             List<Map<String, Object>> rows,
             Exception error) {
+
         UUID conversationId = conversationId(runtime == null ? null : runtime.get("conversationId"));
-        if (conversationId == null) {
-            return;
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("step_code", stepCode);
-        payload.put("query_code", templateCode);
-        payload.put("sql", sql);
-        payload.put("params", params);
-        payload.put("status", error == null ? "SUCCESS" : "ERROR");
-        payload.put("error", error == null ? null : error.getClass().getName() + ": " + error.getMessage());
-        ConvEngineAuditStage stage = error == null ? ConvEngineAuditStage.DBKG_QUERY_SQL_EXECUTION : ConvEngineAuditStage.DBKG_QUERY_SQL_EXECUTION_ERROR;
-        if (error != null) {
-            payload.putAll(buildErrorPayload(error));
-        }
-        payload.put("row_count", rows == null ? 0 : rows.size());
-        payload.put("rows", rows == null ? List.of() : rows);
-        audit.audit(stage, conversationId, payload);
-        EngineSession session = session(runtime.get("session"));
-        if (session != null) {
-            verbosePublisher.publish(session, "DbkgQueryTemplateStepExecutor", stage.name(),
-                    null, null, false, payload);
-        }
+        EngineSession session = session(runtime == null ? null : runtime.get("session"));
+
+        Map<String, Object> basePayload = new LinkedHashMap<>();
+        basePayload.put("step_code", stepCode);
+        basePayload.put("query_code", templateCode);
+        basePayload.put("tool_code", "dbkg.investigate.execute"); // Added for verbose routing
+
+        McpSqlAuditHelper.auditSqlExecution(
+                audit,
+                verbosePublisher,
+                session,
+                conversationId,
+                "DbkgQueryTemplateStepExecutor",
+                ConvEngineAuditStage.DBKG_QUERY_SQL_EXECUTION,
+                ConvEngineAuditStage.DBKG_QUERY_SQL_EXECUTION_ERROR,
+                basePayload,
+                sql,
+                params,
+                rows,
+                error);
     }
 
     private UUID conversationId(Object value) {
@@ -180,8 +181,7 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
                 """.formatted(
                 dialect == null ? "" : dialect,
                 sql,
-                JsonUtil.toJson(params)
-        );
+                JsonUtil.toJson(params));
 
         if (session != null) {
             verbosePublisher.publish(session, "DbkgQueryTemplateStepExecutor", "DBKG_QUERY_SQL_REFINE_LLM_INPUT",
@@ -223,39 +223,5 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
             normalized = normalized.replaceAll("(?s)\\n```$", "");
         }
         return normalized.trim();
-    }
-
-    private Map<String, Object> buildErrorPayload(Exception error) {
-        Map<String, Object> details = new LinkedHashMap<>();
-        Throwable root = rootCause(error);
-        details.put("error_class", error.getClass().getName());
-        details.put("error_message", error.getMessage());
-        details.put("root_cause_class", root == null ? null : root.getClass().getName());
-        details.put("root_cause_message", root == null ? null : root.getMessage());
-        SQLException sqlError = sqlException(error);
-        details.put("sql_state", sqlError == null ? null : sqlError.getSQLState());
-        details.put("sql_error_code", sqlError == null ? null : sqlError.getErrorCode());
-        return details;
-    }
-
-    private SQLException sqlException(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof SQLException sqlException) {
-                return sqlException;
-            }
-            current = current.getCause();
-        }
-        return null;
-    }
-
-    private Throwable rootCause(Throwable error) {
-        Throwable current = error;
-        Throwable next = current == null ? null : current.getCause();
-        while (next != null && next != current) {
-            current = next;
-            next = current.getCause();
-        }
-        return current;
     }
 }

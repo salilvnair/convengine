@@ -231,7 +231,17 @@ public class DbkgSupportService {
             }
             Map<String, Object> item = new LinkedHashMap<>();
             for (String column : outputColumns) {
-                item.put(toCamelCase(column), row.get(column));
+                Object val = row.get(column);
+                if (val instanceof String text) {
+                    text = text.trim();
+                    if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))) {
+                        try {
+                            val = mapper.readTree(text);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+                item.put(toCamelCase(column), val);
             }
             item.put(scoreField, round(score));
             ranked.add(item);
@@ -501,7 +511,8 @@ public class DbkgSupportService {
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> stepOutputs(Map<String, Object> runtime) {
-        return (Map<String, Object>) runtime.computeIfAbsent("stepOutputs", ignored -> new LinkedHashMap<String, Object>());
+        return (Map<String, Object>) runtime.computeIfAbsent("stepOutputs",
+                ignored -> new LinkedHashMap<String, Object>());
     }
 
     public Map<String, Object> parseJsonObject(String json) {
@@ -514,6 +525,338 @@ public class DbkgSupportService {
         } catch (Exception e) {
             return Map.of();
         }
+    }
+
+    public Map<String, Object> buildMetadataCapsule(
+            String question,
+            List<String> tokens,
+            Map<String, Object> selectedCase,
+            Map<String, Object> selectedPlaybook) {
+        ConvEngineMcpConfig.Db.KnowledgeGraph cfg = cfg();
+
+        List<Map<String, Object>> caseTypes = readEnabledRowsOptional(cfg.getCaseTypeTable());
+        List<Map<String, Object>> caseSignals = readEnabledRowsOptional(cfg.getCaseSignalTable());
+        List<Map<String, Object>> playbooks = readEnabledRowsOptional(cfg.getPlaybookTable());
+        List<Map<String, Object>> playbookSignals = readEnabledRowsOptional(cfg.getPlaybookSignalTable());
+        List<Map<String, Object>> domainEntities = readEnabledRowsOptional(cfg.getDomainEntityTable());
+        List<Map<String, Object>> domainRelations = readEnabledRowsOptional(cfg.getDomainRelationTable());
+        List<Map<String, Object>> systems = readEnabledRowsOptional(cfg.getSystemNodeTable());
+        List<Map<String, Object>> systemRelations = readEnabledRowsOptional(cfg.getSystemRelationTable());
+        List<Map<String, Object>> apiFlows = readEnabledRowsOptional(cfg.getApiFlowTable());
+        List<Map<String, Object>> dbObjects = readEnabledRowsOptional(cfg.getDbObjectTable());
+        List<Map<String, Object>> dbColumns = readEnabledRowsOptional(cfg.getDbColumnTable());
+        List<Map<String, Object>> dbJoinPaths = readEnabledRowsOptional(cfg.getDbJoinPathTable());
+        List<Map<String, Object>> statuses = readEnabledRowsOptional(cfg.getStatusDictionaryTable());
+        List<Map<String, Object>> lineages = readEnabledRowsOptional(cfg.getIdLineageTable());
+        List<Map<String, Object>> executorTemplates = readEnabledRowsOptional("ce_mcp_executor_template");
+        List<Map<String, Object>> queryTemplates = readEnabledRowsOptional(cfg.getQueryTemplateTable());
+        List<Map<String, Object>> queryParamRules = readEnabledRowsOptional(cfg.getQueryParamRuleTable());
+        List<Map<String, Object>> playbookSteps = readEnabledRowsOptional(cfg.getPlaybookStepTable());
+        List<Map<String, Object>> playbookTransitions = readEnabledRowsOptional(cfg.getPlaybookTransitionTable());
+        List<Map<String, Object>> outcomeRules = readEnabledRowsOptional(cfg.getOutcomeRuleTable());
+        List<Map<String, Object>> sqlGuardrails = readEnabledRowsOptional(mcpConfig.getDb().getSqlGuardrailTable());
+        List<Map<String, Object>> mcpTools = readEnabledRowsOptional("ce_mcp_tool");
+        List<Map<String, Object>> mcpPlanners = readEnabledRowsOptional("ce_mcp_planner");
+
+        Map<String, Object> capsule = new LinkedHashMap<>();
+        capsule.put("version", "dbkg-capsule-v1");
+        capsule.put("question", question == null ? "" : question);
+        capsule.put("tokens", tokens == null ? List.of() : tokens.stream().distinct().limit(12).toList());
+        capsule.put("selectedCaseCode", asText(selectedCase == null ? null : selectedCase.get("caseCode")));
+        capsule.put("selectedPlaybookCode", asText(selectedPlaybook == null ? null : selectedPlaybook.get("playbookCode")));
+
+        Map<String, Object> sourceCoverage = new LinkedHashMap<>();
+        sourceCoverage.put(cfg.getCaseTypeTable(), caseTypes.size());
+        sourceCoverage.put(cfg.getCaseSignalTable(), caseSignals.size());
+        sourceCoverage.put(cfg.getPlaybookTable(), playbooks.size());
+        sourceCoverage.put(cfg.getPlaybookSignalTable(), playbookSignals.size());
+        sourceCoverage.put(cfg.getDomainEntityTable(), domainEntities.size());
+        sourceCoverage.put(cfg.getDomainRelationTable(), domainRelations.size());
+        sourceCoverage.put(cfg.getSystemNodeTable(), systems.size());
+        sourceCoverage.put(cfg.getSystemRelationTable(), systemRelations.size());
+        sourceCoverage.put(cfg.getApiFlowTable(), apiFlows.size());
+        sourceCoverage.put(cfg.getDbObjectTable(), dbObjects.size());
+        sourceCoverage.put(cfg.getDbColumnTable(), dbColumns.size());
+        sourceCoverage.put(cfg.getDbJoinPathTable(), dbJoinPaths.size());
+        sourceCoverage.put(cfg.getStatusDictionaryTable(), statuses.size());
+        sourceCoverage.put(cfg.getIdLineageTable(), lineages.size());
+        sourceCoverage.put("ce_mcp_executor_template", executorTemplates.size());
+        sourceCoverage.put(cfg.getQueryTemplateTable(), queryTemplates.size());
+        sourceCoverage.put(cfg.getQueryParamRuleTable(), queryParamRules.size());
+        sourceCoverage.put(cfg.getPlaybookStepTable(), playbookSteps.size());
+        sourceCoverage.put(cfg.getPlaybookTransitionTable(), playbookTransitions.size());
+        sourceCoverage.put(cfg.getOutcomeRuleTable(), outcomeRules.size());
+        sourceCoverage.put(mcpConfig.getDb().getSqlGuardrailTable(), sqlGuardrails.size());
+        sourceCoverage.put("ce_mcp_tool", mcpTools.size());
+        sourceCoverage.put("ce_mcp_planner", mcpPlanners.size());
+        capsule.put("sourceCoverage", sourceCoverage);
+
+        Map<String, Object> semanticGraph = new LinkedHashMap<>();
+        semanticGraph.put("cases", sampleCodes(caseTypes, "case_code", "case_name", 8));
+        semanticGraph.put("playbooks", sampleCodes(playbooks, "playbook_code", "playbook_name", 10));
+        semanticGraph.put("entities", sampleCodes(domainEntities, "entity_code", "entity_name", 12));
+        semanticGraph.put("systems", sampleCodes(systems, "system_code", "system_name", 10));
+        semanticGraph.put("apiFlows", sampleCodes(apiFlows, "api_code", "api_name", 12));
+        capsule.put("semanticGraph", semanticGraph);
+
+        Map<String, Object> sqlGraph = new LinkedHashMap<>();
+        sqlGraph.put("objects", sampleCodes(dbObjects, "object_name", "description", 16));
+        sqlGraph.put("joinPaths", sampleJoinPaths(dbJoinPaths, 12));
+        sqlGraph.put("lineage", sampleLineage(lineages, 12));
+        sqlGraph.put("statusDictionary", sampleStatus(statuses, 16));
+        sqlGraph.put("queryTemplates", sampleQueryTemplates(queryTemplates, 12));
+        sqlGraph.put("queryParamRules", sampleQueryParamRules(queryParamRules, 20));
+        sqlGraph.put("columnsByObject", sampleColumnsByObject(dbColumns, 10, 12));
+        capsule.put("sqlGraph", sqlGraph);
+
+        Map<String, Object> executionGraph = new LinkedHashMap<>();
+        String selectedPlaybookCode = asText(selectedPlaybook == null ? null : selectedPlaybook.get("playbookCode"));
+        executionGraph.put("executorTemplates", sampleCodes(executorTemplates, "executor_code", "description", 12));
+        executionGraph.put("steps", samplePlaybookSteps(playbookSteps, selectedPlaybookCode, 20));
+        executionGraph.put("transitions", samplePlaybookTransitions(playbookTransitions, selectedPlaybookCode, 20));
+        executionGraph.put("outcomes", sampleOutcomeRules(outcomeRules, selectedPlaybookCode, 16));
+        executionGraph.put("sqlGuardrails", sampleGuardrails(sqlGuardrails, 20));
+        capsule.put("executionGraph", executionGraph);
+
+        Map<String, Object> plannerRuntime = new LinkedHashMap<>();
+        plannerRuntime.put("mcpTools", sampleCodes(mcpTools, "tool_code", "description", 16));
+        plannerRuntime.put("mcpPlanners", samplePlannerScopes(mcpPlanners, 12));
+        plannerRuntime.put("hints", collectHints(24, caseTypes, playbooks, domainEntities, systems, dbObjects, dbColumns, queryTemplates, outcomeRules));
+        capsule.put("plannerRuntime", plannerRuntime);
+        return capsule;
+    }
+
+    private List<Map<String, Object>> sampleCodes(List<Map<String, Object>> rows, String codeKey, String labelKey, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            putIfPresent(item, "code", row.get(codeKey));
+            putIfPresent(item, "label", row.get(labelKey));
+            if (!item.isEmpty()) {
+                out.add(item);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<String> sampleJoinPaths(List<Map<String, Object>> rows, int limit) {
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String join = asText(row.get("join_sql_fragment"));
+            if (join.isBlank()) {
+                join = asText(row.get("left_object_name")) + " -> " + asText(row.get("right_object_name"));
+            }
+            if (!join.isBlank()) {
+                out.add(join);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<String> sampleLineage(List<Map<String, Object>> rows, int limit) {
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String value = asText(row.get("source_object_name")) + "." + asText(row.get("source_column_name"))
+                    + " -> " + asText(row.get("target_object_name")) + "." + asText(row.get("target_column_name"));
+            out.add(value);
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<String> sampleStatus(List<Map<String, Object>> rows, int limit) {
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String value = asText(row.get("dictionary_name")) + "." + asText(row.get("field_name"))
+                    + "=" + asText(row.get("code_value")) + "(" + asText(row.get("code_label")) + ")";
+            if (!value.isBlank()) {
+                out.add(value);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> sampleQueryTemplates(List<Map<String, Object>> rows, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            putIfPresent(item, "queryCode", row.get("query_code"));
+            putIfPresent(item, "playbookCode", row.get("playbook_code"));
+            putIfPresent(item, "purpose", row.get("purpose"));
+            putIfPresent(item, "safetyClass", row.get("safety_class"));
+            if (!item.isEmpty()) {
+                out.add(item);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> sampleQueryParamRules(List<Map<String, Object>> rows, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            putIfPresent(item, "queryCode", row.get("query_code"));
+            putIfPresent(item, "param", row.get("param_name"));
+            putIfPresent(item, "sourceType", row.get("source_type"));
+            putIfPresent(item, "sourceKey", row.get("source_key"));
+            if (!item.isEmpty()) {
+                out.add(item);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private Map<String, List<String>> sampleColumnsByObject(List<Map<String, Object>> rows, int maxObjects, int maxColumnsPerObject) {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String objectName = asText(row.get("object_name"));
+            String columnName = asText(row.get("column_name"));
+            if (objectName.isBlank() || columnName.isBlank()) {
+                continue;
+            }
+            List<String> columns = out.computeIfAbsent(objectName, ignored -> new ArrayList<>());
+            if (columns.size() < maxColumnsPerObject && !columns.contains(columnName)) {
+                columns.add(columnName);
+            }
+            if (out.size() >= maxObjects) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> samplePlaybookSteps(List<Map<String, Object>> rows, String selectedPlaybookCode, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            if (!selectedPlaybookCode.isBlank() && !selectedPlaybookCode.equalsIgnoreCase(asText(row.get("playbook_code")))) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            putIfPresent(item, "playbookCode", row.get("playbook_code"));
+            putIfPresent(item, "stepCode", row.get("step_code"));
+            putIfPresent(item, "executorCode", row.get("executor_code"));
+            putIfPresent(item, "templateCode", row.get("template_code"));
+            if (!item.isEmpty()) {
+                out.add(item);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> samplePlaybookTransitions(List<Map<String, Object>> rows, String selectedPlaybookCode, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            if (!selectedPlaybookCode.isBlank() && !selectedPlaybookCode.equalsIgnoreCase(asText(row.get("playbook_code")))) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            putIfPresent(item, "playbookCode", row.get("playbook_code"));
+            putIfPresent(item, "from", row.get("from_step_code"));
+            putIfPresent(item, "to", row.get("to_step_code"));
+            putIfPresent(item, "outcome", row.get("outcome_code"));
+            if (!item.isEmpty()) {
+                out.add(item);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> sampleOutcomeRules(List<Map<String, Object>> rows, String selectedPlaybookCode, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            if (!selectedPlaybookCode.isBlank() && !selectedPlaybookCode.equalsIgnoreCase(asText(row.get("playbook_code")))) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            putIfPresent(item, "playbookCode", row.get("playbook_code"));
+            putIfPresent(item, "outcomeCode", row.get("outcome_code"));
+            putIfPresent(item, "severity", row.get("severity"));
+            putIfPresent(item, "recommendedNextAction", row.get("recommended_next_action"));
+            if (!item.isEmpty()) {
+                out.add(item);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<String> sampleGuardrails(List<Map<String, Object>> rows, int limit) {
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String value = asText(row.get("rule_type")) + ":" + asText(row.get("match_value"));
+            if (!value.isBlank()) {
+                out.add(value);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> samplePlannerScopes(List<Map<String, Object>> rows, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            putIfPresent(item, "intentCode", row.get("intent_code"));
+            putIfPresent(item, "stateCode", row.get("state_code"));
+            if (!item.isEmpty()) {
+                out.add(item);
+            }
+            if (out.size() >= limit) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    @SafeVarargs
+    private final List<String> collectHints(List<Map<String, Object>>... datasets) {
+        return collectHints(24, datasets);
+    }
+
+    @SafeVarargs
+    private final List<String> collectHints(int limit, List<Map<String, Object>>... datasets) {
+        LinkedHashSet<String> hints = new LinkedHashSet<>();
+        for (List<Map<String, Object>> rows : datasets) {
+            for (Map<String, Object> row : rows) {
+                for (String key : List.of("llm_hint", "description", "purpose", "business_meaning", "explanation_template")) {
+                    String hint = asText(row.get(key)).trim();
+                    if (!hint.isBlank()) {
+                        hints.add(hint);
+                    }
+                    if (hints.size() >= limit) {
+                        return hints.stream().toList();
+                    }
+                }
+            }
+        }
+        return hints.stream().toList();
     }
 
     public String requireSafeIdentifier(String input) {

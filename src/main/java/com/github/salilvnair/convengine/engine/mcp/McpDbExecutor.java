@@ -3,13 +3,13 @@ package com.github.salilvnair.convengine.engine.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.mcp.util.McpSqlAuditHelper;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpDbTool;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
-import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
@@ -66,54 +66,23 @@ public class McpDbExecutor {
         if (session == null || session.getConversationId() == null || tool == null || tool.getTool() == null) {
             return;
         }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("tool_code", tool.getTool().getToolCode());
-        payload.put("tool_group", tool.getTool().getToolGroup());
-        payload.put("sql", sql);
-        payload.put("params", params);
-        payload.put("status", error == null ? "SUCCESS" : "ERROR");
-        payload.put("error", error == null ? null : error.getClass().getName() + ": " + error.getMessage());
-        if (error != null) {
-            payload.putAll(buildErrorPayload(error));
-        }
-        payload.put("row_count", rows == null ? 0 : rows.size());
-        payload.put("rows", rows == null ? List.of() : rows);
-        audit.audit(ConvEngineAuditStage.MCP_DB_SQL_EXECUTION, session.getConversationId(), payload);
-        verbosePublisher.publish(session, "McpDbExecutor", "MCP_DB_SQL_EXECUTION", null,
-                tool.getTool().getToolCode(), false, payload);
-    }
 
-    private Map<String, Object> buildErrorPayload(Exception error) {
-        Map<String, Object> details = new LinkedHashMap<>();
-        Throwable root = rootCause(error);
-        details.put("error_class", error.getClass().getName());
-        details.put("error_message", error.getMessage());
-        details.put("root_cause_class", root == null ? null : root.getClass().getName());
-        details.put("root_cause_message", root == null ? null : root.getMessage());
-        SQLException sqlError = sqlException(error);
-        details.put("sql_state", sqlError == null ? null : sqlError.getSQLState());
-        details.put("sql_error_code", sqlError == null ? null : sqlError.getErrorCode());
-        return details;
-    }
+        Map<String, Object> basePayload = new LinkedHashMap<>();
+        basePayload.put("tool_code", tool.getTool().getToolCode());
+        basePayload.put("tool_group", tool.getTool().getToolGroup());
 
-    private SQLException sqlException(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof SQLException sqlException) {
-                return sqlException;
-            }
-            current = current.getCause();
-        }
-        return null;
-    }
-
-    private Throwable rootCause(Throwable error) {
-        Throwable current = error;
-        Throwable next = current == null ? null : current.getCause();
-        while (next != null && next != current) {
-            current = next;
-            next = current.getCause();
-        }
-        return current;
+        McpSqlAuditHelper.auditSqlExecution(
+                audit,
+                verbosePublisher,
+                session,
+                null,
+                "McpDbExecutor",
+                ConvEngineAuditStage.MCP_DB_SQL_EXECUTION,
+                ConvEngineAuditStage.MCP_DB_SQL_EXECUTION,
+                basePayload,
+                sql,
+                params,
+                rows,
+                error);
     }
 }

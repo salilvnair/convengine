@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -299,11 +300,20 @@ public class StaticConfigurationCacheService {
 
     // MCP Tools
     public List<CeMcpTool> findEnabledMcpTools(String intentCode, String stateCode) {
-        return self().getAllMcpTools().stream()
+        Map<String, CeMcpTool> bestByCode = new LinkedHashMap<>();
+        self().getAllMcpTools().stream()
                 .filter(CeMcpTool::isEnabled)
                 .filter(t -> isEligibleMcpScopeCode(t.getIntentCode(), intentCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getStateCode(), stateCode))
-                .toList(); // Not explicitly ordered in previous JPQL
+                .forEach(tool -> {
+                    String code = tool.getToolCode() == null ? "" : tool.getToolCode().trim().toLowerCase(Locale.ROOT);
+                    CeMcpTool existing = bestByCode.get(code);
+                    if (existing == null
+                            || mcpToolSpecificityScore(tool, intentCode, stateCode) > mcpToolSpecificityScore(existing, intentCode, stateCode)) {
+                        bestByCode.put(code, tool);
+                    }
+                });
+        return bestByCode.values().stream().toList();
     }
 
     public Optional<CeMcpTool> findMcpTool(String toolCode, String intentCode, String stateCode) {
@@ -312,7 +322,7 @@ public class StaticConfigurationCacheService {
                 .filter(t -> t.getToolCode() != null && t.getToolCode().equalsIgnoreCase(toolCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getIntentCode(), intentCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getStateCode(), stateCode))
-                .findFirst();
+                .max(Comparator.comparingInt(t -> mcpToolSpecificityScore(t, intentCode, stateCode)));
     }
 
     public Optional<CeMcpDbTool> findMcpDbTool(String toolCode) {
@@ -447,6 +457,23 @@ public class StaticConfigurationCacheService {
         if (planner.getStateCode() != null
                 && !planner.getStateCode().isBlank()
                 && planner.getStateCode().equalsIgnoreCase(stateCode)) {
+            score += 1;
+        }
+        return score;
+    }
+
+    private int mcpToolSpecificityScore(CeMcpTool tool, String intentCode, String stateCode) {
+        int score = 0;
+        if (tool.getIntentCode() != null
+                && !tool.getIntentCode().isBlank()
+                && intentCode != null
+                && tool.getIntentCode().equalsIgnoreCase(intentCode)) {
+            score += 2;
+        }
+        if (tool.getStateCode() != null
+                && !tool.getStateCode().isBlank()
+                && stateCode != null
+                && tool.getStateCode().equalsIgnoreCase(stateCode)) {
             score += 1;
         }
         return score;

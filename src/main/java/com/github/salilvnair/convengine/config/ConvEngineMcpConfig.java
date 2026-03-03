@@ -28,15 +28,21 @@ public class ConvEngineMcpConfig {
     @Getter
     @Setter
     public static class Db {
-        private Knowledge knowledge = new Knowledge();
+        private Knowledge semanticCatalog = new Knowledge();
         private KnowledgeGraph knowledgeGraph = new KnowledgeGraph();
         private String sqlGuardrailTable = "ce_mcp_sql_guardrail";
+
+        public Knowledge semanticCatalogConfig() {
+            return semanticCatalog == null ? new Knowledge() : semanticCatalog;
+        }
 
         @Getter
         @Setter
         public static class Knowledge {
             private boolean enabled = false;
-            private String toolCode = "db.knowledge.graph";
+            private boolean knowledgeCapsule = true;
+            private boolean schemaKnowledge = true;
+            private boolean queryKnowledge = true;
             private int maxResults = 5;
             private int scanLimit = 5000;
             private double minScore = 0.15d;

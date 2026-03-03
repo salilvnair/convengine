@@ -10,6 +10,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DbKnowledgeGraphRuntimeService {
 
+    private final DbkgSupportService support;
     private final DbkgCaseResolver caseResolver;
     private final DbkgKnowledgeLookupService knowledgeLookupService;
     private final DbkgPlaybookResolver playbookResolver;
@@ -17,19 +18,19 @@ public class DbKnowledgeGraphRuntimeService {
     private final DbkgPlaybookValidator playbookValidator;
 
     public Map<String, Object> resolveCase(Map<String, Object> args, EngineSession session) {
-        return caseResolver.resolveCase(args, session);
+        return enrichWithCapsule(caseResolver.resolveCase(args, session), args, session);
     }
 
     public Map<String, Object> lookupKnowledge(Map<String, Object> args, EngineSession session) {
-        return knowledgeLookupService.lookupKnowledge(args, session);
+        return enrichWithCapsule(knowledgeLookupService.lookupKnowledge(args, session), args, session);
     }
 
     public Map<String, Object> planInvestigation(Map<String, Object> args, EngineSession session) {
-        return playbookResolver.planInvestigation(args, session);
+        return enrichWithCapsule(playbookResolver.planInvestigation(args, session), args, session);
     }
 
     public Map<String, Object> executeInvestigation(Map<String, Object> args, EngineSession session) {
-        return playbookEngine.executeInvestigation(args, session);
+        return enrichWithCapsule(playbookEngine.executeInvestigation(args, session), args, session);
     }
 
     public Map<String, Object> validatePlaybook(Map<String, Object> args, EngineSession session) {
@@ -66,6 +67,24 @@ public class DbKnowledgeGraphRuntimeService {
         response.put(DbkgConstants.KEY_SUMMARY, graphError == null
                 ? DbkgConstants.MESSAGE_PLAYBOOK_VALID
                 : DbkgConstants.MESSAGE_PLAYBOOK_INVALID_PREFIX + graphError);
-        return response;
+        return enrichWithCapsule(response, args, session);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> enrichWithCapsule(Map<String, Object> response, Map<String, Object> args, EngineSession session) {
+        Map<String, Object> out = response == null
+                ? new java.util.LinkedHashMap<>()
+                : new java.util.LinkedHashMap<>(response);
+        String question = support.extractQuestion(args, session);
+        java.util.List<String> tokens = support.normalizeTokens(question);
+        Map<String, Object> selectedCase = out.get(DbkgConstants.KEY_SELECTED_CASE) instanceof Map<?, ?> map
+                ? (Map<String, Object>) map
+                : null;
+        Map<String, Object> selectedPlaybook = out.get(DbkgConstants.KEY_SELECTED_PLAYBOOK) instanceof Map<?, ?> map
+                ? (Map<String, Object>) map
+                : null;
+        out.put(DbkgConstants.KEY_DBKG_CAPSULE,
+                support.buildMetadataCapsule(question, tokens, selectedCase, selectedPlaybook));
+        return out;
     }
 }

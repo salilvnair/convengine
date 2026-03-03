@@ -79,10 +79,10 @@ CREATE INDEX ix_ce_intent_enabled_priority ON public.ce_intent USING btree (enab
 
 CREATE TABLE ce_intent_classifier (
                                       classifier_id bigserial NOT NULL,
-                                      intent_code text NOT NULL,
-                                      state_code text DEFAULT 'UNKNOWN'::text NOT NULL,
                                       rule_type text NOT NULL,
                                       pattern text NOT NULL,
+                                      intent_code text NOT NULL,
+                                      state_code text DEFAULT 'UNKNOWN'::text NOT NULL,
                                       priority int4 NOT NULL,
                                       enabled bool DEFAULT true NULL,
                                       description text NULL,

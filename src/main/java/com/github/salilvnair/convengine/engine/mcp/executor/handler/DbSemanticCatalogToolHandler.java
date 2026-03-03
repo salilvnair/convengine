@@ -1,8 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp.executor.handler;
 
-import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.DbToolHandler;
-import com.github.salilvnair.convengine.engine.mcp.knowledge.DbKnowledgeGraphService;
+import com.github.salilvnair.convengine.engine.mcp.knowledge.DbSemanticCatalogService;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
 import lombok.RequiredArgsConstructor;
@@ -13,21 +12,20 @@ import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "convengine.mcp.db.knowledge", name = "enabled", havingValue = "true")
-public class DbKnowledgeGraphToolHandler implements DbToolHandler {
+@ConditionalOnProperty(prefix = "convengine.mcp.db.semantic-catalog", name = "enabled", havingValue = "true")
+public class DbSemanticCatalogToolHandler implements DbToolHandler {
 
-    private final DbKnowledgeGraphService knowledgeGraphService;
-    private final ConvEngineMcpConfig mcpConfig;
+    private final DbSemanticCatalogService semanticCatalogService;
 
     @Override
     public String toolCode() {
-        return mcpConfig.getDb().getKnowledge().getToolCode();
+        return "db.semantic.catalog";
     }
 
     @Override
     public Object execute(CeMcpTool tool, Map<String, Object> args, EngineSession session) {
         String question = extractQuestion(args, session);
-        return knowledgeGraphService.resolveKnowledge(question);
+        return semanticCatalogService.resolveKnowledge(question);
     }
 
     private String extractQuestion(Map<String, Object> args, EngineSession session) {

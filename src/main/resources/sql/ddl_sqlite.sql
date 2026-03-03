@@ -69,10 +69,10 @@ CREATE INDEX ix_ce_intent_enabled_priority ON ce_intent (enabled, priority, inte
 
 CREATE TABLE ce_intent_classifier (
   classifier_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  intent_code TEXT NOT NULL,
-  state_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(state_code) <> ''),
   rule_type TEXT NOT NULL,
   pattern TEXT NOT NULL,
+  intent_code TEXT NOT NULL,
+  state_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(state_code) <> ''),
   priority INTEGER NOT NULL,
   enabled BOOLEAN DEFAULT 1,
   description TEXT

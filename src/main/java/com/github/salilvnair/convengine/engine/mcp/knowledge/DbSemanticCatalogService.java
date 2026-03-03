@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
-public class DbKnowledgeGraphService {
+public class DbSemanticCatalogService {
 
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("[A-Za-z0-9_$.]+$");
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^a-z0-9_]+");
@@ -35,14 +35,22 @@ public class DbKnowledgeGraphService {
     private final ConvEngineMcpConfig mcpConfig;
 
     public Map<String, Object> resolveKnowledge(String question) {
-        ConvEngineMcpConfig.Db.Knowledge cfg = mcpConfig.getDb().getKnowledge();
+        ConvEngineMcpConfig.Db.Knowledge cfg = mcpConfig.getDb().semanticCatalogConfig();
         List<String> queryTokens = normalizeTokens(question);
 
-        List<Map<String, Object>> queryRows = readRows(requireSafeIdentifier(cfg.getQueryCatalogTable()), cfg.getScanLimit());
-        List<Map<String, Object>> schemaRows = readRows(requireSafeIdentifier(cfg.getSchemaCatalogTable()), cfg.getScanLimit());
+        List<Map<String, Object>> queryRows = cfg.isQueryKnowledge()
+                ? readRows(requireSafeIdentifier(cfg.getQueryCatalogTable()), cfg.getScanLimit())
+                : List.of();
+        List<Map<String, Object>> schemaRows = cfg.isSchemaKnowledge()
+                ? readRows(requireSafeIdentifier(cfg.getSchemaCatalogTable()), cfg.getScanLimit())
+                : List.of();
 
-        List<Map<String, Object>> rankedQueryKnowledge = rankQueryKnowledge(queryRows, queryTokens, cfg);
-        List<Map<String, Object>> rankedSchemaKnowledge = rankSchemaKnowledge(schemaRows, queryTokens, cfg);
+        List<Map<String, Object>> rankedQueryKnowledge = cfg.isQueryKnowledge()
+                ? rankQueryKnowledge(queryRows, queryTokens, cfg)
+                : List.of();
+        List<Map<String, Object>> rankedSchemaKnowledge = cfg.isSchemaKnowledge()
+                ? rankSchemaKnowledge(schemaRows, queryTokens, cfg)
+                : List.of();
 
         Map<String, Object> insights = new LinkedHashMap<>();
         insights.put("suggestedPreparedQueries", rankedQueryKnowledge.stream()
@@ -61,6 +69,10 @@ public class DbKnowledgeGraphService {
         response.put("queryKnowledge", rankedQueryKnowledge);
         response.put("schemaKnowledge", rankedSchemaKnowledge);
         response.put("insights", insights);
+        response.put("features", Map.of(
+                "knowledgeCapsule", cfg.isKnowledgeCapsule(),
+                "queryKnowledge", cfg.isQueryKnowledge(),
+                "schemaKnowledge", cfg.isSchemaKnowledge()));
         return response;
     }
 

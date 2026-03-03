@@ -129,9 +129,9 @@ public class ThymeleafTemplateRenderer {
     }
 
     private String normalizeTemplate(String template) {
-        String normalized = replacePattern(template, LEGACY_VAR_PATTERN, "[[${$1}]]");
-        normalized = replacePattern(normalized, LEGACY_EXPR_PATTERN, "[[${$1}]]");
-        normalized = replacePattern(normalized, SINGLE_BRACKET_EXPR_PATTERN, "[[${$1}]]");
+        String normalized = replacePattern(template, LEGACY_VAR_PATTERN, "[(${$1})]");
+        normalized = replacePattern(normalized, LEGACY_EXPR_PATTERN, "[(${$1})]");
+        normalized = replacePattern(normalized, SINGLE_BRACKET_EXPR_PATTERN, "[(${$1})]");
         return normalized;
     }
 

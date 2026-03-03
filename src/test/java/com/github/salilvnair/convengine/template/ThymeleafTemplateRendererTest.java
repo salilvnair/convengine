@@ -42,4 +42,12 @@ class ThymeleafTemplateRendererTest {
 
         assertEquals("Value: " + value, rendered);
     }
+
+    @Test
+    void doesNotHtmlEscapeJsonValues() {
+        String toolsJson = "[{\"tool_code\":\"db.semantic.catalog\"}]";
+        String rendered = renderer.render("Available tools: {{mcp_tools}}", null, Map.of("mcp_tools", toolsJson));
+
+        assertEquals("Available tools: " + toolsJson, rendered);
+    }
 }
