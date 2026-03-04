@@ -57,12 +57,28 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - **[api-processor](https://github.com/salilvnair/api-processor) native MCP path**: Added `HttpApiApiProcessorToolHandler` so consumers can execute MCP HTTP tools directly through `RestWebServiceFacade` (`prepareRequest -> delegate.invoke -> processResponse`) and return mapped responses to ConvEngine.
 - **Intent/state-scoped planner prompts**: Added `ce_mcp_planner` table and runtime selection in `McpPlanner` so each use case can own planner prompts by `intent_code` + `state_code` instead of globally overriding `ce_config`.
 
-### Advanced DB Knowledge MCP (v2.0.7)
-- **DB tool extension SPI**: Added `DbToolHandler` so `DB` tools can be implemented per `tool_code` before fallback to legacy `ce_mcp_db_tool.sql_template`.
-- **Knowledge graph handler**: Added optional `DbKnowledgeGraphToolHandler` (enabled with `convengine.mcp.db.knowledge.enabled=true`) that reads two consumer-owned metadata tables:
-  - query knowledge catalog (scenario description + prepared SQL/API hints)
-  - schema knowledge catalog (table/column semantics)
-- **Similarity ranking output**: `DbKnowledgeGraphService` tokenizes user question and returns ranked `queryKnowledge` + `schemaKnowledge` + `insights` (`suggestedPreparedQueries`, `suggestedTables`) to help MCP answer similar/variant questions consistently.
+### Semantic Catalog + DBKG Runtime (latest branch updates)
+- **Semantic catalog DB tool**: Added `DbSemanticCatalogToolHandler` for `db.semantic.catalog` (enabled via `convengine.mcp.db.semantic-catalog.enabled=true`) to provide ranked query/schema semantic hints from `ce_mcp_query_knowledge` and `ce_mcp_schema_knowledge`.
+- **DBKG runtime path**: Database Knowledge Graph execution is explicitly modeled as:
+  - `dbkg.case.resolve`
+  - `dbkg.knowledge.lookup`
+  - `dbkg.investigate.plan`
+  - `dbkg.playbook.validate`
+  - `dbkg.investigate.execute`
+- **Capsule-first planner grounding**: MCP planner supports compact DBKG capsule grounding (`{{dbkg_capsule}}`) to reduce planner token pressure while preserving table/column/join hints.
+- **DB tool execution contract**:
+  - Java `DbToolHandler` implementations are preferred (`DbSemanticCatalogToolHandler`, `PostgresQueryToolHandler`, DBKG handlers).
+  - `ce_mcp_db_tool` remains required only for SQL-template fallback tools (`McpDbExecutor` path).
+- **Read-only SQL guardrail hardening**: `McpSqlGuardrail` still blocks non-read-only/multi-statement SQL, but now allows a single trailing semicolon on otherwise valid single-statement SELECT/WITH queries.
+- **SQL observability**: dynamic SQL and DBKG query-template execution emit richer audit/verbose payloads (SQL, params, row_count, rows preview, error metadata).
+- **Schema-aware dynamic SQL seed refresh** (`src/main/resources/sql/dbkg/schema_aware_sql_seed.sql`):
+  - planner guidance enforces semantic-catalog-first grounding before `postgres.query`,
+  - `dynamic_sql` response fallbacks added for `IDLE`/`EXECUTE`,
+  - tighter timestamp/type-safety guidance for generated SQL.
+- **DB schema inspection APIs**:
+  - `GET /api/v1/db/inspect-schema`
+  - `POST /api/v1/db/agent`
+  - request schema defaults from `convengine.schema.active` when omitted.
 
 ### Cache Diagnostics & Proxy Hardening (v2.0.6)
 - **Proxy hygiene**: `StaticConfigurationCacheService` now routes every helper through the proxied bean so `@Cacheable` saves the static `ce_*` collections instead of re-running SQL after warmup.
@@ -148,6 +164,8 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - `GET /api/v1/conversation/audit/{conversationId}/trace`
 - `GET /api/v1/conversation/stream/{conversationId}`
 - `POST /api/v1/conversation/experimental/generate-sql` (feature-flagged)
+- `GET /api/v1/db/inspect-schema`
+- `POST /api/v1/db/agent`
 
 ## Runtime Step Pipeline
 
@@ -238,13 +256,17 @@ Flow behavior is file-configured from consumer app config.
 
 ```yaml
 convengine:
+  schema:
+    active: v2
   mcp:
     db:
-      knowledge:
-        enabled: false
-        tool-code: db.knowledge.graph
-        query-catalog-table: ce_mcp_query_knowledge
-        schema-catalog-table: ce_mcp_schema_knowledge
+      semantic-catalog:
+        enabled: true
+        knowledge-capsule: true
+        schema-knowledge: true
+        query-knowledge: true
+      knowledge-graph:
+        enabled: true
     http-api:
       defaults:
         connect-timeout-ms: 2000
@@ -296,7 +318,6 @@ convengine:
 
 Consumer contract details:
 
-- `docs/consumer-contract-v2.md`
 - Canonical MCP example seed packs:
   - `src/main/resources/sql/mcp_planner_seed.sql` (Postgres)
   - `src/main/resources/sql/mcp_planner_seed_postgres.sql` (Postgres alias)

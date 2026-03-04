@@ -139,6 +139,7 @@ public class McpSqlGuardrail {
 
     public void assertReadOnly(String sql, String source) {
         String normalized = normalize(sql);
+        normalized = stripOptionalTrailingSemicolon(normalized);
         if (normalized.isBlank()) {
             throw new IllegalArgumentException(source + " SQL is blank.");
         }
@@ -243,6 +244,17 @@ public class McpSqlGuardrail {
         value = BLOCK_COMMENT.matcher(value).replaceAll(" ");
         value = WHITESPACE.matcher(value).replaceAll(" ").trim();
         return value.toLowerCase(Locale.ROOT);
+    }
+
+    private static String stripOptionalTrailingSemicolon(String sql) {
+        if (sql == null) {
+            return "";
+        }
+        String value = sql.trim();
+        if (value.endsWith(";")) {
+            return value.substring(0, value.length() - 1).trim();
+        }
+        return value;
     }
 
     private static String asLower(Object value) {

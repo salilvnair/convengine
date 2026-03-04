@@ -30,6 +30,9 @@ public final class McpConstants {
     public static final String CONTEXT_KEY_MCP = "mcp";
     public static final String CONTEXT_KEY_OBSERVATIONS = "observations";
     public static final String CONTEXT_KEY_FINAL_ANSWER = "finalAnswer";
+    public static final String CONTEXT_KEY_FINAL_ANSWER_DETERMINED = "finalAnswerDetermined";
+    public static final String CONTEXT_KEY_TOOL_EXECUTION_ABRUPTED = "toolExecutionAbrupted";
+    public static final String CONTEXT_KEY_TOOL_EXECUTION_ABRUPTION_LIMIT = "toolExecutionAbruptionLimit";
     public static final String CONTEXT_KEY_LIFECYCLE = "lifecycle";
     public static final String CONTEXT_KEY_TOOL_EXECUTION = "toolExecution";
     public static final String CONTEXT_KEY_STATUS = "status";

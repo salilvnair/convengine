@@ -254,3 +254,21 @@ CREATE TABLE ce_mcp_planner (
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
 CREATE INDEX idx_ce_mcp_planner_scope ON ce_mcp_planner (enabled, intent_code, state_code, planner_id);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_query_knowledge (
+                                                      id INTEGER PRIMARY KEY,
+                                                      query_text TEXT NOT NULL,
+                                                      description TEXT,
+                                                      prepared_sql TEXT,
+                                                      tags TEXT,
+                                                      api_hints TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_schema_knowledge (
+                                                       id INTEGER PRIMARY KEY,
+                                                       table_name TEXT NOT NULL,
+                                                       column_name TEXT,
+                                                       valid_values TEXT,
+                                                       description TEXT,
+                                                       tags TEXT
+);

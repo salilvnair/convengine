@@ -22,22 +22,7 @@ VALUES
 -- ---------------------------------------------------------------------------
 -- 2) Knowledge catalog tables
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS ce_mcp_query_knowledge (
-  id INTEGER PRIMARY KEY,
-  query_text TEXT NOT NULL,
-  description TEXT,
-  prepared_sql TEXT,
-  tags TEXT,
-  api_hints TEXT
-);
-
-CREATE TABLE IF NOT EXISTS ce_mcp_schema_knowledge (
-  id INTEGER PRIMARY KEY,
-  table_name TEXT NOT NULL,
-  column_name TEXT,
-  description TEXT,
-  tags TEXT
-);
+-- added in ddl
 
 -- ---------------------------------------------------------------------------
 -- 3) Query knowledge rows (use-case: async null/order submitted/admin/api3/api4)
@@ -72,13 +57,13 @@ VALUES
 -- ---------------------------------------------------------------------------
 -- 4) Schema knowledge rows (use-case: table + column semantics)
 -- ---------------------------------------------------------------------------
-INSERT OR REPLACE INTO ce_mcp_schema_knowledge (id, table_name, column_name, description, tags)
+INSERT OR REPLACE INTO ce_mcp_schema_knowledge (id, table_name, column_name, description, tags, valid_values)
 VALUES
-  (11001, 'orders', 'order_id', 'Business order identifier used across APIs and callbacks.', 'order,id,primary-key'),
-  (11002, 'orders', 'submitted_by_role', 'Actor role who submitted the order (ADMIN/USER/SYSTEM).', 'order,actor,role,admin'),
-  (11003, 'orders', 'status', 'Primary order lifecycle state (DRAFT/SUBMITTED/PROCESSING/COMPLETED/FAILED).', 'order,status,lifecycle'),
-  (11004, 'orders', 'api3_status', 'Synchronous upstream API result status for stage api3.', 'api3,status,upstream'),
-  (11005, 'orders', 'api4_async_status', 'Asynchronous callback status from api4; NULL usually means callback pending/missing.', 'api4,async,status,callback,null'),
-  (11006, 'orders', 'created_at', 'Order submit timestamp.', 'order,time,created'),
-  (11007, 'orders', 'updated_at', 'Last order update timestamp.', 'order,time,updated'),
-  (11008, 'orders', 'callback_received_at', 'Timestamp when async callback payload was received.', 'callback,time,api4');
+  (11001, 'orders', 'order_id', 'Business order identifier used across APIs and callbacks.', 'order,id,primary-key', NULL),
+  (11002, 'orders', 'submitted_by_role', 'Actor role who submitted the order (ADMIN/USER/SYSTEM).', 'order,actor,role,admin', 'ADMIN,USER,SYSTEM'),
+  (11003, 'orders', 'status', 'Primary order lifecycle state (DRAFT/SUBMITTED/PROCESSING/COMPLETED/FAILED).', 'order,status,lifecycle', 'DRAFT,SUBMITTED,PROCESSING,COMPLETED,FAILED'),
+  (11004, 'orders', 'api3_status', 'Synchronous upstream API result status for stage api3.', 'api3,status,upstream', 'SUCCESS,FAILED,PENDING'),
+  (11005, 'orders', 'api4_async_status', 'Asynchronous callback status from api4; NULL usually means callback pending/missing.', 'api4,async,status,callback,null', 'SUCCESS,FAILED,PENDING,NULL'),
+  (11006, 'orders', 'created_at', 'Order submit timestamp.', 'order,time,created', NULL),
+  (11007, 'orders', 'updated_at', 'Last order update timestamp.', 'order,time,updated', NULL),
+  (11008, 'orders', 'callback_received_at', 'Timestamp when async callback payload was received.', 'callback,time,api4', NULL);

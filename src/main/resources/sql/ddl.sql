@@ -300,3 +300,16 @@ CREATE TABLE ce_mcp_planner (
                                 CONSTRAINT ce_mcp_planner_state_not_blank CHECK (btrim(state_code) <> '')
 );
 CREATE INDEX idx_ce_mcp_planner_scope ON public.ce_mcp_planner USING btree (enabled, intent_code, state_code, planner_id);
+
+
+CREATE TABLE IF NOT EXISTS ce_mcp_schema_knowledge (
+    id BIGINT PRIMARY KEY,
+    table_name VARCHAR(255) NOT NULL,
+    column_name VARCHAR(255),
+    valid_values VARCHAR(2000),
+    description VARCHAR(2000),
+    tags VARCHAR(1000)
+);
+
+CREATE  INDEX idx_ce_mcp_schema_knowledge_table_column ON public.ce_mcp_schema_knowledge USING btree (table_name, column_name);
+

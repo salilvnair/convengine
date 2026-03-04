@@ -43,6 +43,7 @@ public class ConvEngineMcpConfig {
             private boolean knowledgeCapsule = true;
             private boolean schemaKnowledge = true;
             private boolean queryKnowledge = true;
+            private VectorSearch vectorSearch = new VectorSearch();
             private int maxResults = 5;
             private int scanLimit = 5000;
             private double minScore = 0.15d;
@@ -59,6 +60,15 @@ public class ConvEngineMcpConfig {
             private String schemaColumnNameColumn = "column_name";
             private String schemaDescriptionColumn = "description";
             private String schemaTagsColumn = "tags";
+            private String schemaValidValuesColumn = "valid_values";
+
+            @Getter
+            @Setter
+            public static class VectorSearch {
+                private boolean enabled = false;
+                private int maxResults = 10;
+                private String vectorColumn = "vector";
+            }
         }
 
         @Getter

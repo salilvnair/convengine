@@ -136,8 +136,11 @@ public class McpToolStep implements EngineStep {
         clearMcpContext(session);
         List<McpObservation> observations = readObservationsFromContext(session);
         boolean mcpTouched = false;
+        boolean finalAnswerDetermined = false;
+        boolean toolExecutionAbrupted = false;
 
         int maxLoops = resolveMaxLoops();
+        writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
         for (int i = 0; i < maxLoops; i++) {
 
             McpPlan plan = planner.plan(session, tools, observations);
@@ -153,6 +156,8 @@ public class McpToolStep implements EngineStep {
                 // store final answer in contextJson; your ResponseResolutionStep can use it via
                 // derivation_hint
                 writeFinalAnswerToContext(session, plan.answer());
+                finalAnswerDetermined = true;
+                writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
                 session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
                         plan.answer() == null ? "" : plan.answer());
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_ANSWER);
@@ -169,6 +174,8 @@ public class McpToolStep implements EngineStep {
 
             if (!McpConstants.ACTION_CALL_TOOL.equalsIgnoreCase(plan.action())) {
                 writeFinalAnswerToContext(session, McpConstants.FALLBACK_UNSAFE_NEXT_STEP);
+                finalAnswerDetermined = true;
+                writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
                 session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
                         McpConstants.FALLBACK_UNSAFE_NEXT_STEP);
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_FALLBACK);
@@ -196,6 +203,8 @@ public class McpToolStep implements EngineStep {
             String guardrailBlockReason = nextToolGuardrailBlockReason(toolCode, observations);
             if (guardrailBlockReason != null) {
                 writeFinalAnswerToContext(session, McpConstants.FALLBACK_GUARDRAIL_BLOCKED);
+                finalAnswerDetermined = true;
+                writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
                 session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, McpConstants.FALLBACK_GUARDRAIL_BLOCKED);
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_GUARDRAIL_BLOCKED);
                 writeLifecycleToContext(session, McpConstants.STATUS_GUARDRAIL_BLOCKED, McpConstants.OUTCOME_BLOCKED,
@@ -253,6 +262,8 @@ public class McpToolStep implements EngineStep {
                         toolErrorPayload);
                 String toolErrorMessage = resolveToolErrorMessage(session, toolCode, toolErrorPayload);
                 writeFinalAnswerToContext(session, toolErrorMessage);
+                finalAnswerDetermined = true;
+                writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
                 session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
                         toolErrorMessage);
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_TOOL_ERROR);
@@ -263,6 +274,11 @@ public class McpToolStep implements EngineStep {
                         toolErrorPayload);
                 break;
             }
+        }
+
+        if (mcpTouched && !finalAnswerDetermined) {
+            toolExecutionAbrupted = true;
+            writeMcpExecutionFlagsToContext(session, false, toolExecutionAbrupted, maxLoops);
         }
 
         if (mcpTouched) {
@@ -421,6 +437,9 @@ public class McpToolStep implements EngineStep {
             // Remove stale per-turn MCP state
             if (root.has(McpConstants.CONTEXT_KEY_MCP) && root.get(McpConstants.CONTEXT_KEY_MCP).isObject()) {
                 ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_FINAL_ANSWER);
+                ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_FINAL_ANSWER_DETERMINED);
+                ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTED);
+                ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTION_LIMIT);
                 ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_OBSERVATIONS);
                 ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_LIFECYCLE);
             }
@@ -595,6 +614,22 @@ public class McpToolStep implements EngineStep {
                 lifecycle.remove(McpConstants.CONTEXT_KEY_ERROR_MESSAGE);
             }
 
+            session.setContextJson(mapper.writeValueAsString(root));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void writeMcpExecutionFlagsToContext(
+            EngineSession session,
+            boolean finalAnswerDetermined,
+            boolean toolExecutionAbrupted,
+            int toolExecutionAbruptionLimit) {
+        try {
+            ObjectNode root = ensureContextObject(session);
+            ObjectNode mcp = root.withObject(McpConstants.CONTEXT_KEY_MCP);
+            mcp.put(McpConstants.CONTEXT_KEY_FINAL_ANSWER_DETERMINED, finalAnswerDetermined);
+            mcp.put(McpConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTED, toolExecutionAbrupted);
+            mcp.put(McpConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTION_LIMIT, Math.max(1, toolExecutionAbruptionLimit));
             session.setContextJson(mapper.writeValueAsString(root));
         } catch (Exception ignored) {
         }

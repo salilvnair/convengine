@@ -4,12 +4,14 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.mcp.McpSqlGuardrail;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.DbToolHandler;
+import com.github.salilvnair.convengine.engine.mcp.executor.interceptor.PostgresQueryInterceptor;
 import com.github.salilvnair.convengine.engine.mcp.util.McpSqlAuditHelper;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +29,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
     private final McpSqlGuardrail sqlGuardrail;
     private final AuditService auditService;
     private final VerboseMessagePublisher verbosePublisher;
+    private final ObjectProvider<List<PostgresQueryInterceptor>> interceptorProvider;
 
     @Override
     public String toolCode() {
@@ -43,6 +46,9 @@ public class PostgresQueryToolHandler implements DbToolHandler {
         if (sql.isBlank()) {
             throw new IllegalArgumentException("The provided SQL query is empty.");
         }
+        String originalSql = sql;
+        sql = applyInterceptors(sql, tool, args, session);
+        args.put("query", sql);
 
         // 1. Assert read-only safety using the shared guardrail validation.
         sqlGuardrail.assertReadOnly(sql, "postgres.query tool");
@@ -79,6 +85,9 @@ public class PostgresQueryToolHandler implements DbToolHandler {
         Map<String, Object> basePayload = new LinkedHashMap<>();
         basePayload.put("tool_code", toolCode());
         basePayload.put("args", args);
+        if (!originalSql.equals(sql)) {
+            basePayload.put("normalized_sql", sql);
+        }
         if (resultPayload.containsKey("warning")) {
             basePayload.put("warning", resultPayload.get("warning"));
         }
@@ -102,5 +111,26 @@ public class PostgresQueryToolHandler implements DbToolHandler {
         }
 
         return resultPayload;
+    }
+
+    private String applyInterceptors(String sql, CeMcpTool tool, Map<String, Object> args, EngineSession session) {
+        List<PostgresQueryInterceptor> interceptors = interceptorProvider.getIfAvailable(List::of);
+        if (interceptors == null || interceptors.isEmpty()) {
+            return sql;
+        }
+        String current = sql;
+        for (PostgresQueryInterceptor interceptor : interceptors) {
+            if (interceptor == null) {
+                continue;
+            }
+            if (!interceptor.supports(tool, session, args == null ? Map.of() : args)) {
+                continue;
+            }
+            String next = interceptor.intercept(current, tool, session, args == null ? Map.of() : args);
+            if (next != null && !next.isBlank()) {
+                current = next;
+            }
+        }
+        return current;
     }
 }

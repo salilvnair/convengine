@@ -49,6 +49,8 @@ DELETE FROM ce_response WHERE intent_code = 'dynamic_sql';
 -- Response 1: Derived final response mapping to the COMPLETED state
 INSERT INTO ce_response(intent_code, state_code, output_format, response_type, exact_text, derivation_hint, priority, enabled, description, created_at)
 VALUES
+    ('dynamic_sql', 'IDLE', 'TEXT', 'DERIVED', NULL, 'Ask the user for a SQL-style question starting with /sql and keep response concise.', 5, true, 'Idle helper response for dynamic SQL.', CURRENT_TIMESTAMP),
+    ('dynamic_sql', 'EXECUTE', 'TEXT', 'DERIVED', NULL, 'If context.mcp.finalAnswer exists, return it. If context.mcp.lifecycle has error details, summarize the error and ask user to retry with corrected table/column names. Otherwise provide a short in-progress acknowledgement.', 8, true, 'Execute-state fallback response for dynamic SQL.', CURRENT_TIMESTAMP),
     ('dynamic_sql', 'COMPLETED', 'TEXT', 'DERIVED', NULL, 'Render final answer from context.mcp.finalAnswer.', 10, true, 'Final dynamic SQL response.', CURRENT_TIMESTAMP);
 
 -- ==========================================
@@ -68,17 +70,18 @@ DELETE FROM ce_mcp_planner WHERE intent_code = 'dynamic_sql';
 INSERT INTO ce_mcp_planner(
     intent_code, state_code, system_prompt, user_prompt, enabled, created_at
 ) VALUES (
-             'dynamic_sql', 'EXECUTE',
+             'dynamic_sql', 'ANY',
              'You are a DB expert. Your task is to plan table investigations.
          You have two main tools available:
          1. `db.semantic.catalog` - Pass keywords here to learn about tables, their columns, and see sample SQL queries before formulating your own.
          2. `postgres.query` - Pass the raw SELECT SQL query here once you know exactly what tables and columns to query.
 
          You must follow these steps:
-         1. If you do not know the exact schema or queries for the users request, invoke `db.semantic.catalog` to get hints.
-         2. Based on the domain semantic knowledge, generate a safe and read-only SELECT query.
-         3. Submit the SQL query to `postgres.query`.
-         4. Based on the returned rows, answer the user.
+         1. Ground first: if there is no prior `db.semantic.catalog` observation for this user request, your first action MUST be CALL_TOOL with tool_code `db.semantic.catalog` and args.question = user request. Do not call `postgres.query` first.
+         2. If you do not know the exact schema or queries for the users request, invoke `db.semantic.catalog` to get hints.
+         3. Based on the domain semantic knowledge, generate a safe and read-only SELECT query.
+         4. Submit the SQL query to `postgres.query`.
+         5. Based on the returned rows, answer the user.
          5. Use type-safe time handling:
             - If a column is TIMESTAMP/TIMESTAMPTZ/DATE, compare it directly to timestamp/date expressions. Do NOT divide by 1000.
             - Use epoch conversion only when the source column is numeric epoch milliseconds (BIGINT/NUMERIC), then use to_timestamp(epoch_ms/1000.0).
@@ -101,6 +104,12 @@ INSERT INTO ce_mcp_planner(
          - For postgres.query use args.query and it must be a read-only SELECT statement.
          - When action is ANSWER, set tool_code to null and args to {}.
          - Final answer must report human-readable date/time values, never raw epoch milliseconds.
+         - Every datetime shown in answer/table must include explicit timezone (for example UTC or +00:00).
+         - Prefer ISO-like format: YYYY-MM-DD HH24:MI:SS TZ or YYYY-MM-DDTHH:MI:SS+00:00.
+         - Do not add meta commentary like "Note:" or "timestamps converted". Return direct results only.
+         - When answering from postgres.query rows, format result details as a Markdown table.
+         - Markdown table format must use a header row, separator row, and one row per record.
+         - If exactly one aggregate value (like COUNT) is returned, still return a 1-row Markdown table.
          - For "yesterday", use day boundary filters:
            ts_col >= date_trunc(''day'', now() - interval ''1 day'')
            AND ts_col <  date_trunc(''day'', now())
@@ -127,21 +136,26 @@ INSERT INTO ce_mcp_planner(
 -- 4. Seed Schema Semantic Knowledge
 --    Tell the LLM what the tables and columns mean
 -- ==========================================
+ALTER TABLE IF EXISTS ce_mcp_schema_knowledge
+    ADD COLUMN IF NOT EXISTS valid_values VARCHAR(2000);
+ALTER TABLE IF EXISTS ce_mcp_schema_knowledge
+    ADD COLUMN IF NOT EXISTS vector TEXT;
+
 DELETE FROM ce_mcp_schema_knowledge;
 INSERT INTO ce_mcp_schema_knowledge(
-    id, table_name, column_name, description, tags
+    id, table_name, column_name, description, tags, valid_values
 ) VALUES
-      (1, 'zp_request', NULL, 'Primary table storing customer provisioning requests', 'request, order, core'),
-      (2, 'zp_request', 'zp_request_id', 'Unique request identifier. Used as the primary key and join key across all tables.', 'pk, join_key'),
-      (3, 'zp_ui_data', NULL, 'Current state data for UI interactions. Holds the latest status or action code for the request.', 'state, status, latest'),
-      (4, 'zp_ui_data_history', NULL, 'Historical log of UI state changes and assignments. Use this table for audits or finding when a request moved from one state to another (e.g. ASSIGNED to REJECTED). Compare different rows with the same zp_request_id but different action_ids over time.', 'history, audit, transition'),
-      (5, 'zp_ui_data_history', 'history_id', 'Primary key for history row.', 'pk, history'),
-      (6, 'zp_ui_data_history', 'zp_request_id', 'Request id associated with this status transition row.', 'join_key, request'),
-      (7, 'zp_ui_data_history', 'zp_action_id', 'Action/status code at this transition point.', 'status, action'),
-      (8, 'zp_ui_data_history', 'zp_asr_team_member_id', 'ASR team member id handling this action.', 'asr, owner, assignee'),
-      (9, 'zp_ui_data_history', 'zp_asr_team_notes', 'ASR notes/comments for this transition.', 'asr, notes, comments'),
-      (10, 'zp_ui_data_history', 'changed_by', 'Actor or system that changed this history row.', 'audit, actor'),
-      (11, 'zp_ui_data_history', 'created_date', 'Transition timestamp (TIMESTAMPTZ). Use this for time filters such as yesterday.', 'timestamp, time, transition');
+      (1, 'zp_request', NULL, 'Primary table storing customer provisioning requests', 'request, order, core', NULL),
+      (2, 'zp_request', 'zp_request_id', 'Unique request identifier. Used as the primary key and join key across all tables.', 'pk, join_key', NULL),
+      (3, 'zp_ui_data', NULL, 'Current state data for UI interactions. Holds the latest status or action code for the request.', 'state, status, latest', NULL),
+      (4, 'zp_ui_data_history', NULL, 'Historical log of UI state changes and assignments. Use this table for audits or finding when a request moved from one state to another (e.g. ASSIGNED to REJECTED). Compare different rows with the same zp_request_id but different action_ids over time.', 'history, audit, transition', NULL),
+      (5, 'zp_ui_data_history', 'history_id', 'Primary key for history row.', 'pk, history', NULL),
+      (6, 'zp_ui_data_history', 'zp_request_id', 'Request id associated with this status transition row.', 'join_key, request', NULL),
+      (7, 'zp_ui_data_history', 'zp_action_id', 'Action/status code at this transition point.', 'status, action', '200=ASSIGNED,400=REJECTED'),
+      (8, 'zp_ui_data_history', 'zp_asr_team_member_id', 'ASR team member id handling this action.', 'asr, owner, assignee', NULL),
+      (9, 'zp_ui_data_history', 'zp_asr_team_notes', 'ASR notes/comments for this transition.', 'asr, notes, comments', NULL),
+      (10, 'zp_ui_data_history', 'changed_by', 'Actor or system that changed this history row.', 'audit, actor', NULL),
+      (11, 'zp_ui_data_history', 'created_date', 'Transition timestamp (TIMESTAMPTZ). Use this for time filters such as yesterday.', 'timestamp, time, transition', NULL);
 
 -- ==========================================
 -- 5. Seed Query Semantic Knowledge

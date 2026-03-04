@@ -19,5 +19,6 @@ public class DbSchemaAgentGenerateRequest {
         private String role;
         private String description;
         private String tags;
+        private String validValues;
     }
 }

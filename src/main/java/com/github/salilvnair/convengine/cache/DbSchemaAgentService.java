@@ -47,16 +47,17 @@ public class DbSchemaAgentService {
                 Return SQL only, no markdown and no explanation.
 
                 Hard constraints:
-                - Use only INSERT INTO ce_mcp_schema_knowledge (id, table_name, column_name, description, tags)
+                - Use only INSERT INTO ce_mcp_schema_knowledge (id, table_name, column_name, description, tags, valid_values)
                 - id must be deterministic numeric sequence starting from 1 in the emitted script.
                 - Emit one row per input item.
                 - If column_name is empty, use NULL.
+                - If valid_values is empty, use NULL.
                 - Escape single quotes safely in SQL literals.
                 - Do not emit DELETE/DROP/ALTER/TRUNCATE/CREATE TABLE/BEGIN/COMMIT.
                 - Keep tags comma separated and lowercase where possible.
                 %s
                 """.formatted(upsert
-                ? "- Add ON CONFLICT (id) DO UPDATE SET table_name = EXCLUDED.table_name, column_name = EXCLUDED.column_name, description = EXCLUDED.description, tags = EXCLUDED.tags."
+                ? "- Add ON CONFLICT (id) DO UPDATE SET table_name = EXCLUDED.table_name, column_name = EXCLUDED.column_name, description = EXCLUDED.description, tags = EXCLUDED.tags, valid_values = EXCLUDED.valid_values."
                 : "- Do not add ON CONFLICT clause.");
 
         String userPrompt = """
@@ -111,6 +112,7 @@ public class DbSchemaAgentService {
             x.setRole(safe(r.getRole()));
             x.setDescription(description);
             x.setTags(safe(r.getTags()));
+            x.setValidValues(safe(r.getValidValues()));
             rows.add(x);
         }
         return rows;
@@ -128,14 +130,15 @@ public class DbSchemaAgentService {
                     .append("; column_name=").append(blankAsNullText(r.getColumnName()))
                     .append("; role=").append(blankAsNullText(r.getRole()))
                     .append("; description=").append(r.getDescription())
-                    .append("; tags=").append(blankAsNullText(r.getTags()));
+                    .append("; tags=").append(blankAsNullText(r.getTags()))
+                    .append("; valid_values=").append(blankAsNullText(r.getValidValues()));
         }
         return sb.toString();
     }
 
     private String buildDeterministicSql(List<DbSchemaAgentGenerateRequest.Row> rows, boolean upsert) {
         StringBuilder sb = new StringBuilder();
-        sb.append("INSERT INTO ce_mcp_schema_knowledge (id, table_name, column_name, description, tags)\nVALUES\n");
+        sb.append("INSERT INTO ce_mcp_schema_knowledge (id, table_name, column_name, description, tags, valid_values)\nVALUES\n");
         for (int i = 0; i < rows.size(); i++) {
             DbSchemaAgentGenerateRequest.Row r = rows.get(i);
             sb.append("  (")
@@ -148,6 +151,8 @@ public class DbSchemaAgentService {
                     .append(sqlLiteral(r.getDescription()))
                     .append(", ")
                     .append(sqlNullableLiteral(normalizeTags(r.getTags())))
+                    .append(", ")
+                    .append(sqlNullableLiteral(r.getValidValues()))
                     .append(")");
             sb.append(i == rows.size() - 1 ? "\n" : ",\n");
         }
@@ -156,7 +161,8 @@ public class DbSchemaAgentService {
                     .append("  table_name = EXCLUDED.table_name,\n")
                     .append("  column_name = EXCLUDED.column_name,\n")
                     .append("  description = EXCLUDED.description,\n")
-                    .append("  tags = EXCLUDED.tags;\n");
+                    .append("  tags = EXCLUDED.tags,\n")
+                    .append("  valid_values = EXCLUDED.valid_values;\n");
         } else {
             sb.append(";\n");
         }
