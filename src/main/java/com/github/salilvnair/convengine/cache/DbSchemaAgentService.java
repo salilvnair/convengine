@@ -68,7 +68,7 @@ public class DbSchemaAgentService {
 
         LlmInvocationContext.set(UUID.randomUUID(), "DB_SCHEMA_AGENT", "GENERATE_SEED");
         try {
-            llmSql = normalizeSql(llmClient.generateText(systemPrompt + "\n\n" + userPrompt, "{}"));
+            llmSql = normalizeSql(llmClient.generateText(null, systemPrompt + "\n\n" + userPrompt, "{}"));
         } catch (Exception e) {
             warnings.add("LLM generation failed, returned deterministic SQL fallback.");
         } finally {

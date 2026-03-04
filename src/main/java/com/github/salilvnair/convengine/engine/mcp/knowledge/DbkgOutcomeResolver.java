@@ -15,27 +15,27 @@ public class DbkgOutcomeResolver {
 
     public Map<String, Object> resolveOutcome(String playbookCode, List<Map<String, Object>> stepResults, Map<String, Object> runtime) {
         List<Map<String, Object>> rules = support.readEnabledRows(support.cfg().getOutcomeRuleTable()).stream()
-                .filter(row -> playbookCode.equalsIgnoreCase(support.asText(row.get("playbook_code"))))
-                .sorted(java.util.Comparator.comparing(row -> support.parseInt(row.get("priority"), 100)))
+                .filter(row -> playbookCode.equalsIgnoreCase(support.asText(row.get(DbkgConstants.COL_PLAYBOOK_CODE))))
+                .sorted(java.util.Comparator.comparing(row -> support.parseInt(row.get(DbkgConstants.COL_PRIORITY), 100)))
                 .toList();
 
         Map<String, Object> variables = new LinkedHashMap<>();
-        variables.put("rowCount", support.parseInt(runtime.get("lastRowCount"), 0));
-        variables.put("requestRowCount", support.parseInt(runtime.get("requestRowCount"), 0));
-        variables.put("placeholderSkipped", Boolean.TRUE.equals(runtime.get("placeholderSkipped")));
-        variables.put("stepCount", stepResults.size());
+        variables.put(DbkgConstants.KEY_ROW_COUNT, support.parseInt(runtime.get(DbkgConstants.KEY_LAST_ROW_COUNT), 0));
+        variables.put(DbkgConstants.KEY_REQUEST_ROW_COUNT, support.parseInt(runtime.get(DbkgConstants.KEY_REQUEST_ROW_COUNT), 0));
+        variables.put(DbkgConstants.KEY_PLACEHOLDER_SKIPPED, Boolean.TRUE.equals(runtime.get(DbkgConstants.KEY_PLACEHOLDER_SKIPPED)));
+        variables.put(DbkgConstants.KEY_STEP_COUNT, stepResults.size());
 
         for (Map<String, Object> rule : rules) {
-            String expr = support.asText(rule.get("condition_expr"));
+            String expr = support.asText(rule.get(DbkgConstants.COL_CONDITION_EXPR));
             if (!evaluateCondition(expr, variables)) {
                 continue;
             }
             Map<String, Object> outcome = new LinkedHashMap<>();
-            outcome.put("outcomeCode", rule.get("outcome_code"));
-            outcome.put("severity", rule.get("severity"));
-            outcome.put("explanation", renderTemplate(support.asText(rule.get("explanation_template")), variables));
-            outcome.put("recommendedNextAction", renderTemplate(support.asText(rule.get("recommended_next_action")), variables));
-            outcome.put("matchedCondition", expr);
+            outcome.put(DbkgConstants.KEY_OUTCOME_CODE, rule.get(DbkgConstants.COL_OUTCOME_CODE));
+            outcome.put(DbkgConstants.KEY_SEVERITY, rule.get(DbkgConstants.COL_SEVERITY));
+            outcome.put(DbkgConstants.KEY_EXPLANATION, renderTemplate(support.asText(rule.get(DbkgConstants.COL_EXPLANATION_TEMPLATE)), variables));
+            outcome.put(DbkgConstants.KEY_RECOMMENDED_NEXT_ACTION, renderTemplate(support.asText(rule.get(DbkgConstants.COL_RECOMMENDED_NEXT_ACTION)), variables));
+            outcome.put(DbkgConstants.KEY_MATCHED_CONDITION, expr);
             return outcome;
         }
         return null;
@@ -43,10 +43,10 @@ public class DbkgOutcomeResolver {
 
     public String buildFallbackSummary(String playbookCode, List<Map<String, Object>> stepResults, Map<String, Object> runtime) {
         String summary = "Playbook " + playbookCode + " completed " + stepResults.size() + " step(s).";
-        if (Boolean.TRUE.equals(runtime.get("placeholderSkipped"))) {
+        if (Boolean.TRUE.equals(runtime.get(DbkgConstants.KEY_PLACEHOLDER_SKIPPED))) {
             summary += " Placeholder queries were skipped because consumer transaction mappings are still disabled.";
-        } else if (runtime.containsKey("lastRowCount")) {
-            summary += " The latest query returned " + runtime.get("lastRowCount") + " row(s).";
+        } else if (runtime.containsKey(DbkgConstants.KEY_LAST_ROW_COUNT)) {
+            summary += " The latest query returned " + runtime.get(DbkgConstants.KEY_LAST_ROW_COUNT) + " row(s).";
         }
         return summary;
     }

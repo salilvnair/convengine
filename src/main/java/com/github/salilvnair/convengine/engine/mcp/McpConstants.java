@@ -1,5 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp;
 
+import java.util.List;
+
 public final class McpConstants {
 
     private McpConstants() {
@@ -33,6 +35,7 @@ public final class McpConstants {
     public static final String CONTEXT_KEY_FINAL_ANSWER_DETERMINED = "finalAnswerDetermined";
     public static final String CONTEXT_KEY_TOOL_EXECUTION_ABRUPTED = "toolExecutionAbrupted";
     public static final String CONTEXT_KEY_TOOL_EXECUTION_ABRUPTION_LIMIT = "toolExecutionAbruptionLimit";
+    public static final String CONTEXT_KEY_TOOL_EXECUTION_ERROR = "toolExecutionError";
     public static final String CONTEXT_KEY_LIFECYCLE = "lifecycle";
     public static final String CONTEXT_KEY_TOOL_EXECUTION = "toolExecution";
     public static final String CONTEXT_KEY_STATUS = "status";
@@ -79,4 +82,26 @@ public final class McpConstants {
     public static final String FALLBACK_PLAN_ERROR = "I couldn't plan tool usage safely. Can you rephrase your question?";
     public static final String FALLBACK_GUARDRAIL_BLOCKED = "Tool sequence guardrail blocked this action. Please rephrase or provide missing details.";
     public static final String AUDIT_STAGE_MCP_CONTEXT_CLEARED = "MCP_CONTEXT_CLEARED";
+    public static final String VERBOSE_EVENT_MCP_TOOL_CALL = "MCP_TOOL_CALL";
+    public static final String VERBOSE_EVENT_MCP_TOOL_RESULT = "MCP_TOOL_RESULT";
+    public static final String VERBOSE_EVENT_MCP_TOOL_ERROR = "MCP_TOOL_ERROR";
+    public static final String VERBOSE_EVENT_MCP_FINAL_ANSWER = "MCP_FINAL_ANSWER";
+    public static final String GUARDRAIL_REASON_DBKG_VALIDATION_REQUIRED = "DBKG_VALIDATION_REQUIRED_BEFORE_EXECUTION";
+    public static final String GUARDRAIL_REASON_NEXT_TOOL_BLOCKED = "NEXT_TOOL_GUARDRAIL_BLOCKED";
+
+    public static final List<String> OBSERVATION_SUMMARY_FIELDS = List.of(
+            "status",
+            "summary",
+            "message",
+            "error",
+            "queryCode",
+            "rowCount",
+            "valid",
+            "canExecute",
+            "selectedCase",
+            "selectedPlaybook",
+            "outcome",
+            "finalSummary",
+            "graphError"
+    );
 }

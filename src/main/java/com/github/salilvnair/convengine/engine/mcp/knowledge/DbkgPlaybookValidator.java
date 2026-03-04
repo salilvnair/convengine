@@ -31,17 +31,17 @@ public class DbkgPlaybookValidator {
 
         Set<String> incoming = new HashSet<>();
         for (Map<String, Object> transition : transitions) {
-            String from = support.asText(transition.get("fromStepCode"));
-            String to = support.asText(transition.get("toStepCode"));
+            String from = support.asText(transition.get(DbkgConstants.KEY_FROM_STEP_CODE));
+            String to = support.asText(transition.get(DbkgConstants.KEY_TO_STEP_CODE));
             if (from.isBlank()) {
-                return "Transition has blank fromStepCode.";
+                return "Transition has blank " + DbkgConstants.KEY_FROM_STEP_CODE + ".";
             }
             if (!stepsByCode.containsKey(from)) {
-                return "Transition references missing fromStepCode=" + from;
+                return "Transition references missing " + DbkgConstants.KEY_FROM_STEP_CODE + "=" + from;
             }
             if (!to.isBlank()) {
                 if (!stepsByCode.containsKey(to)) {
-                    return "Transition references missing toStepCode=" + to;
+                    return "Transition references missing " + DbkgConstants.KEY_TO_STEP_CODE + "=" + to;
                 }
                 incoming.add(to);
             }
@@ -63,7 +63,7 @@ public class DbkgPlaybookValidator {
         Set<String> reachable = new HashSet<>();
         walkReachable(chosenStart, transitions, reachable);
         for (Map<String, Object> step : steps) {
-            String stepCode = String.valueOf(step.get("stepCode"));
+            String stepCode = String.valueOf(step.get(DbkgConstants.KEY_STEP_CODE));
             if (!reachable.contains(stepCode)) {
                 return "Unreachable step found: " + stepCode;
             }
@@ -80,18 +80,18 @@ public class DbkgPlaybookValidator {
             return explicitStarts.get(0);
         }
         if (transitions.isEmpty()) {
-            return String.valueOf(steps.get(0).get("stepCode"));
+            return String.valueOf(steps.get(0).get(DbkgConstants.KEY_STEP_CODE));
         }
         Set<String> incoming = new HashSet<>();
         for (Map<String, Object> transition : transitions) {
-            String to = support.asText(transition.get("toStepCode"));
+            String to = support.asText(transition.get(DbkgConstants.KEY_TO_STEP_CODE));
             if (!to.isBlank()) {
                 incoming.add(to);
             }
         }
         List<String> roots = findImplicitStartSteps(steps, incoming);
         if (roots.isEmpty()) {
-            return String.valueOf(steps.get(0).get("stepCode"));
+            return String.valueOf(steps.get(0).get(DbkgConstants.KEY_STEP_CODE));
         }
         return roots.get(0);
     }
@@ -99,7 +99,7 @@ public class DbkgPlaybookValidator {
     private Map<String, Map<String, Object>> indexStepsByCode(List<Map<String, Object>> steps) {
         Map<String, Map<String, Object>> indexed = new LinkedHashMap<>();
         for (Map<String, Object> step : steps) {
-            indexed.put(String.valueOf(step.get("stepCode")), step);
+            indexed.put(String.valueOf(step.get(DbkgConstants.KEY_STEP_CODE)), step);
         }
         return indexed;
     }
@@ -107,9 +107,9 @@ public class DbkgPlaybookValidator {
     private List<String> findExplicitStartSteps(List<Map<String, Object>> steps) {
         List<String> explicitStarts = new ArrayList<>();
         for (Map<String, Object> step : steps) {
-            Map<String, Object> config = support.parseJsonObject(support.asText(step.get("configJson")));
-            if (support.truthy(config.get("isStart"))) {
-                explicitStarts.add(String.valueOf(step.get("stepCode")));
+            Map<String, Object> config = support.parseJsonObject(support.asText(step.get(DbkgConstants.KEY_CONFIG_JSON)));
+            if (support.truthy(config.get(DbkgConstants.KEY_IS_START))) {
+                explicitStarts.add(String.valueOf(step.get(DbkgConstants.KEY_STEP_CODE)));
             }
         }
         return explicitStarts;
@@ -118,7 +118,7 @@ public class DbkgPlaybookValidator {
     private List<String> findImplicitStartSteps(List<Map<String, Object>> steps, Set<String> incoming) {
         List<String> startNodes = new ArrayList<>();
         for (Map<String, Object> step : steps) {
-            String stepCode = String.valueOf(step.get("stepCode"));
+            String stepCode = String.valueOf(step.get(DbkgConstants.KEY_STEP_CODE));
             if (!incoming.contains(stepCode)) {
                 startNodes.add(stepCode);
             }
@@ -131,11 +131,11 @@ public class DbkgPlaybookValidator {
             return;
         }
         for (Map<String, Object> transition : transitions) {
-            String from = support.asText(transition.get("fromStepCode"));
+            String from = support.asText(transition.get(DbkgConstants.KEY_FROM_STEP_CODE));
             if (!current.equalsIgnoreCase(from)) {
                 continue;
             }
-            String to = support.asText(transition.get("toStepCode"));
+            String to = support.asText(transition.get(DbkgConstants.KEY_TO_STEP_CODE));
             if (!to.isBlank()) {
                 walkReachable(to, transitions, reachable);
             }

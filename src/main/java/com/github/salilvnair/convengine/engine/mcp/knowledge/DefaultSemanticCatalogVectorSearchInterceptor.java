@@ -55,7 +55,7 @@ public class DefaultSemanticCatalogVectorSearchInterceptor implements SemanticCa
 
         float[] queryEmbedding;
         try {
-            queryEmbedding = llmClient.generateEmbedding(question);
+            queryEmbedding = llmClient.generateEmbedding(null, question);
         } catch (Exception ex) {
             return rows;
         }

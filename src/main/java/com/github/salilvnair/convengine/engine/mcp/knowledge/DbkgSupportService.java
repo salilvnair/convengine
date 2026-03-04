@@ -35,6 +35,8 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class DbkgSupportService {
 
+    private static final String CE_MCP_TOOL_TABLE = "ce_mcp_tool";
+    private static final String CE_MCP_PLANNER_TABLE = "ce_mcp_planner";
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("[A-Za-z0-9_$.]+$");
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^a-z0-9_]+");
     private static final Pattern STEP_REF_PATTERN = Pattern.compile("^([A-Za-z0-9_]+)(?:\\[(\\d+)])?(?:\\.(.+))?$");
@@ -53,7 +55,7 @@ public class DbkgSupportService {
 
     public String extractQuestion(Map<String, Object> args, EngineSession session) {
         if (args != null) {
-            for (String key : List.of("question", "query", "user_input")) {
+            for (String key : DbkgConstants.QUESTION_ARG_KEYS) {
                 Object value = args.get(key);
                 if (value != null && !String.valueOf(value).isBlank()) {
                     return String.valueOf(value);
@@ -548,22 +550,22 @@ public class DbkgSupportService {
         List<Map<String, Object>> dbJoinPaths = readEnabledRowsOptional(cfg.getDbJoinPathTable());
         List<Map<String, Object>> statuses = readEnabledRowsOptional(cfg.getStatusDictionaryTable());
         List<Map<String, Object>> lineages = readEnabledRowsOptional(cfg.getIdLineageTable());
-        List<Map<String, Object>> executorTemplates = readEnabledRowsOptional("ce_mcp_executor_template");
+        List<Map<String, Object>> executorTemplates = readEnabledRowsOptional(cfg.getExecutorTemplateTable());
         List<Map<String, Object>> queryTemplates = readEnabledRowsOptional(cfg.getQueryTemplateTable());
         List<Map<String, Object>> queryParamRules = readEnabledRowsOptional(cfg.getQueryParamRuleTable());
         List<Map<String, Object>> playbookSteps = readEnabledRowsOptional(cfg.getPlaybookStepTable());
         List<Map<String, Object>> playbookTransitions = readEnabledRowsOptional(cfg.getPlaybookTransitionTable());
         List<Map<String, Object>> outcomeRules = readEnabledRowsOptional(cfg.getOutcomeRuleTable());
         List<Map<String, Object>> sqlGuardrails = readEnabledRowsOptional(mcpConfig.getDb().getSqlGuardrailTable());
-        List<Map<String, Object>> mcpTools = readEnabledRowsOptional("ce_mcp_tool");
-        List<Map<String, Object>> mcpPlanners = readEnabledRowsOptional("ce_mcp_planner");
+        List<Map<String, Object>> mcpTools = readEnabledRowsOptional(CE_MCP_TOOL_TABLE);
+        List<Map<String, Object>> mcpPlanners = readEnabledRowsOptional(CE_MCP_PLANNER_TABLE);
 
         Map<String, Object> capsule = new LinkedHashMap<>();
         capsule.put("version", "dbkg-capsule-v1");
         capsule.put("question", question == null ? "" : question);
         capsule.put("tokens", tokens == null ? List.of() : tokens.stream().distinct().limit(12).toList());
-        capsule.put("selectedCaseCode", asText(selectedCase == null ? null : selectedCase.get("caseCode")));
-        capsule.put("selectedPlaybookCode", asText(selectedPlaybook == null ? null : selectedPlaybook.get("playbookCode")));
+        capsule.put("selectedCaseCode", asText(selectedCase == null ? null : selectedCase.get(DbkgConstants.KEY_CASE_CODE)));
+        capsule.put("selectedPlaybookCode", asText(selectedPlaybook == null ? null : selectedPlaybook.get(DbkgConstants.KEY_PLAYBOOK_CODE)));
 
         Map<String, Object> sourceCoverage = new LinkedHashMap<>();
         sourceCoverage.put(cfg.getCaseTypeTable(), caseTypes.size());
@@ -580,15 +582,15 @@ public class DbkgSupportService {
         sourceCoverage.put(cfg.getDbJoinPathTable(), dbJoinPaths.size());
         sourceCoverage.put(cfg.getStatusDictionaryTable(), statuses.size());
         sourceCoverage.put(cfg.getIdLineageTable(), lineages.size());
-        sourceCoverage.put("ce_mcp_executor_template", executorTemplates.size());
+        sourceCoverage.put(cfg.getExecutorTemplateTable(), executorTemplates.size());
         sourceCoverage.put(cfg.getQueryTemplateTable(), queryTemplates.size());
         sourceCoverage.put(cfg.getQueryParamRuleTable(), queryParamRules.size());
         sourceCoverage.put(cfg.getPlaybookStepTable(), playbookSteps.size());
         sourceCoverage.put(cfg.getPlaybookTransitionTable(), playbookTransitions.size());
         sourceCoverage.put(cfg.getOutcomeRuleTable(), outcomeRules.size());
         sourceCoverage.put(mcpConfig.getDb().getSqlGuardrailTable(), sqlGuardrails.size());
-        sourceCoverage.put("ce_mcp_tool", mcpTools.size());
-        sourceCoverage.put("ce_mcp_planner", mcpPlanners.size());
+        sourceCoverage.put(CE_MCP_TOOL_TABLE, mcpTools.size());
+        sourceCoverage.put(CE_MCP_PLANNER_TABLE, mcpPlanners.size());
         capsule.put("sourceCoverage", sourceCoverage);
 
         Map<String, Object> semanticGraph = new LinkedHashMap<>();
@@ -610,7 +612,7 @@ public class DbkgSupportService {
         capsule.put("sqlGraph", sqlGraph);
 
         Map<String, Object> executionGraph = new LinkedHashMap<>();
-        String selectedPlaybookCode = asText(selectedPlaybook == null ? null : selectedPlaybook.get("playbookCode"));
+        String selectedPlaybookCode = asText(selectedPlaybook == null ? null : selectedPlaybook.get(DbkgConstants.KEY_PLAYBOOK_CODE));
         executionGraph.put("executorTemplates", sampleCodes(executorTemplates, "executor_code", "description", 12));
         executionGraph.put("steps", samplePlaybookSteps(playbookSteps, selectedPlaybookCode, 20));
         executionGraph.put("transitions", samplePlaybookTransitions(playbookTransitions, selectedPlaybookCode, 20));
@@ -845,7 +847,7 @@ public class DbkgSupportService {
         LinkedHashSet<String> hints = new LinkedHashSet<>();
         for (List<Map<String, Object>> rows : datasets) {
             for (Map<String, Object> row : rows) {
-                for (String key : List.of("llm_hint", "description", "purpose", "business_meaning", "explanation_template")) {
+                for (String key : DbkgConstants.HINT_TEXT_KEYS) {
                     String hint = asText(row.get(key)).trim();
                     if (!hint.isBlank()) {
                         hints.add(hint);

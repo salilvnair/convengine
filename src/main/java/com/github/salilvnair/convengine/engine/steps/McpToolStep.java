@@ -19,6 +19,7 @@ import com.github.salilvnair.convengine.engine.mcp.McpConstants;
 import com.github.salilvnair.convengine.engine.mcp.McpPlanner;
 import com.github.salilvnair.convengine.engine.mcp.McpToolRegistry;
 import com.github.salilvnair.convengine.engine.mcp.executor.McpToolExecutor;
+import com.github.salilvnair.convengine.engine.mcp.knowledge.DbkgConstants;
 import com.github.salilvnair.convengine.engine.mcp.model.McpObservation;
 import com.github.salilvnair.convengine.engine.mcp.model.McpPlan;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
@@ -48,6 +49,12 @@ import java.util.Set;
 public class McpToolStep implements EngineStep {
 
     private static final int DEFAULT_MAX_LOOPS = 5;
+    private static final String STEP_NAME = "McpToolStep";
+    private static final String CONFIG_KEY_TOOL_MAX_LOOPS = "MCP_TOOL_MAX_LOOPS";
+    private static final String CONFIG_KEY_TOOL_CALL_DELAY_MS = "MCP_TOOL_CALL_DELAY_MS";
+    private static final String CONFIG_KEY_TOOL_CALL_DELAY_AFTER_CALLS = "MCP_TOOL_CALL_DELAY_AFTER_CALLS";
+    private static final String CONFIG_KEY_TOOL_CALL_DELAY_AFTER_MS = "MCP_TOOL_CALL_DELAY_AFTER_MS";
+    private static final String GREETING_REGEX = "^(hi|hello|hey|greetings|good morning|good afternoon|good evening)\\b.*";
 
     private final McpToolRegistry registry;
     private final McpPlanner planner;
@@ -105,7 +112,7 @@ public class McpToolStep implements EngineStep {
 
         String userText = session.getUserText();
         if (userText != null && userText.trim().toLowerCase()
-                .matches("^(hi|hello|hey|greetings|good morning|good afternoon|good evening)\\b.*")) {
+                .matches(GREETING_REGEX)) {
             session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_SKIPPED_GREETING);
             writeLifecycleToContext(session, McpConstants.STATUS_SKIPPED_GREETING, McpConstants.OUTCOME_SKIPPED,
                     true, false, false, null, null, null, null, null);
@@ -140,7 +147,7 @@ public class McpToolStep implements EngineStep {
         boolean toolExecutionAbrupted = false;
 
         int maxLoops = resolveMaxLoops();
-        writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
+        writeMcpExecutionFlagsToContext(session, false, false, maxLoops);
         for (int i = 0; i < maxLoops; i++) {
 
             McpPlan plan = planner.plan(session, tools, observations);
@@ -263,9 +270,8 @@ public class McpToolStep implements EngineStep {
                 String toolErrorMessage = resolveToolErrorMessage(session, toolCode, toolErrorPayload);
                 writeFinalAnswerToContext(session, toolErrorMessage);
                 finalAnswerDetermined = true;
-                writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
-                        toolErrorMessage);
+                writeMcpExecutionFlagsToContext(session, true, false, maxLoops);
+                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, toolErrorMessage);
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_TOOL_ERROR);
                 writeLifecycleToContext(session, McpConstants.STATUS_TOOL_ERROR, McpConstants.OUTCOME_ERROR,
                         true, false, true, plan.action(), toolCode, toolGroup, args,
@@ -361,7 +367,7 @@ public class McpToolStep implements EngineStep {
         return verbosePublisher
                 .resolve(session, "McpToolStep", "MCP_TOOL_CALL", null, toolCode, true, metadata)
                 .map(VerboseStreamPayload::getText)
-                .filter(text -> text != null && !text.isBlank())
+                .filter(text -> !text.isBlank())
                 .orElse(McpConstants.FALLBACK_TOOL_ERROR);
     }
 

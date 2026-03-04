@@ -12,23 +12,23 @@ public class DbkgTimeWindowStepExecutor implements DbkgStepExecutor {
 
     @Override
     public boolean supports(String executorCode) {
-        return "TIME_WINDOW_DERIVER".equalsIgnoreCase(executorCode);
+        return DbkgConstants.EXECUTOR_TIME_WINDOW_DERIVER.equalsIgnoreCase(executorCode);
     }
 
     @Override
     public Map<String, Object> execute(String stepCode, String templateCode, Map<String, Object> config,
             Map<String, Object> runtime) {
-        int hours = parseInt(config.get("hours"), 24);
+        int hours = parseInt(config.get(DbkgConstants.KEY_HOURS), 24);
         @SuppressWarnings("unchecked")
-        Map<String, Object> args = (Map<String, Object>) runtime.getOrDefault("args", Map.of());
-        if (args.containsKey("hours")) {
-            hours = parseInt(args.get("hours"), hours);
+        Map<String, Object> args = (Map<String, Object>) runtime.getOrDefault(DbkgConstants.KEY_ARGS, Map.of());
+        if (args.containsKey(DbkgConstants.KEY_HOURS)) {
+            hours = parseInt(args.get(DbkgConstants.KEY_HOURS), hours);
         }
         OffsetDateTime from = OffsetDateTime.now(ZoneOffset.UTC).minusHours(hours);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("hours", hours);
-        out.put("fromTs", java.sql.Timestamp.from(from.toInstant()));
-        runtime.put("timeWindow", out);
+        out.put(DbkgConstants.KEY_HOURS, hours);
+        out.put(DbkgConstants.KEY_FROM_TS, java.sql.Timestamp.from(from.toInstant()));
+        runtime.put(DbkgConstants.KEY_TIME_WINDOW, out);
         return out;
     }
 

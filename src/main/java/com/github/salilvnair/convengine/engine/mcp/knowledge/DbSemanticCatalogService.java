@@ -9,16 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 
 @Component
@@ -27,10 +18,7 @@ public class DbSemanticCatalogService {
 
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("[A-Za-z0-9_$.]+$");
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^a-z0-9_]+");
-    private static final Set<String> STOP_WORDS = Set.of(
-            "a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "with", "by",
-            "is", "are", "was", "were", "be", "as", "at", "from", "it", "that", "this", "then",
-            "how", "what", "when", "why", "who", "where", "show", "find", "get", "give", "tell");
+    private static final Set<String> STOP_WORDS = SemanticCatalogConstants.STOP_WORDS;
 
     private final JdbcTemplate jdbcTemplate;
     private final ConvEngineMcpConfig mcpConfig;
@@ -55,10 +43,10 @@ public class DbSemanticCatalogService {
             SemanticCatalogVectorSearchInterceptor interceptor = resolveVectorSearchInterceptor(vectorCfg);
             if (interceptor != null) {
                 vectorRankedQueryRows = cfg.isQueryKnowledge()
-                        ? nonEmptyOrFallback(interceptor.rank("query", question, queryRows, cfg), queryRows)
+                        ? nonEmptyOrFallback(interceptor.rank(SemanticCatalogConstants.SOURCE_TYPE_QUERY, question, queryRows, cfg), queryRows)
                         : List.of();
                 vectorRankedSchemaRows = cfg.isSchemaKnowledge()
-                        ? nonEmptyOrFallback(interceptor.rank("schema", question, schemaRows, cfg), schemaRows)
+                        ? nonEmptyOrFallback(interceptor.rank(SemanticCatalogConstants.SOURCE_TYPE_SCHEMA, question, schemaRows, cfg), schemaRows)
                         : List.of();
             }
         }
@@ -71,30 +59,30 @@ public class DbSemanticCatalogService {
                 : List.of();
 
         Map<String, Object> insights = new LinkedHashMap<>();
-        insights.put("suggestedPreparedQueries", rankedQueryKnowledge.stream()
-                .map(item -> item.get("preparedSql"))
+        insights.put(SemanticCatalogConstants.KEY_SUGGESTED_PREPARED_QUERIES, rankedQueryKnowledge.stream()
+                .map(item -> item.get(SemanticCatalogConstants.KEY_PREPARED_SQL))
                 .filter(v -> v instanceof String && !((String) v).isBlank())
                 .distinct()
                 .toList());
-        insights.put("suggestedTables", rankedSchemaKnowledge.stream()
-                .map(item -> item.get("tableName"))
+        insights.put(SemanticCatalogConstants.KEY_SUGGESTED_TABLES, rankedSchemaKnowledge.stream()
+                .map(item -> item.get(SemanticCatalogConstants.KEY_TABLE_NAME))
                 .filter(v -> v instanceof String && !((String) v).isBlank())
                 .distinct()
                 .toList());
 
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("question", question == null ? "" : question);
-        response.put("queryKnowledge", rankedQueryKnowledge);
-        response.put("schemaKnowledge", rankedSchemaKnowledge);
-        response.put("insights", insights);
+        response.put(SemanticCatalogConstants.KEY_QUESTION, question == null ? "" : question);
+        response.put(SemanticCatalogConstants.KEY_QUERY_KNOWLEDGE, rankedQueryKnowledge);
+        response.put(SemanticCatalogConstants.KEY_SCHEMA_KNOWLEDGE, rankedSchemaKnowledge);
+        response.put(SemanticCatalogConstants.KEY_INSIGHTS, insights);
         if (cfg.isKnowledgeCapsule()) {
-            response.put("dbkgCapsule", buildKnowledgeCapsule(question, queryRows, schemaRows, rankedQueryKnowledge, rankedSchemaKnowledge));
+            response.put(SemanticCatalogConstants.KEY_DBKG_CAPSULE, buildKnowledgeCapsule(question, queryRows, schemaRows, rankedQueryKnowledge, rankedSchemaKnowledge));
         }
-        response.put("features", Map.of(
-                "knowledgeCapsule", cfg.isKnowledgeCapsule(),
-                "queryKnowledge", cfg.isQueryKnowledge(),
-                "schemaKnowledge", cfg.isSchemaKnowledge(),
-                "vectorSearch", vectorCfg.isEnabled()));
+        response.put(SemanticCatalogConstants.KEY_FEATURES, Map.of(
+                SemanticCatalogConstants.KEY_KNOWLEDGE_CAPSULE, cfg.isKnowledgeCapsule(),
+                SemanticCatalogConstants.KEY_QUERY_KNOWLEDGE_FLAG, cfg.isQueryKnowledge(),
+                SemanticCatalogConstants.KEY_SCHEMA_KNOWLEDGE_FLAG, cfg.isSchemaKnowledge(),
+                SemanticCatalogConstants.KEY_VECTOR_SEARCH, vectorCfg.isEnabled()));
         return response;
     }
 
@@ -129,16 +117,16 @@ public class DbSemanticCatalogService {
             }
 
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("score", round(score));
-            item.put("queryText", queryText);
-            item.put("description", description);
-            item.put("preparedSql", preparedSql);
-            item.put("tags", splitTags(tags));
-            item.put("apiHints", splitTags(apiHints));
+            item.put(SemanticCatalogConstants.KEY_SCORE, round(score));
+            item.put(SemanticCatalogConstants.KEY_QUERY_TEXT, queryText);
+            item.put(SemanticCatalogConstants.KEY_DESCRIPTION, description);
+            item.put(SemanticCatalogConstants.KEY_PREPARED_SQL, preparedSql);
+            item.put(SemanticCatalogConstants.KEY_TAGS, splitTags(tags));
+            item.put(SemanticCatalogConstants.KEY_API_HINTS, splitTags(apiHints));
             scored.add(item);
         }
 
-        scored.sort(Comparator.comparingDouble((Map<String, Object> m) -> (Double) m.get("score")).reversed());
+        scored.sort(Comparator.comparingDouble((Map<String, Object> m) -> (Double) m.get(SemanticCatalogConstants.KEY_SCORE)).reversed());
         int limit = vectorMode ? Math.max(1, vectorCfg.getMaxResults()) : cfg.getMaxResults();
         return scored.stream().limit(limit).toList();
     }
@@ -174,16 +162,16 @@ public class DbSemanticCatalogService {
             }
 
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("score", round(score));
-            item.put("tableName", tableName);
-            item.put("columnName", columnName);
-            item.put("description", description);
-            item.put("tags", splitTags(tags));
-            item.put("validValues", splitTags(validValues));
+            item.put(SemanticCatalogConstants.KEY_SCORE, round(score));
+            item.put(SemanticCatalogConstants.KEY_TABLE_NAME, tableName);
+            item.put(SemanticCatalogConstants.KEY_COLUMN_NAME, columnName);
+            item.put(SemanticCatalogConstants.KEY_DESCRIPTION, description);
+            item.put(SemanticCatalogConstants.KEY_TAGS, splitTags(tags));
+            item.put(SemanticCatalogConstants.KEY_VALID_VALUES, splitTags(validValues));
             scored.add(item);
         }
 
-        scored.sort(Comparator.comparingDouble((Map<String, Object> m) -> (Double) m.get("score")).reversed());
+        scored.sort(Comparator.comparingDouble((Map<String, Object> m) -> (Double) m.get(SemanticCatalogConstants.KEY_SCORE)).reversed());
         int limit = vectorMode ? Math.max(1, vectorCfg.getMaxResults()) : cfg.getMaxResults();
         return scored.stream().limit(limit).toList();
     }
@@ -274,7 +262,7 @@ public class DbSemanticCatalogService {
 
     private String requireSafeIdentifier(String input) {
         if (input == null || input.isBlank() || !SAFE_SQL_IDENTIFIER.matcher(input).matches()) {
-            throw new IllegalStateException("Unsafe or blank DB knowledge identifier: " + input);
+            throw new IllegalStateException(SemanticCatalogConstants.MESSAGE_UNSAFE_DB_IDENTIFIER_PREFIX + input);
         }
         return input;
     }
@@ -282,7 +270,7 @@ public class DbSemanticCatalogService {
     private SemanticCatalogVectorSearchInterceptor resolveVectorSearchInterceptor(
             ConvEngineMcpConfig.Db.Knowledge.VectorSearch vectorCfg) {
         List<SemanticCatalogVectorSearchInterceptor> interceptors = vectorSearchInterceptorsProvider.getIfAvailable(List::of);
-        if (interceptors == null || interceptors.isEmpty()) {
+        if (interceptors.isEmpty()) {
             return null;
         }
         return interceptors.stream()
@@ -299,12 +287,12 @@ public class DbSemanticCatalogService {
         if (row == null || row.isEmpty()) {
             return 0.0d;
         }
-        Object score = row.get("_vector_score");
+        Object score = row.get(SemanticCatalogConstants.KEY_VECTOR_SCORE_ALT);
         if (score == null) {
-            score = row.get("vectorScore");
+            score = row.get(SemanticCatalogConstants.KEY_VECTOR_SCORE_CAMEL);
         }
         if (score == null) {
-            score = row.get("score");
+            score = row.get(SemanticCatalogConstants.KEY_SCORE);
         }
         if (score instanceof Number n) {
             return Math.max(0.0d, Math.min(1.0d, n.doubleValue()));
@@ -334,15 +322,23 @@ public class DbSemanticCatalogService {
         ConvEngineMcpConfig.Db.Knowledge cfg = mcpConfig.getDb().semanticCatalogConfig();
         String tableCol = requireSafeIdentifier(cfg.getSchemaTableNameColumn()).toLowerCase(Locale.ROOT);
         String columnCol = requireSafeIdentifier(cfg.getSchemaColumnNameColumn()).toLowerCase(Locale.ROOT);
+        String descriptionCol = requireSafeIdentifier(cfg.getSchemaDescriptionColumn()).toLowerCase(Locale.ROOT);
+        String tagsCol = requireSafeIdentifier(cfg.getSchemaTagsColumn()).toLowerCase(Locale.ROOT);
         String validValuesCol = requireSafeIdentifier(cfg.getSchemaValidValuesColumn()).toLowerCase(Locale.ROOT);
         String queryTextCol = requireSafeIdentifier(cfg.getQueryTextColumn()).toLowerCase(Locale.ROOT);
+        String queryDescriptionCol = requireSafeIdentifier(cfg.getQueryDescriptionColumn()).toLowerCase(Locale.ROOT);
         String preparedSqlCol = requireSafeIdentifier(cfg.getPreparedSqlColumn()).toLowerCase(Locale.ROOT);
+        String queryTagsCol = requireSafeIdentifier(cfg.getTagsColumn()).toLowerCase(Locale.ROOT);
+        String queryApiHintsCol = requireSafeIdentifier(cfg.getApiHintsColumn()).toLowerCase(Locale.ROOT);
 
         Map<String, List<String>> columnsByObject = new LinkedHashMap<>();
         Map<String, Map<String, List<String>>> validValuesByObject = new LinkedHashMap<>();
+        Map<String, List<Map<String, Object>>> schemaKnowledgeByObject = new LinkedHashMap<>();
         for (Map<String, Object> row : schemaRows) {
             String table = asText(row.get(tableCol)).trim();
             String column = asText(row.get(columnCol)).trim();
+            String description = asText(row.get(descriptionCol)).trim();
+            String tags = asText(row.get(tagsCol)).trim();
             String validValues = asText(row.get(validValuesCol)).trim();
             if (table.isBlank()) {
                 continue;
@@ -355,73 +351,104 @@ public class DbSemanticCatalogService {
                 validValuesByObject.computeIfAbsent(table, k -> new LinkedHashMap<>());
                 validValuesByObject.get(table).put(column, splitTags(validValues));
             }
+            if (!column.isBlank()) {
+                schemaKnowledgeByObject.computeIfAbsent(table, k -> new ArrayList<>());
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put(SemanticCatalogConstants.KEY_COLUMN_NAME, column);
+                if (!description.isBlank()) {
+                    item.put(SemanticCatalogConstants.KEY_DESCRIPTION, description);
+                }
+                if (!tags.isBlank()) {
+                    item.put(SemanticCatalogConstants.KEY_TAGS, splitTags(tags));
+                }
+                if (!validValues.isBlank()) {
+                    item.put(SemanticCatalogConstants.KEY_VALID_VALUES, splitTags(validValues));
+                }
+                schemaKnowledgeByObject.get(table).add(item);
+            }
         }
 
         List<String> objects = new ArrayList<>(columnsByObject.keySet());
         objects.sort(String::compareToIgnoreCase);
         columnsByObject.replaceAll((k, v) -> v.stream().distinct().sorted(String::compareToIgnoreCase).toList());
+        schemaKnowledgeByObject.replaceAll((k, v) -> v.stream()
+                .sorted(Comparator.comparing(it -> String.valueOf(it.getOrDefault(SemanticCatalogConstants.KEY_COLUMN_NAME, "")), String::compareToIgnoreCase))
+                .toList());
 
         List<Map<String, Object>> queryTemplates = queryRows.stream()
                 .map(row -> {
                     String text = asText(row.get(queryTextCol)).trim();
+                    String description = asText(row.get(queryDescriptionCol)).trim();
                     String preparedSql = asText(row.get(preparedSqlCol)).trim();
-                    if (text.isBlank() && preparedSql.isBlank()) {
+                    String tags = asText(row.get(queryTagsCol)).trim();
+                    String apiHints = asText(row.get(queryApiHintsCol)).trim();
+                    if (text.isBlank() && preparedSql.isBlank() && description.isBlank() && tags.isBlank() && apiHints.isBlank()) {
                         return null;
                     }
                     Map<String, Object> item = new LinkedHashMap<>();
                     if (!text.isBlank()) {
-                        item.put("queryText", text);
+                        item.put(SemanticCatalogConstants.KEY_QUERY_TEXT, text);
+                    }
+                    if (!description.isBlank()) {
+                        item.put(SemanticCatalogConstants.KEY_DESCRIPTION, description);
                     }
                     if (!preparedSql.isBlank()) {
-                        item.put("preparedSql", preparedSql);
+                        item.put(SemanticCatalogConstants.KEY_PREPARED_SQL, preparedSql);
+                    }
+                    if (!tags.isBlank()) {
+                        item.put(SemanticCatalogConstants.KEY_TAGS, splitTags(tags));
+                    }
+                    if (!apiHints.isBlank()) {
+                        item.put(SemanticCatalogConstants.KEY_API_HINTS, splitTags(apiHints));
                     }
                     return item;
                 })
-                .filter(v -> v != null)
+                .filter(Objects::nonNull)
                 .limit(200)
                 .toList();
 
         Map<String, Object> sourceCoverage = new LinkedHashMap<>();
-        sourceCoverage.put("ce_mcp_query_knowledge", queryRows.size());
-        sourceCoverage.put("ce_mcp_schema_knowledge", schemaRows.size());
+        sourceCoverage.put(cfg.getQueryCatalogTable(), queryRows.size());
+        sourceCoverage.put(cfg.getSchemaCatalogTable(), schemaRows.size());
 
         Map<String, Object> sqlGraph = new LinkedHashMap<>();
-        sqlGraph.put("objects", objects);
-        sqlGraph.put("columnsByObject", columnsByObject);
-        sqlGraph.put("validValuesByObject", validValuesByObject);
-        sqlGraph.put("queryTemplates", queryTemplates);
-        sqlGraph.put("joinPaths", List.of());
-        sqlGraph.put("statusDictionary", List.of());
-        sqlGraph.put("lineage", List.of());
+        sqlGraph.put(SemanticCatalogConstants.KEY_OBJECTS, objects);
+        sqlGraph.put(SemanticCatalogConstants.KEY_COLUMNS_BY_OBJECT, columnsByObject);
+        sqlGraph.put(SemanticCatalogConstants.KEY_VALID_VALUES_BY_OBJECT, validValuesByObject);
+        sqlGraph.put(SemanticCatalogConstants.KEY_SCHEMA_KNOWLEDGE_BY_OBJECT, schemaKnowledgeByObject);
+        sqlGraph.put(SemanticCatalogConstants.KEY_QUERY_TEMPLATES, queryTemplates);
+        sqlGraph.put(SemanticCatalogConstants.KEY_JOIN_PATHS, List.of());
+        sqlGraph.put(SemanticCatalogConstants.KEY_STATUS_DICTIONARY, List.of());
+        sqlGraph.put(SemanticCatalogConstants.KEY_LINEAGE, List.of());
 
         Map<String, Object> semanticGraph = new LinkedHashMap<>();
-        semanticGraph.put("entities", objects);
-        semanticGraph.put("cases", List.of());
-        semanticGraph.put("playbooks", List.of());
-        semanticGraph.put("systems", List.of());
-        semanticGraph.put("apiFlows", List.of());
+        semanticGraph.put(SemanticCatalogConstants.KEY_ENTITIES, objects);
+        semanticGraph.put(SemanticCatalogConstants.KEY_CASES, List.of());
+        semanticGraph.put(SemanticCatalogConstants.KEY_PLAYBOOKS, List.of());
+        semanticGraph.put(SemanticCatalogConstants.KEY_SYSTEMS, List.of());
+        semanticGraph.put(SemanticCatalogConstants.KEY_API_FLOWS, List.of());
 
         Map<String, Object> plannerRuntime = new LinkedHashMap<>();
-        plannerRuntime.put("question", question == null ? "" : question);
-        plannerRuntime.put("suggestedTables", rankedSchemaKnowledge.stream()
-                .map(item -> item.get("tableName"))
+        plannerRuntime.put(SemanticCatalogConstants.KEY_QUESTION, question == null ? "" : question);
+        plannerRuntime.put(SemanticCatalogConstants.KEY_SUGGESTED_TABLES, rankedSchemaKnowledge.stream()
+                .map(item -> item.get(SemanticCatalogConstants.KEY_TABLE_NAME))
                 .filter(v -> v instanceof String && !((String) v).isBlank())
                 .distinct()
                 .toList());
-        plannerRuntime.put("suggestedPreparedQueries", rankedQueryKnowledge.stream()
-                .map(item -> item.get("preparedSql"))
+        plannerRuntime.put(SemanticCatalogConstants.KEY_SUGGESTED_PREPARED_QUERIES, rankedQueryKnowledge.stream()
+                .map(item -> item.get(SemanticCatalogConstants.KEY_PREPARED_SQL))
                 .filter(v -> v instanceof String && !((String) v).isBlank())
                 .distinct()
                 .toList());
-        plannerRuntime.put("hints", List.of("semantic-catalog capsule"));
+        plannerRuntime.put(SemanticCatalogConstants.KEY_HINTS, SemanticCatalogConstants.EMPTY_HINTS);
 
         Map<String, Object> capsule = new LinkedHashMap<>();
-        capsule.put("version", "semantic-catalog-capsule-v2");
-        capsule.put("source", "db.semantic.catalog");
-        capsule.put("sourceCoverage", sourceCoverage);
-        capsule.put("sqlGraph", sqlGraph);
-        capsule.put("semanticGraph", semanticGraph);
-        capsule.put("plannerRuntime", plannerRuntime);
+        capsule.put(SemanticCatalogConstants.KEY_VERSION, SemanticCatalogConstants.VERSION_SEMANTIC_CATALOG_CAPSULE_V2);
+        capsule.put(SemanticCatalogConstants.KEY_SOURCE, SemanticCatalogConstants.SOURCE_DB_SEMANTIC_CATALOG);
+        capsule.put(SemanticCatalogConstants.KEY_SOURCE_COVERAGE, sourceCoverage);
+        capsule.put(SemanticCatalogConstants.KEY_SQL_GRAPH, sqlGraph);
+        capsule.put(SemanticCatalogConstants.KEY_SEMANTIC_GRAPH, semanticGraph);
+        capsule.put(SemanticCatalogConstants.KEY_PLANNER_RUNTIME, plannerRuntime);
         return capsule;
     }
 

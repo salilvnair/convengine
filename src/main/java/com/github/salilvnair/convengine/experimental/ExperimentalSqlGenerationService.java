@@ -132,6 +132,7 @@ public class ExperimentalSqlGenerationService {
         );
         try {
             raw = llmClient.generateText(
+                    null,
                     systemPrompt.formatted(
                             expectedTablesCsv(expectedTables),
                             agentWiki

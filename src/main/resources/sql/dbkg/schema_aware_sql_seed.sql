@@ -89,6 +89,7 @@ INSERT INTO ce_mcp_planner(
          6. Never invent table or column names. Use only columns present in DBKG capsule/schema knowledge/query knowledge.
             For `zp_ui_data_history`, use `created_date` for time filters, not `zp_action_ts`.
          7. DBKG capsule is preloaded from ce_mcp_* metadata tables for this flow. Do not call any dbkg.* tool codes in this dynamic_sql planner.
+         8. For follow-up questions (for example: "above", "that one", "those rows", "same request"), resolve references using standalone query, conversation history, and MCP observations before asking for clarification.
 
          Return JSON only. Action MUST be exactly CALL_TOOL or ANSWER.
          Use this exact schema:
@@ -117,6 +118,18 @@ INSERT INTO ce_mcp_planner(
          - Allowed tool_code values in this flow: db.semantic.catalog, postgres.query, or null for ANSWER.',
              'User request: {{user_input}}
 
+         Current date/time context:
+         - current_date: {{current_date}}
+         - current_datetime: {{current_datetime}}
+         - current_year: {{current_year}}
+         - current_timezone: {{current_timezone}}
+
+         Standalone query:
+         {{standalone_query}}
+
+         Recent conversation history:
+         {{conversation_history}}
+
          Available tools:
          {{available_tools}}
 
@@ -127,6 +140,7 @@ INSERT INTO ce_mcp_planner(
          {{mcp_observations}}
 
          Use DBKG capsule as primary grounding context and use mcp_observations only as compact execution trace.
+         Resolve follow-up references from standalone_query + conversation_history + mcp_observations before asking clarification.
          Do not return any dbkg.* tool_code in this flow.
          Decide one next step and return strict JSON only with action CALL_TOOL or ANSWER.',
              true, CURRENT_TIMESTAMP

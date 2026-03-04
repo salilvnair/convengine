@@ -56,8 +56,8 @@ public class DbkgPlaybookEngine {
         }
 
         Map<String, Object> runtime = new LinkedHashMap<>();
-        runtime.put("conversationId", session == null ? null : session.getConversationId());
-        runtime.put("session", session);
+        runtime.put(DbkgConstants.KEY_CONVERSATION_ID, session == null ? null : session.getConversationId());
+        runtime.put(DbkgConstants.KEY_SESSION, session);
         runtime.put(DbkgConstants.KEY_ARGS, args == null ? Map.of() : new LinkedHashMap<>(args));
         runtime.put(DbkgConstants.KEY_QUESTION, plan.get(DbkgConstants.KEY_QUESTION));
         runtime.put(DbkgConstants.KEY_CASE, selectedCase == null ? Map.of() : selectedCase);
@@ -79,11 +79,11 @@ public class DbkgPlaybookEngine {
         while (currentStepCode != null && iterations < maxIterations) {
             Map<String, Object> step = stepsByCode.get(currentStepCode);
             if (step == null) {
-                runtime.put(DbkgConstants.KEY_DAG_ERROR, "Missing step definition for stepCode=" + currentStepCode);
+                runtime.put(DbkgConstants.KEY_DAG_ERROR, "Missing step definition for " + DbkgConstants.KEY_STEP_CODE + "=" + currentStepCode);
                 break;
             }
             if (!visited.add(currentStepCode)) {
-                runtime.put(DbkgConstants.KEY_DAG_ERROR, "Cycle detected at stepCode=" + currentStepCode);
+                runtime.put(DbkgConstants.KEY_DAG_ERROR, "Cycle detected at " + DbkgConstants.KEY_STEP_CODE + "=" + currentStepCode);
                 break;
             }
             Map<String, Object> stepResult = executeStep(step, runtime);
@@ -102,7 +102,7 @@ public class DbkgPlaybookEngine {
             runtime.put(DbkgConstants.KEY_DAG_ERROR, "Max iteration limit reached before DAG completed.");
         }
 
-        String playbookCode = String.valueOf(selectedPlaybook.get("playbookCode"));
+        String playbookCode = String.valueOf(selectedPlaybook.get(DbkgConstants.KEY_PLAYBOOK_CODE));
         Map<String, Object> outcome = outcomeResolver.resolveOutcome(playbookCode, stepResults, runtime);
 
         execution.put(DbkgConstants.KEY_STEPS_EXECUTED, stepResults);
@@ -110,16 +110,16 @@ public class DbkgPlaybookEngine {
         execution.put(DbkgConstants.KEY_DAG_ERROR, runtime.get(DbkgConstants.KEY_DAG_ERROR));
         execution.put(DbkgConstants.KEY_FINAL_SUMMARY, outcome == null
                 ? outcomeResolver.buildFallbackSummary(playbookCode, stepResults, runtime)
-                : outcome.get("explanation"));
+                : outcome.get(DbkgConstants.KEY_EXPLANATION));
         execution.put(DbkgConstants.KEY_PLACEHOLDER_SKIPPED, runtime.get(DbkgConstants.KEY_PLACEHOLDER_SKIPPED));
         return execution;
     }
 
     private Map<String, Object> executeStep(Map<String, Object> step, Map<String, Object> runtime) {
-        String stepCode = String.valueOf(step.get("stepCode"));
-        String executorCode = support.asText(step.get("executorCode"));
-        String templateCode = support.asText(step.get("templateCode"));
-        Map<String, Object> config = support.parseJsonObject(support.asText(step.get("configJson")));
+        String stepCode = String.valueOf(step.get(DbkgConstants.KEY_STEP_CODE));
+        String executorCode = support.asText(step.get(DbkgConstants.KEY_EXECUTOR_CODE));
+        String templateCode = support.asText(step.get(DbkgConstants.KEY_TEMPLATE_CODE));
+        Map<String, Object> config = support.parseJsonObject(support.asText(step.get(DbkgConstants.KEY_CONFIG_JSON)));
 
         Map<String, Object> output;
         boolean halted = false;
@@ -135,7 +135,7 @@ public class DbkgPlaybookEngine {
                     DbkgConstants.KEY_STATUS, DbkgConstants.STATUS_ERROR,
                     DbkgConstants.KEY_ERROR, String.valueOf(e.getMessage()));
             status = DbkgConstants.STATUS_ERROR;
-            halted = support.truthy(step.get("haltOnError"));
+            halted = support.truthy(step.get(DbkgConstants.KEY_HALT_ON_ERROR));
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -167,26 +167,26 @@ public class DbkgPlaybookEngine {
         String status = support.asText(stepResult.get(DbkgConstants.KEY_STATUS));
         Map<String, Object> variables = buildTransitionVariables(stepResult, runtime);
         for (Map<String, Object> transition : transitions) {
-            String fromStep = support.asText(transition.get("fromStepCode"));
-            String outcome = support.asText(transition.get("outcomeCode"));
+            String fromStep = support.asText(transition.get(DbkgConstants.KEY_FROM_STEP_CODE));
+            String outcome = support.asText(transition.get(DbkgConstants.KEY_OUTCOME_CODE));
             if (!currentStepCode.equalsIgnoreCase(fromStep)) {
                 continue;
             }
             if (status.equalsIgnoreCase(outcome)
-                    && outcomeResolver.evaluateCondition(support.asText(transition.get("conditionExpr")), variables)) {
-                String toStep = support.asText(transition.get("toStepCode"));
+                    && outcomeResolver.evaluateCondition(support.asText(transition.get(DbkgConstants.KEY_CONDITION_EXPR)), variables)) {
+                String toStep = support.asText(transition.get(DbkgConstants.KEY_TO_STEP_CODE));
                 return toStep.isBlank() ? null : toStep;
             }
         }
         for (Map<String, Object> transition : transitions) {
-            String fromStep = support.asText(transition.get("fromStepCode"));
+            String fromStep = support.asText(transition.get(DbkgConstants.KEY_FROM_STEP_CODE));
             if (!currentStepCode.equalsIgnoreCase(fromStep)) {
                 continue;
             }
-            if (!outcomeResolver.evaluateCondition(support.asText(transition.get("conditionExpr")), variables)) {
+            if (!outcomeResolver.evaluateCondition(support.asText(transition.get(DbkgConstants.KEY_CONDITION_EXPR)), variables)) {
                 continue;
             }
-            String toStep = support.asText(transition.get("toStepCode"));
+            String toStep = support.asText(transition.get(DbkgConstants.KEY_TO_STEP_CODE));
             return toStep.isBlank() ? null : toStep;
         }
         return null;
@@ -196,7 +196,7 @@ public class DbkgPlaybookEngine {
         if (stepResults.size() >= steps.size()) {
             return null;
         }
-        return String.valueOf(steps.get(stepResults.size()).get("stepCode"));
+        return String.valueOf(steps.get(stepResults.size()).get(DbkgConstants.KEY_STEP_CODE));
     }
 
     private Map<String, Object> buildTransitionVariables(Map<String, Object> stepResult, Map<String, Object> runtime) {
@@ -216,16 +216,16 @@ public class DbkgPlaybookEngine {
         Map<String, Object> selectedPlaybook = (Map<String, Object>) runtime.getOrDefault(DbkgConstants.KEY_PLAYBOOK, Map.of());
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> apiFlows = (List<Map<String, Object>>) runtime.getOrDefault(DbkgConstants.KEY_API_FLOWS, List.of());
-        variables.put("apiFlowCount", apiFlows.size());
-        variables.put("caseCode", support.asText(selectedCase.get("caseCode")));
-        variables.put("caseName", support.asText(selectedCase.get("caseName")));
-        variables.put("playbookCode", support.asText(selectedPlaybook.get("playbookCode")));
-        variables.put("playbookName", support.asText(selectedPlaybook.get("playbookName")));
+        variables.put(DbkgConstants.KEY_API_FLOW_COUNT, apiFlows.size());
+        variables.put(DbkgConstants.KEY_CASE_CODE, support.asText(selectedCase.get(DbkgConstants.KEY_CASE_CODE)));
+        variables.put(DbkgConstants.KEY_CASE_NAME, support.asText(selectedCase.get(DbkgConstants.KEY_CASE_NAME)));
+        variables.put(DbkgConstants.KEY_PLAYBOOK_CODE, support.asText(selectedPlaybook.get(DbkgConstants.KEY_PLAYBOOK_CODE)));
+        variables.put(DbkgConstants.KEY_PLAYBOOK_NAME, support.asText(selectedPlaybook.get(DbkgConstants.KEY_PLAYBOOK_NAME)));
         if (!apiFlows.isEmpty()) {
             Map<String, Object> firstApiFlow = apiFlows.get(0);
-            variables.put("firstApiFlowCode", support.asText(firstApiFlow.get("apiCode")));
-            variables.put("firstApiFlowName", support.asText(firstApiFlow.get("apiName")));
-            variables.put("firstApiFlowSystemCode", support.asText(firstApiFlow.get("systemCode")));
+            variables.put(DbkgConstants.KEY_FIRST_API_FLOW_CODE, support.asText(firstApiFlow.get("apiCode")));
+            variables.put(DbkgConstants.KEY_FIRST_API_FLOW_NAME, support.asText(firstApiFlow.get("apiName")));
+            variables.put(DbkgConstants.KEY_FIRST_API_FLOW_SYSTEM_CODE, support.asText(firstApiFlow.get("systemCode")));
         }
         addFlatVariables(variables, "arg_", args);
         addFlatVariables(variables, "case_", selectedCase);

@@ -68,5 +68,6 @@ public final class ConvEngineInputParamKey {
     public static final String MCP_OBSERVATIONS = "mcp_observations";
     public static final String MCP_FINAL_ANSWER = "mcp_final_answer";
     public static final String MCP_STATUS = "mcp_status";
+    public static final String MCP_TOOL_EXECUTION_ERROR = "mcp_tool_execution_error";
     public static final String RULE_TOOL_POST_EXECUTION = "rule_tool_post_execution";
 }

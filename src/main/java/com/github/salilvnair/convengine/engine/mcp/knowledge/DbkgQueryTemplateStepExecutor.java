@@ -40,7 +40,7 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
     public Map<String, Object> execute(String stepCode, String templateCode, Map<String, Object> config,
             Map<String, Object> runtime) {
         Map<String, Object> template = support
-                .findRowByKey(support.cfg().getQueryTemplateTable(), "query_code", templateCode).orElse(null);
+                .findRowByKey(support.cfg().getQueryTemplateTable(), DbkgConstants.COL_QUERY_CODE, templateCode).orElse(null);
         if (template == null) {
             return Map.of(
                     DbkgConstants.KEY_PLACEHOLDER_SKIPPED, false,
@@ -48,7 +48,7 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
                     DbkgConstants.KEY_ROWS, List.of(),
                     DbkgConstants.KEY_MESSAGE, DbkgConstants.MESSAGE_QUERY_TEMPLATE_NOT_FOUND_PREFIX + templateCode);
         }
-        if (!support.truthy(template.get("enabled"))) {
+        if (!support.truthy(template.get(DbkgConstants.COL_ENABLED))) {
             return Map.of(
                     DbkgConstants.KEY_PLACEHOLDER_SKIPPED, true,
                     DbkgConstants.KEY_ROW_COUNT, 0,
@@ -57,10 +57,10 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
                     DbkgConstants.KEY_MESSAGE, DbkgConstants.MESSAGE_QUERY_TEMPLATE_DISABLED);
         }
 
-        String sql = support.asText(template.get("sql_template"));
+        String sql = support.asText(template.get(DbkgConstants.COL_SQL_TEMPLATE));
         Map<String, Object> params = support.resolveQueryParams(templateCode, runtime);
-        if (!params.containsKey("limit")) {
-            params.put("limit", support.parseInt(template.get("default_limit"), 100));
+        if (!params.containsKey(DbkgConstants.KEY_LIMIT)) {
+            params.put(DbkgConstants.KEY_LIMIT, support.parseInt(template.get(DbkgConstants.COL_DEFAULT_LIMIT), 100));
         }
         sql = refineSqlIfEnabled(stepCode, templateCode, sql, params, runtime);
         sqlGuardrail.assertReadOnly(sql, "DBKG query template [" + templateCode + "]");
@@ -97,20 +97,20 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
             List<Map<String, Object>> rows,
             Exception error) {
 
-        UUID conversationId = conversationId(runtime == null ? null : runtime.get("conversationId"));
-        EngineSession session = session(runtime == null ? null : runtime.get("session"));
+        UUID conversationId = conversationId(runtime == null ? null : runtime.get(DbkgConstants.KEY_CONVERSATION_ID));
+        EngineSession session = session(runtime == null ? null : runtime.get(DbkgConstants.KEY_SESSION));
 
         Map<String, Object> basePayload = new LinkedHashMap<>();
-        basePayload.put("step_code", stepCode);
-        basePayload.put("query_code", templateCode);
-        basePayload.put("tool_code", "dbkg.investigate.execute"); // Added for verbose routing
+        basePayload.put(DbkgConstants.KEY_STEP_CODE_SNAKE, stepCode);
+        basePayload.put(DbkgConstants.COL_QUERY_CODE, templateCode);
+        basePayload.put(DbkgConstants.KEY_TOOL_CODE, DbkgConstants.TOOL_CODE_DBKG_INVESTIGATE_EXECUTE); // Added for verbose routing
 
         McpSqlAuditHelper.auditSqlExecution(
                 audit,
                 verbosePublisher,
                 session,
                 conversationId,
-                "DbkgQueryTemplateStepExecutor",
+                DbkgConstants.COMPONENT_DBKG_QUERY_TEMPLATE_STEP_EXECUTOR,
                 ConvEngineAuditStage.DBKG_QUERY_SQL_EXECUTION,
                 ConvEngineAuditStage.DBKG_QUERY_SQL_EXECUTION_ERROR,
                 basePayload,
@@ -151,14 +151,14 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
         if (cfg == null || !cfg.isSqlRefinementEnabled() || sql == null || sql.isBlank()) {
             return sql;
         }
-        EngineSession session = session(runtime == null ? null : runtime.get("session"));
+        EngineSession session = session(runtime == null ? null : runtime.get(DbkgConstants.KEY_SESSION));
         String dialect = cfg.getSqlDialect();
         Map<String, Object> input = new LinkedHashMap<>();
-        input.put("step_code", stepCode);
-        input.put("query_code", templateCode);
-        input.put("dialect", dialect);
-        input.put("sql", sql);
-        input.put("params", params);
+        input.put(DbkgConstants.KEY_STEP_CODE_SNAKE, stepCode);
+        input.put(DbkgConstants.COL_QUERY_CODE, templateCode);
+        input.put(DbkgConstants.KEY_DIALECT, dialect);
+        input.put(DbkgConstants.KEY_SQL, sql);
+        input.put(DbkgConstants.KEY_PARAMS, params);
 
         String systemPrompt = """
                 You are a SQL refiner for ConvEngine DBKG query templates.
@@ -184,18 +184,18 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
                 JsonUtil.toJson(params));
 
         if (session != null) {
-            verbosePublisher.publish(session, "DbkgQueryTemplateStepExecutor", "DBKG_QUERY_SQL_REFINE_LLM_INPUT",
+            verbosePublisher.publish(session, DbkgConstants.COMPONENT_DBKG_QUERY_TEMPLATE_STEP_EXECUTOR, DbkgConstants.EVENT_DBKG_QUERY_SQL_REFINE_LLM_INPUT,
                     null, null, false, input);
             LlmInvocationContext.set(session.getConversationId(), session.getIntent(), session.getState());
         }
 
         String refined;
         try {
-            refined = llm.generateText(systemPrompt + "\n\n" + userPrompt, JsonUtil.toJson(input));
+            refined = llm.generateText(session, systemPrompt + "\n\n" + userPrompt, JsonUtil.toJson(input));
         } catch (Exception e) {
             if (session != null) {
-                verbosePublisher.publish(session, "DbkgQueryTemplateStepExecutor", "DBKG_QUERY_SQL_REFINE_LLM_ERROR",
-                        null, null, true, Map.of("error", String.valueOf(e.getMessage())));
+                verbosePublisher.publish(session, DbkgConstants.COMPONENT_DBKG_QUERY_TEMPLATE_STEP_EXECUTOR, DbkgConstants.EVENT_DBKG_QUERY_SQL_REFINE_LLM_ERROR,
+                        null, null, true, Map.of(DbkgConstants.KEY_ERROR_MESSAGE, String.valueOf(e.getMessage())));
             }
             return sql;
         } finally {
@@ -207,8 +207,8 @@ public class DbkgQueryTemplateStepExecutor implements DbkgStepExecutor {
             return sql;
         }
         if (session != null) {
-            verbosePublisher.publish(session, "DbkgQueryTemplateStepExecutor", "DBKG_QUERY_SQL_REFINE_LLM_OUTPUT",
-                    null, null, false, Map.of("sql", normalized));
+            verbosePublisher.publish(session, DbkgConstants.COMPONENT_DBKG_QUERY_TEMPLATE_STEP_EXECUTOR, DbkgConstants.EVENT_DBKG_QUERY_SQL_REFINE_LLM_OUTPUT,
+                    null, null, false, Map.of(DbkgConstants.KEY_SQL, normalized));
         }
         return normalized;
     }

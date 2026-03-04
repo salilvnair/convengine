@@ -98,6 +98,21 @@ Order is enforced by step annotations, dependency rules, and DAG validation. Do 
 9. Resolve final output by exact/derived response mapping
 10. Persist runtime state, history, audit, and timing metadata
 
+## Consumer LLM Contract
+
+`LlmClient` must use `EngineSession` as the first argument for all model calls:
+
+```java
+public interface LlmClient {
+    String generateText(EngineSession session, String hint, String contextJson);
+    String generateJson(EngineSession session, String hint, String jsonSchema, String contextJson);
+    float[] generateEmbedding(EngineSession session, String input);
+    default String generateJsonStrict(EngineSession session, String hint, String jsonSchema, String context) {
+        return generateJson(session, hint, jsonSchema, context);
+    }
+}
+```
+
 ## Data Model Contracts
 
 ### Static control-plane tables
@@ -251,6 +266,8 @@ Supported canonical groups:
 - `NOTIFICATION`
 - `FILES`
 
+For semantic catalog, tool code is fixed as `db.semantic.catalog` and should be registered through `ce_mcp_tool` rows. Do not document or implement a separate YAML `tool-code` property for semantic catalog.
+
 ### `ce_mcp_planner`
 
 Planner prompt selection order:
@@ -292,6 +309,19 @@ Both publish metadata with:
 - `params`
 - `row_count`
 - `rows`
+
+### `ce_mcp_schema_knowledge`
+
+Semantic catalog depends on this table for table/column hints and value grounding.
+
+Important columns:
+- `table_name`
+- `column_name`
+- `description`
+- `tags`
+- `valid_values`
+
+`valid_values` should be populated for enum-like business fields (status/type/code/channel/etc.) to improve grounding quality.
 
 ## Step Design Rules
 
@@ -344,6 +374,10 @@ There are two distinct tool paths:
 - planner loop (`CALL_TOOL` / `ANSWER`)
 - writes `context.mcp.observations[]`
 - writes `context.mcp.finalAnswer`
+- writes MCP loop execution flags:
+  - `context.mcp.finalAnswerDetermined`
+  - `context.mcp.toolExecutionAbrupted`
+  - `context.mcp.toolExecutionAbruptionLimit`
 - runs `PRE_AGENT_MCP` and `POST_AGENT_MCP` rule phases around the MCP lifecycle
 
 ### MCP guardrails
@@ -415,6 +449,18 @@ Current explicit block reason:
   - `promptVars`
   - `standalone_query`
   - `resolved_user_input`
+
+## MCP DB Extension Points
+
+### Semantic catalog vector ranking
+- Interface: `SemanticCatalogVectorSearchInterceptor`
+- Default fallback: `DefaultSemanticCatalogVectorSearchInterceptor` (lowest precedence)
+- Consumer can provide higher-priority interceptor for DB-native vector search (for example pgvector cosine) or any custom ranking path.
+
+### `postgres.query` SQL normalization
+- Interface: `PostgresQueryInterceptor`
+- Default fallback: `DefaultPostgresQueryInterceptor` (lowest precedence)
+- Interceptor chain runs before SQL guardrail and execution.
 
 ## Framework Performance Patterns
 

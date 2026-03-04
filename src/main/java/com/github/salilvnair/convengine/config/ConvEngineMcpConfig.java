@@ -108,6 +108,7 @@ public class ConvEngineMcpConfig {
             private String playbookStepTable = "ce_mcp_playbook_step";
             private String playbookTransitionTable = "ce_mcp_playbook_transition";
             private String outcomeRuleTable = "ce_mcp_outcome_rule";
+            private String executorTemplateTable = "ce_mcp_executor_template";
         }
     }
 

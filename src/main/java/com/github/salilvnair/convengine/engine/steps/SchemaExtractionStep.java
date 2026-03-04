@@ -157,6 +157,7 @@ public class SchemaExtractionStep implements EngineStep {
         String extractedJson;
         try {
             extractedJson = llm.generateJson(
+                    session,
                     systemPrompt + "\n\n" + userPrompt,
                     schema.getJsonSchema(),
                     safeJson(session.getContextJson()));

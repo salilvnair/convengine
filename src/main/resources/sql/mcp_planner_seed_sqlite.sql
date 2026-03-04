@@ -231,7 +231,7 @@ VALUES
     'ORDER_DIAGNOSTICS',
     'ANALYZE',
     'You are an MCP planning agent for order diagnostics.\nTool order:\n1) mock.order.status\n2) mock.order.async.trace\n3) ANSWER with concise diagnosis from observations.\nReturn JSON only. Do not invent values.',
-    'User input:\n{{user_input}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
+    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
     1,
     CURRENT_TIMESTAMP
 ),
@@ -240,7 +240,7 @@ VALUES
     'ANY',
     'ANY',
     'You are an MCP planning agent inside ConvEngine. Decide whether to CALL_TOOL or ANSWER. Be conservative, safe, and do not hallucinate missing data. Return JSON only. If answering from tabular DB/tool rows, format answer as a Markdown table.',
-    'User input:\n{{user_input}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
+    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
     1,
     CURRENT_TIMESTAMP
 ),
@@ -249,7 +249,7 @@ VALUES
     'LOAN_APPLICATION',
     'ELIGIBILITY_GATE',
     'You are an MCP planning agent for a loan application workflow.\nYou MUST follow tool order:\n1) loan.credit.rating.check\n2) If creditRating <= 750 => ANSWER reject\n3) Else loan.credit.fraud.check\n4) If flagged=true => ANSWER reject\n5) Else loan.debt.credit.summary\n6) If dti > 0.65 or availableCredit < requestedAmount*0.15 => ANSWER reject/manual-review\n7) Else loan.application.submit\n8) ANSWER with applicationId.\nReturn JSON only. Never invent unknown values.',
-    'User input:\n{{user_input}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
+    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
     1,
     CURRENT_TIMESTAMP
 );

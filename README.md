@@ -6,7 +6,23 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `2.0.9`
+- Current library version: `2.0.10`
+
+### MCP Semantic Catalog + SQL Interceptor SPI + MCP Loop Flags (v2.0.10)
+- **Semantic catalog runtime model**:
+  - MCP tool code is fixed as `db.semantic.catalog` and is registered through `ce_mcp_tool`.
+  - `convengine.mcp.db.semantic-catalog` controls semantic-catalog behavior (`knowledge-capsule`, `schema-knowledge`, `query-knowledge`, `vector-search.*`).
+  - `ce_mcp_schema_knowledge` supports `valid_values` for column-level value grounding.
+- **Vector ranking extension point**:
+  - `SemanticCatalogVectorSearchInterceptor` allows consumer-controlled ranking/search strategy.
+  - framework fallback is `DefaultSemanticCatalogVectorSearchInterceptor` (least precedence), using `LlmClient.generateEmbedding(...)` + cosine similarity.
+- **`postgres.query` interceptor chain**:
+  - `PostgresQueryInterceptor` allows consumer SQL normalization/fixes before guardrail + execution.
+  - framework fallback is `DefaultPostgresQueryInterceptor` (least precedence), including timestamp/epoch safety fixes.
+- **MCP loop execution flags in context**:
+  - `context.mcp.finalAnswerDetermined`
+  - `context.mcp.toolExecutionAbrupted`
+  - `context.mcp.toolExecutionAbruptionLimit`
 
 ### Hybrid Prompt Rendering, Correction Routing, and Consumer Verbose Adapter (v2.0.9)
 - **Thymeleaf-backed prompt and verbose rendering**: Prompt templates and DB-backed `ce_verbose` messages now resolve through the shared `ThymeleafTemplateRenderer`, with session-aware variables and support for legacy `{{...}}`, `#{...}`, and `[${...}]` styles.
@@ -71,6 +87,10 @@ It is designed for auditable state machines, not free-form assistant behavior. R
   - `ce_mcp_db_tool` remains required only for SQL-template fallback tools (`McpDbExecutor` path).
 - **Read-only SQL guardrail hardening**: `McpSqlGuardrail` still blocks non-read-only/multi-statement SQL, but now allows a single trailing semicolon on otherwise valid single-statement SELECT/WITH queries.
 - **SQL observability**: dynamic SQL and DBKG query-template execution emit richer audit/verbose payloads (SQL, params, row_count, rows preview, error metadata).
+- **MCP execution telemetry flags**:
+  - `context.mcp.finalAnswerDetermined`
+  - `context.mcp.toolExecutionAbrupted`
+  - `context.mcp.toolExecutionAbruptionLimit`
 - **Schema-aware dynamic SQL seed refresh** (`src/main/resources/sql/dbkg/schema_aware_sql_seed.sql`):
   - planner guidance enforces semantic-catalog-first grounding before `postgres.query`,
   - `dynamic_sql` response fallbacks added for `IDLE`/`EXECUTE`,
@@ -258,6 +278,42 @@ Flow behavior is file-configured from consumer app config.
 convengine:
   schema:
     active: v2
+  flow:
+    dialogue-act:
+      resolute: REGEX_THEN_LLM # REGEX_ONLY | REGEX_THEN_LLM | LLM_ONLY
+    llm-threshold: 0.90
+  interaction-policy:
+    execute-pending-on-affirm: true
+    reject-pending-on-negate: true
+    fill-pending-slot-on-non-new-request: true
+    require-resolved-intent-and-state: true
+    matrix:
+      "PENDING_ACTION:AFFIRM": EXECUTE_PENDING_ACTION
+      "PENDING_ACTION:NEGATE": REJECT_PENDING_ACTION
+      "PENDING_SLOT:QUESTION": FILL_PENDING_SLOT
+  action-lifecycle:
+    enabled: true
+    ttl-turns: 3
+    ttl-minutes: 30
+  disambiguation:
+    enabled: true
+    max-options: 5
+  guardrail:
+    enabled: true
+    sanitize-input: true
+    require-approval-for-sensitive-actions: false
+    approval-gate-fail-closed: false
+    sensitive-patterns: []
+  state-graph:
+    enabled: true
+    soft-block-on-violation: false
+    allowed-transitions: {}
+  tool-orchestration:
+    enabled: true
+  memory:
+    enabled: true
+    summary-max-chars: 1200
+    recent-turns-for-summary: 3
   mcp:
     db:
       semantic-catalog:
@@ -265,6 +321,9 @@ convengine:
         knowledge-capsule: true
         schema-knowledge: true
         query-knowledge: true
+        vector-search:
+          enabled: false
+          max-results: 10
       knowledge-graph:
         enabled: true
     http-api:
@@ -278,42 +337,6 @@ convengine:
         circuit-breaker-enabled: true
         circuit-failure-threshold: 5
         circuit-open-ms: 30000
-    flow:
-      dialogue-act:
-        resolute: REGEX_THEN_LLM # REGEX_ONLY | REGEX_THEN_LLM | LLM_ONLY
-      llm-threshold: 0.90
-    interaction-policy:
-      execute-pending-on-affirm: true
-      reject-pending-on-negate: true
-      fill-pending-slot-on-non-new-request: true
-      require-resolved-intent-and-state: true
-      matrix:
-        "PENDING_ACTION:AFFIRM": EXECUTE_PENDING_ACTION
-        "PENDING_ACTION:NEGATE": REJECT_PENDING_ACTION
-        "PENDING_SLOT:QUESTION": FILL_PENDING_SLOT
-    action-lifecycle:
-      enabled: true
-      ttl-turns: 3
-      ttl-minutes: 30
-    disambiguation:
-      enabled: true
-      max-options: 5
-    guardrail:
-      enabled: true
-      sanitize-input: true
-      require-approval-for-sensitive-actions: false
-      approval-gate-fail-closed: false
-      sensitive-patterns: []
-    state-graph:
-      enabled: true
-      soft-block-on-violation: false
-      allowed-transitions: {}
-    tool-orchestration:
-      enabled: true
-    memory:
-      enabled: true
-      summary-max-chars: 1200
-      recent-turns-for-summary: 3
 ```
 
 Consumer contract details:
@@ -386,9 +409,12 @@ Required consumer bean:
 
 ```java
 public interface LlmClient {
-  String generateText(String hint, String contextJson);
-  String generateJson(String hint, String jsonSchema, String contextJson);
-  float[] generateEmbedding(String input);
+  String generateText(EngineSession session, String hint, String contextJson);
+  String generateJson(EngineSession session, String hint, String jsonSchema, String contextJson);
+  float[] generateEmbedding(EngineSession session, String input);
+  default String generateJsonStrict(EngineSession session, String hint, String jsonSchema, String context) {
+    return generateJson(session, hint, jsonSchema, context);
+  }
 }
 ```
 

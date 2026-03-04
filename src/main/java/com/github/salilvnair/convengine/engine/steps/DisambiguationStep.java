@@ -180,7 +180,7 @@ public class DisambiguationStep implements EngineStep {
             String systemPrompt = renderer.render(llmSystemPrompt, promptContext);
             String userPrompt = renderer.render(llmUserPrompt, promptContext);
             LlmInvocationContext.set(session.getConversationId(), session.getIntent(), session.getState());
-            String llmQuestion = llm.generateText(systemPrompt + "\n\n" + userPrompt, session.getContextJson());
+            String llmQuestion = llm.generateText(session, systemPrompt + "\n\n" + userPrompt, session.getContextJson());
             if (llmQuestion == null || llmQuestion.isBlank()) {
                 return new QuestionResult(fallbackQuestion, "TEMPLATE");
             }

@@ -166,7 +166,7 @@ public class AgentIntentResolver implements IntentResolver {
         LlmInvocationContext.set(conversationId, session.getIntent(), session.getState());
         String output;
         try {
-            output = llm.generateJson(
+            output = llm.generateJson(session, 
                     systemPrompt + "\n\n" + userPrompt,
                     null,
                     session.getContextJson());

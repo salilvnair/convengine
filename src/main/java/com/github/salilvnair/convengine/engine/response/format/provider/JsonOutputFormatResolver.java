@@ -85,6 +85,7 @@ public class JsonOutputFormatResolver implements OutputFormatResolver {
         String json;
         try {
             json = llm.generateJson(
+                    session,
                     systemPrompt + "\n\n" + userPrompt + "\n\n" +
                             safe(response.getDerivationHint()),
                     response.getJsonSchema(),

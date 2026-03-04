@@ -329,7 +329,7 @@ public class DialogueActStep implements EngineStep {
                     inputPayload);
             String out;
             try {
-                out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
+                out = llm.generateJson(session, systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
             } catch (Exception e) {
                 Map<String, Object> errorPayload = new LinkedHashMap<>();
                 errorPayload.put(ConvEnginePayloadKey.MESSAGE, String.valueOf(e.getMessage()));

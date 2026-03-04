@@ -9,6 +9,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.time.Year;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +36,8 @@ public class DefaultPostgresQueryInterceptor implements PostgresQueryInterceptor
 
     private static final Pattern TO_TIMESTAMP_EPOCH_EXPR = Pattern.compile(
             "(?i)to_timestamp\\(\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)\\s*/\\s*1000(?:\\.0+)?\\s*\\)");
+    private static final Pattern DATE_TIME_LITERAL = Pattern.compile(
+            "'(\\d{4})-(\\d{2})-(\\d{2})([^']*)'");
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -42,6 +45,12 @@ public class DefaultPostgresQueryInterceptor implements PostgresQueryInterceptor
     public String intercept(String sql, CeMcpTool tool, EngineSession session, Map<String, Object> args) {
         if (sql == null || sql.isBlank()) {
             return sql;
+        }
+
+        String normalizedDates = normalizeInvalidDateLiterals(sql);
+        if (!normalizedDates.equals(sql)) {
+            log.warn("postgres.query interceptor rewrote invalid date literal(s). original={}, rewritten={}", sql, normalizedDates);
+            sql = normalizedDates;
         }
 
         Map<String, String> aliasToTable = extractAliasToTable(sql);
@@ -77,6 +86,35 @@ public class DefaultPostgresQueryInterceptor implements PostgresQueryInterceptor
             log.warn("postgres.query interceptor rewrote invalid epoch conversion for timestamp/date column. original={}, rewritten={}", sql, out);
         }
         return out;
+    }
+
+    private String normalizeInvalidDateLiterals(String sql) {
+        Matcher matcher = DATE_TIME_LITERAL.matcher(sql);
+        StringBuffer rewritten = new StringBuffer();
+        boolean changed = false;
+        while (matcher.find()) {
+            int year = parseInt(matcher.group(1));
+            int month = parseInt(matcher.group(2));
+            int day = parseInt(matcher.group(3));
+            if (year > 0 && month == 2 && day == 29 && !Year.isLeap(year)) {
+                String suffix = matcher.group(4) == null ? "" : matcher.group(4);
+                String replacement = "'" + String.format(Locale.ROOT, "%04d-03-01", year) + suffix + "'";
+                matcher.appendReplacement(rewritten, Matcher.quoteReplacement(replacement));
+                changed = true;
+                continue;
+            }
+            matcher.appendReplacement(rewritten, Matcher.quoteReplacement(matcher.group(0)));
+        }
+        matcher.appendTail(rewritten);
+        return changed ? rewritten.toString() : sql;
+    }
+
+    private int parseInt(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (Exception ignore) {
+            return -1;
+        }
     }
 
     private Map<String, String> extractAliasToTable(String sql) {

@@ -15,6 +15,6 @@ public class DbkgStepExecutorFactory {
         return executors.stream()
                 .filter(executor -> executor.supports(executorCode))
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No DBKG step executor found for executorCode=" + executorCode));
+                .orElseThrow(() -> new IllegalStateException(DbkgConstants.MESSAGE_NO_STEP_EXECUTOR_PREFIX + executorCode));
     }
 }
