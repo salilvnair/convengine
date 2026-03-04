@@ -1,5 +1,7 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool CASCADE;
 DROP TABLE IF EXISTS ce_mcp_planner CASCADE;
+DROP TABLE IF EXISTS ce_mcp_user_feedback CASCADE;
+DROP TABLE IF EXISTS ce_mcp_user_query_knowledge CASCADE;
 DROP TABLE IF EXISTS ce_conversation_history CASCADE;
 DROP TABLE IF EXISTS ce_audit CASCADE;
 DROP TABLE IF EXISTS ce_pending_action CASCADE;
@@ -313,3 +315,32 @@ CREATE TABLE IF NOT EXISTS ce_mcp_schema_knowledge (
 
 CREATE  INDEX idx_ce_mcp_schema_knowledge_table_column ON public.ce_mcp_schema_knowledge USING btree (table_name, column_name);
 
+CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
+    id BIGSERIAL PRIMARY KEY,
+    query_text VARCHAR(1000) NOT NULL,
+    description VARCHAR(2000),
+    prepared_sql TEXT,
+    tags VARCHAR(2000),
+    api_hints VARCHAR(2000),
+    embedding TEXT,
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+CREATE INDEX idx_ce_mcp_user_query_knowledge_query_text ON public.ce_mcp_user_query_knowledge USING btree (query_text);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
+    feedback_id BIGSERIAL PRIMARY KEY,
+    conversation_id uuid NOT NULL,
+    feedback_type VARCHAR(32) NOT NULL,
+    message_id VARCHAR(128),
+    intent_code VARCHAR(255),
+    state_code VARCHAR(255),
+    user_query TEXT,
+    assistant_response TEXT,
+    mcp_tool_code VARCHAR(255),
+    captured_query_knowledge_count INTEGER DEFAULT 0 NOT NULL,
+    applied_query_knowledge_json jsonb,
+    metadata_json jsonb,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    CONSTRAINT ce_mcp_user_feedback_conversation_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ce_mcp_user_feedback_conversation ON public.ce_mcp_user_feedback USING btree (conversation_id, created_at DESC);

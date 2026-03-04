@@ -1,5 +1,7 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool;
 DROP TABLE IF EXISTS ce_mcp_planner;
+DROP TABLE IF EXISTS ce_mcp_user_feedback;
+DROP TABLE IF EXISTS ce_mcp_user_query_knowledge;
 DROP TABLE IF EXISTS ce_conversation_history;
 DROP TABLE IF EXISTS ce_audit;
 DROP TABLE IF EXISTS ce_pending_action;
@@ -272,3 +274,33 @@ CREATE TABLE IF NOT EXISTS ce_mcp_schema_knowledge (
                                                        description TEXT,
                                                        tags TEXT
 );
+
+CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
+                                                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                          query_text TEXT NOT NULL,
+                                                          description TEXT,
+                                                          prepared_sql TEXT,
+                                                          tags TEXT,
+                                                          api_hints TEXT,
+                                                          embedding TEXT,
+                                                          created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_mcp_user_query_knowledge_query_text ON ce_mcp_user_query_knowledge (query_text);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
+                                                   feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                   conversation_id TEXT NOT NULL,
+                                                   feedback_type TEXT NOT NULL,
+                                                   message_id TEXT,
+                                                   intent_code TEXT,
+                                                   state_code TEXT,
+                                                   user_query TEXT,
+                                                   assistant_response TEXT,
+                                                   mcp_tool_code TEXT,
+                                                   captured_query_knowledge_count INTEGER NOT NULL DEFAULT 0,
+                                                   applied_query_knowledge_json TEXT,
+                                                   metadata_json TEXT,
+                                                   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+                                                   FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ce_mcp_user_feedback_conversation ON ce_mcp_user_feedback (conversation_id, created_at DESC);

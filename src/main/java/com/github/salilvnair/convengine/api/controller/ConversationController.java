@@ -2,7 +2,10 @@ package com.github.salilvnair.convengine.api.controller;
 
 import com.github.salilvnair.convengine.api.dto.ConversationRequest;
 import com.github.salilvnair.convengine.api.dto.ConversationResponse;
+import com.github.salilvnair.convengine.api.dto.ConversationFeedbackRequest;
+import com.github.salilvnair.convengine.api.dto.ConversationFeedbackResponse;
 import com.github.salilvnair.convengine.api.dto.AuditTraceResponse;
+import com.github.salilvnair.convengine.api.service.ConversationFeedbackService;
 import com.github.salilvnair.convengine.audit.AuditTraceService;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
@@ -33,6 +36,7 @@ public class ConversationController {
         private final AuditRepository auditRepository;
         private final AuditService audit;
         private final AuditTraceService auditTraceService;
+        private final ConversationFeedbackService feedbackService;
 
         @PostMapping("/message")
         public ConversationResponse message(@RequestBody ConversationRequest request) {
@@ -142,6 +146,11 @@ public class ConversationController {
         @GetMapping("/audit/{conversationId}/trace")
         public AuditTraceResponse getAuditTrace(@PathVariable("conversationId") UUID conversationId) {
                 return auditTraceService.trace(conversationId);
+        }
+
+        @PostMapping("/feedback")
+        public ConversationFeedbackResponse saveFeedback(@RequestBody ConversationFeedbackRequest request) {
+                return feedbackService.submit(request);
         }
 
         // ----------------------------------------
