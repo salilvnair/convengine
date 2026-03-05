@@ -139,7 +139,6 @@ public class ConvEngineMcpConfig {
             private Retrieval retrieval = new Retrieval();
             private Vector vector = new Vector();
             private Graph graph = new Graph();
-            private Sql sql = new Sql();
 
             @Getter
             @Setter
@@ -182,17 +181,6 @@ public class ConvEngineMcpConfig {
                 private String adapter = "jgrapht";
             }
 
-            @Getter
-            @Setter
-            public static class Sql {
-                /**
-                 * SQL compiler adapter key.
-                 * Supported:
-                 * - default
-                 * - jooq
-                 */
-                private String compiler = "default";
-            }
         }
     }
 

@@ -6,17 +6,15 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstGenerationResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstFilter;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstSort;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.SemanticQueryAst;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.JoinPathPlan;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstGenerationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.normalize.AstNormalizer;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.SemanticQueryAstV1;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticEntity;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticField;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.RetrievalResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.RetrievalResult;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
@@ -34,12 +32,11 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
 @Component
-@Order(Ordered.LOWEST_PRECEDENCE)
+@Order()
 @RequiredArgsConstructor
 public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
 
@@ -50,6 +47,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
     private final VerboseMessagePublisher verbosePublisher;
     private final CeConfigResolver configResolver;
     private final PromptTemplateRenderer renderer;
+    private final AstNormalizer astNormalizer;
     private final ObjectMapper mapper = new ObjectMapper();
     private String astSystemPrompt;
     private String astUserPrompt;
@@ -163,18 +161,18 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         llmInputPayload.put("jsonSchemaPreview", abbreviate(jsonSchema, 400));
         llmInputPayload.put("contextPreview", abbreviate(ctxJson, 1200));
         llmInputPayload.put("_meta", meta(question, entity, false, false, false));
-        publishLlmEvent(ConvEngineAuditStage.SEMANTIC_AST_LLM_INPUT.name(), session, false, llmInputPayload);
+        publishLlmEvent(ConvEngineAuditStage.AST_INPUT.name(), session, false, llmInputPayload);
         try {
             String raw = llmClient.generateJsonStrict(session, llmPrompt, jsonSchema, ctxJson);
-            SemanticQueryAst ast = mapper.readValue(raw, SemanticQueryAst.class);
-            ast = normalizeAstFields(ast, model, entity);
+            SemanticQueryAstV1 ast = mapper.readValue(raw, SemanticQueryAstV1.class);
+            ast = astNormalizer.normalize(ast, model, entity, session);
             Map<String, Object> llmOutputPayload = new LinkedHashMap<>();
             llmOutputPayload.put("rawJsonPreview", abbreviate(raw, 1200));
             llmOutputPayload.put("entity", ast == null ? null : ast.entity());
             llmOutputPayload.put("selectCount", ast == null || ast.select() == null ? 0 : ast.select().size());
             llmOutputPayload.put("filterCount", ast == null || ast.filters() == null ? 0 : ast.filters().size());
             llmOutputPayload.put("_meta", meta(question, entity, true, true, true));
-            publishLlmEvent(ConvEngineAuditStage.SEMANTIC_AST_LLM_OUTPUT.name(), session, false, llmOutputPayload);
+            publishLlmEvent(ConvEngineAuditStage.AST_OUTPUT.name(), session, false, llmOutputPayload);
             return new AstGenerationResult(ast, raw, false);
         }
         catch (Exception ex) {
@@ -182,118 +180,9 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             llmErrorPayload.put("errorClass", ex.getClass().getName());
             llmErrorPayload.put("errorMessage", ex.getMessage() == null ? "" : ex.getMessage());
             llmErrorPayload.put("_meta", meta(question, entity, true, false, false));
-            publishLlmEvent(ConvEngineAuditStage.SEMANTIC_AST_LLM_ERROR.name(), session, true, llmErrorPayload);
+            publishLlmEvent(ConvEngineAuditStage.AST_ERROR.name(), session, true, llmErrorPayload);
             throw ex;
         }
-    }
-
-    private SemanticQueryAst normalizeAstFields(SemanticQueryAst ast, SemanticModel model, String selectedEntity) {
-        if (ast == null || model == null || model.entities() == null) {
-            return ast;
-        }
-        String targetEntity = ast.entity();
-        if (targetEntity == null || targetEntity.isBlank()) {
-            targetEntity = selectedEntity;
-        }
-        SemanticEntity entity = model.entities().get(targetEntity);
-        if (entity == null || entity.fields() == null || entity.fields().isEmpty()) {
-            return ast;
-        }
-
-        Map<String, String> aliasToField = buildFieldAliasMap(entity.fields());
-
-        List<String> normalizedSelect = ast.select() == null ? List.of() : ast.select().stream()
-                .map(field -> normalizeField(field, aliasToField, entity.fields()))
-                .toList();
-        List<AstFilter> normalizedFilters = ast.filters() == null ? List.of() : ast.filters().stream()
-                .map(filter -> filter == null ? null : new AstFilter(
-                        normalizeField(filter.field(), aliasToField, entity.fields()),
-                        filter.op(),
-                        filter.value()))
-                .toList();
-        List<AstSort> normalizedSort = ast.sort() == null ? List.of() : ast.sort().stream()
-                .map(sort -> sort == null ? null : new AstSort(
-                        normalizeField(sort.field(), aliasToField, entity.fields()),
-                        sort.direction()))
-                .toList();
-        List<String> normalizedGroupBy = ast.groupBy() == null ? List.of() : ast.groupBy().stream()
-                .map(field -> normalizeField(field, aliasToField, entity.fields()))
-                .toList();
-
-        return new SemanticQueryAst(
-                targetEntity,
-                normalizedSelect,
-                normalizedFilters,
-                ast.timeRange(),
-                normalizedGroupBy,
-                ast.metrics(),
-                normalizedSort,
-                ast.limit()
-        );
-    }
-
-    private Map<String, String> buildFieldAliasMap(Map<String, SemanticField> fields) {
-        Map<String, String> aliasToField = new LinkedHashMap<>();
-        for (Map.Entry<String, SemanticField> e : fields.entrySet()) {
-            String fieldName = e.getKey();
-            SemanticField field = e.getValue();
-            putAlias(aliasToField, normalizeToken(fieldName), fieldName);
-            putAlias(aliasToField, normalizeToken(camelToSnake(fieldName)), fieldName);
-            if (field != null && field.column() != null) {
-                String col = field.column();
-                String colName = col.contains(".") ? col.substring(col.lastIndexOf('.') + 1) : col;
-                putAlias(aliasToField, normalizeToken(colName), fieldName);
-                if (colName.startsWith("zp_")) {
-                    putAlias(aliasToField, normalizeToken(colName.substring(3)), fieldName);
-                }
-            }
-        }
-        if (fields.containsKey("requestId")) {
-            putAlias(aliasToField, "id", "requestId");
-        }
-        if (fields.containsKey("requestStatus")) {
-            putAlias(aliasToField, "status", "requestStatus");
-        }
-        if (fields.containsKey("requestedAt")) {
-            putAlias(aliasToField, "createdat", "requestedAt");
-            putAlias(aliasToField, "created", "requestedAt");
-        }
-        return aliasToField;
-    }
-
-    private void putAlias(Map<String, String> aliasToField, String alias, String field) {
-        if (alias == null || alias.isBlank() || field == null || field.isBlank()) {
-            return;
-        }
-        if (!aliasToField.containsKey(alias)) {
-            aliasToField.put(alias, field);
-        }
-    }
-
-    private String normalizeField(String rawField, Map<String, String> aliasToField, Map<String, SemanticField> fields) {
-        if (rawField == null || rawField.isBlank()) {
-            return rawField;
-        }
-        if (fields.containsKey(rawField)) {
-            return rawField;
-        }
-        String normalized = normalizeToken(rawField);
-        String mapped = aliasToField.get(normalized);
-        return mapped == null ? rawField : mapped;
-    }
-
-    private String normalizeToken(String text) {
-        if (text == null) {
-            return "";
-        }
-        return text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-    }
-
-    private String camelToSnake(String text) {
-        if (text == null || text.isBlank()) {
-            return "";
-        }
-        return text.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);
     }
 
     private void publishLlmEvent(String stage, EngineSession session, boolean error, Map<String, Object> payload) {
@@ -345,10 +234,23 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["entity", "select", "filters", "sort", "group_by", "metrics", "limit"],
+                  "required": ["astVersion", "entity", "select", "projections", "filters", "where", "exists", "subquery_filters", "sort", "group_by", "metrics", "windows", "having", "limit", "offset", "distinct", "join_hints"],
                   "properties": {
+                    "astVersion": {"type":"string","enum":["v1"]},
                     "entity": {"type":"string"},
                     "select": {"type":"array","items":{"type":"string"}},
+                    "projections": {
+                      "type":"array",
+                      "items":{
+                        "type":"object",
+                        "additionalProperties":false,
+                        "required":["field","alias"],
+                        "properties":{
+                          "field":{"type":"string"},
+                          "alias":{"type":["string","null"]}
+                        }
+                      }
+                    },
                     "filters": {
                       "type":"array",
                       "items": {
@@ -364,21 +266,113 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                         }
                       }
                     },
+                    "where":{
+                      "type":"object",
+                      "additionalProperties":false,
+                      "required":["op","conditions","groups"],
+                      "properties":{
+                        "op":{"type":"string","enum":["AND","OR","NOT"]},
+                        "conditions":{"type":"array","items":{
+                          "type":"object","additionalProperties":false,"required":["field","op","value"],
+                          "properties":{"field":{"type":"string"},"op":{"type":"string"},"value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}}
+                        }},
+                        "groups":{"type":"array","items":{"$ref":"#/$defs/filter_group"}}
+                      }
+                    },
+                    "exists":{
+                      "type":"array",
+                      "items":{
+                        "type":"object",
+                        "additionalProperties":false,
+                        "required":["entity","where","not_exists"],
+                        "properties":{
+                          "entity":{"type":"string"},
+                          "where":{"$ref":"#/$defs/filter_group"},
+                          "not_exists":{"type":"boolean"}
+                        }
+                      }
+                    },
+                    "subquery_filters":{
+                      "type":"array",
+                      "items":{
+                        "type":"object",
+                        "additionalProperties":false,
+                        "required":["field","op","subquery"],
+                        "properties":{
+                          "field":{"type":"string"},
+                          "op":{"type":"string"},
+                          "subquery":{
+                            "type":"object",
+                            "additionalProperties":false,
+                            "required":["entity","select_field","where","group_by","having","limit"],
+                            "properties":{
+                              "entity":{"type":"string"},
+                              "select_field":{"type":"string"},
+                              "where":{"$ref":"#/$defs/filter_group"},
+                              "group_by":{"type":"array","items":{"type":"string"}},
+                              "having":{"$ref":"#/$defs/filter_group"},
+                              "limit":{"type":"integer"}
+                            }
+                          }
+                        }
+                      }
+                    },
                     "sort": {
                       "type":"array",
                       "items":{
                         "type":"object",
                         "additionalProperties":false,
-                        "required":["field","direction"],
+                        "required":["field","direction","nulls"],
                         "properties":{
                           "field":{"type":"string"},
-                          "direction":{"type":"string","enum":["ASC","DESC"]}
+                          "direction":{"type":"string","enum":["ASC","DESC"]},
+                          "nulls":{"type":"string","enum":["FIRST","LAST"]}
                         }
                       }
                     },
                     "group_by": {"type":"array","items":{"type":"string"}},
                     "metrics": {"type":"array","items":{"type":"string"}},
-                    "limit": {"type":"integer"}
+                    "windows":{
+                      "type":"array",
+                      "items":{
+                        "type":"object",
+                        "additionalProperties":false,
+                        "required":["name","function","partition_by","order_by"],
+                        "properties":{
+                          "name":{"type":["string","null"]},
+                          "function":{"type":"string","enum":["ROW_NUMBER"]},
+                          "partition_by":{"type":"array","items":{"type":"string"}},
+                          "order_by":{"type":"array","items":{
+                            "type":"object","additionalProperties":false,"required":["field","direction","nulls"],
+                            "properties":{
+                              "field":{"type":"string"},
+                              "direction":{"type":"string","enum":["ASC","DESC"]},
+                              "nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}
+                            }
+                          }}
+                        }
+                      }
+                    },
+                    "having":{"$ref":"#/$defs/filter_group"},
+                    "limit": {"type":"integer"},
+                    "offset":{"type":"integer"},
+                    "distinct":{"type":"boolean"},
+                    "join_hints":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["leftField","rightField","joinType"],"properties":{"leftField":{"type":"string"},"rightField":{"type":"string"},"joinType":{"type":"string"}}}}
+                  },
+                  "$defs":{
+                    "filter_group":{
+                      "type":"object",
+                      "additionalProperties":false,
+                      "required":["op","conditions","groups"],
+                      "properties":{
+                        "op":{"type":"string","enum":["AND","OR","NOT"]},
+                        "conditions":{"type":"array","items":{
+                          "type":"object","additionalProperties":false,"required":["field","op","value"],
+                          "properties":{"field":{"type":"string"},"op":{"type":"string"},"value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}}
+                        }},
+                        "groups":{"type":"array","items":{"$ref":"#/$defs/filter_group"}}
+                      }
+                    }
                   }
                 }
                 """;
@@ -406,11 +400,32 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 selectItems.set("enum", fieldEnum.deepCopy());
             }
 
+            ObjectNode projections = asObject(properties.get("projections"));
+            ObjectNode projectionItems = asObject(projections == null ? null : projections.get("items"));
+            ObjectNode projectionProps = asObject(projectionItems == null ? null : projectionItems.get("properties"));
+            ObjectNode projectionField = asObject(projectionProps == null ? null : projectionProps.get("field"));
+            if (projectionField != null) {
+                projectionField.set("enum", fieldEnum.deepCopy());
+            }
+
             // group_by[].items.enum
             ObjectNode groupBy = asObject(properties.get("group_by"));
             ObjectNode groupByItems = asObject(groupBy == null ? null : groupBy.get("items"));
             if (groupByItems != null) {
                 groupByItems.set("enum", fieldEnum.deepCopy());
+            }
+
+            // metrics[].items.enum
+            if (modelRegistry != null && modelRegistry.getModel() != null && modelRegistry.getModel().metrics() != null) {
+                ArrayNode metricEnum = mapper.createArrayNode();
+                for (String metric : modelRegistry.getModel().metrics().keySet()) {
+                    metricEnum.add(metric);
+                }
+                ObjectNode metrics = asObject(properties.get("metrics"));
+                ObjectNode metricsItems = asObject(metrics == null ? null : metrics.get("items"));
+                if (metricsItems != null && metricEnum.size() > 0) {
+                    metricsItems.set("enum", metricEnum);
+                }
             }
 
             // filters[].items.properties.field.enum
@@ -420,6 +435,40 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             ObjectNode filterField = asObject(filterProps == null ? null : filterProps.get("field"));
             if (filterField != null) {
                 filterField.set("enum", fieldEnum.deepCopy());
+            }
+
+            ObjectNode where = asObject(properties.get("where"));
+            ObjectNode whereProps = asObject(where == null ? null : where.get("properties"));
+            ObjectNode whereConditions = asObject(whereProps == null ? null : whereProps.get("conditions"));
+            ObjectNode whereConditionItems = asObject(whereConditions == null ? null : whereConditions.get("items"));
+            ObjectNode whereConditionProps = asObject(whereConditionItems == null ? null : whereConditionItems.get("properties"));
+            ObjectNode whereField = asObject(whereConditionProps == null ? null : whereConditionProps.get("field"));
+            if (whereField != null) {
+                whereField.set("enum", fieldEnum.deepCopy());
+            }
+
+            ObjectNode subqueryFilters = asObject(properties.get("subquery_filters"));
+            ObjectNode subqueryFilterItems = asObject(subqueryFilters == null ? null : subqueryFilters.get("items"));
+            ObjectNode subqueryFilterProps = asObject(subqueryFilterItems == null ? null : subqueryFilterItems.get("properties"));
+            ObjectNode subqueryFilterField = asObject(subqueryFilterProps == null ? null : subqueryFilterProps.get("field"));
+            if (subqueryFilterField != null) {
+                subqueryFilterField.set("enum", fieldEnum.deepCopy());
+            }
+
+            ObjectNode windows = asObject(properties.get("windows"));
+            ObjectNode windowItems = asObject(windows == null ? null : windows.get("items"));
+            ObjectNode windowProps = asObject(windowItems == null ? null : windowItems.get("properties"));
+            ObjectNode partitionBy = asObject(windowProps == null ? null : windowProps.get("partition_by"));
+            ObjectNode partitionByItems = asObject(partitionBy == null ? null : partitionBy.get("items"));
+            if (partitionByItems != null) {
+                partitionByItems.set("enum", fieldEnum.deepCopy());
+            }
+            ObjectNode orderBy = asObject(windowProps == null ? null : windowProps.get("order_by"));
+            ObjectNode orderByItems = asObject(orderBy == null ? null : orderBy.get("items"));
+            ObjectNode orderByProps = asObject(orderByItems == null ? null : orderByItems.get("properties"));
+            ObjectNode orderByField = asObject(orderByProps == null ? null : orderByProps.get("field"));
+            if (orderByField != null) {
+                orderByField.set("enum", fieldEnum.deepCopy());
             }
 
             // sort[].items.properties.field.enum
@@ -456,6 +505,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             ensureRootRequired(root);
             ensureFilterItemRequired(root);
             ensureArrayItems(root);
+            ensureStrictRequiredCoverage(root);
             return mapper.writeValueAsString(root);
         } catch (Exception ex) {
             // Invalid config JSON should not be "fixed" via string replacement.
@@ -469,13 +519,23 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             return;
         }
         ArrayNode required = mapper.createArrayNode();
+        required.add("astVersion");
         required.add("entity");
         required.add("select");
+        required.add("projections");
         required.add("filters");
+        required.add("where");
+        required.add("exists");
+        required.add("subquery_filters");
         required.add("sort");
         required.add("group_by");
         required.add("metrics");
+        required.add("windows");
+        required.add("having");
         required.add("limit");
+        required.add("offset");
+        required.add("distinct");
+        required.add("join_hints");
         root.set("required", required);
     }
 
@@ -502,6 +562,9 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         ensureSortItemsShape(properties);
         ensureArrayItemsType(properties, "group_by", "string");
         ensureArrayItemsType(properties, "metrics", "string");
+        ensureArrayItemsType(properties, "exists", "object");
+        ensureArrayItemsType(properties, "subquery_filters", "object");
+        ensureArrayItemsType(properties, "windows", "object");
     }
 
     private void ensureArrayItemsType(ObjectNode properties, String propertyName, String itemType) {
@@ -536,6 +599,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         ArrayNode required = mapper.createArrayNode();
         required.add("field");
         required.add("direction");
+        required.add("nulls");
         items.set("required", required);
 
         ObjectNode itemProps = asObject(items.get("properties"));
@@ -560,6 +624,58 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         enumValues.add("ASC");
         enumValues.add("DESC");
         direction.set("enum", enumValues);
+
+        ObjectNode nulls = asObject(itemProps.get("nulls"));
+        if (nulls == null) {
+            nulls = mapper.createObjectNode();
+            itemProps.set("nulls", nulls);
+        }
+        ArrayNode nullTypes = mapper.createArrayNode();
+        nullTypes.add("string");
+        nullTypes.add("null");
+        nulls.set("type", nullTypes);
+        ArrayNode nullEnum = mapper.createArrayNode();
+        nullEnum.add("FIRST");
+        nullEnum.add("LAST");
+        nullEnum.addNull();
+        nulls.set("enum", nullEnum);
+    }
+
+    // OpenAI strict json_schema requires "required" to include every property key on object schemas.
+    // We enforce it recursively so config mistakes don't break runtime.
+    private void ensureStrictRequiredCoverage(ObjectNode schemaNode) {
+        if (schemaNode == null) {
+            return;
+        }
+
+        ObjectNode properties = asObject(schemaNode.get("properties"));
+        if (properties != null) {
+            schemaNode.put("additionalProperties", false);
+            ArrayNode required = mapper.createArrayNode();
+            properties.fieldNames().forEachRemaining(required::add);
+            schemaNode.set("required", required);
+            properties.fields().forEachRemaining(entry -> {
+                ObjectNode child = asObject(entry.getValue());
+                if (child != null) {
+                    ensureStrictRequiredCoverage(child);
+                }
+            });
+        }
+
+        ObjectNode items = asObject(schemaNode.get("items"));
+        if (items != null) {
+            ensureStrictRequiredCoverage(items);
+        }
+
+        ObjectNode defs = asObject(schemaNode.get("$defs"));
+        if (defs != null) {
+            defs.fields().forEachRemaining(entry -> {
+                ObjectNode defNode = asObject(entry.getValue());
+                if (defNode != null) {
+                    ensureStrictRequiredCoverage(defNode);
+                }
+            });
+        }
     }
 
     private ObjectNode ensureFilterValueNode(ObjectNode root) {

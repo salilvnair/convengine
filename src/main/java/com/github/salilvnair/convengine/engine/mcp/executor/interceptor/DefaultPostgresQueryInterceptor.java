@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  */
 @Slf4j
 @Component
-@Order(Ordered.LOWEST_PRECEDENCE)
+@Order()
 @RequiredArgsConstructor
 public class DefaultPostgresQueryInterceptor implements PostgresQueryInterceptor {
 

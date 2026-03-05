@@ -4,8 +4,10 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.JoinPathPlan;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.JoinPathResolver;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.AstPlanningInterceptor;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.AstPlanner;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.context.SemanticQueryContext;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.core.SemanticQueryStage;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
@@ -24,7 +26,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SemanticJoinPathStage implements SemanticQueryStage {
 
-    private final ObjectProvider<List<JoinPathResolver>> joinResolversProvider;
+    private final ObjectProvider<List<AstPlanner>> plannersProvider;
+    private final ObjectProvider<List<AstPlanningInterceptor>> planningInterceptorsProvider;
     private final ConvEngineMcpConfig mcpConfig;
     private final AuditService auditService;
     private final VerboseMessagePublisher verbosePublisher;
@@ -39,23 +42,43 @@ public class SemanticJoinPathStage implements SemanticQueryStage {
         if (context.retrieval() == null) {
             throw new IllegalStateException("retrieval must be completed before join-path stage");
         }
-        JoinPathResolver resolver = resolveJoinResolver(context);
-        JoinPathPlan plan = resolver.resolve(context.retrieval(), context.session());
-        context.joinPath(plan);
-        publish(context.session(), ConvEngineAuditStage.SEMANTIC_JOIN_PATH_STAGE.name(), plan, false);
-        publish(context.session(), ConvEngineAuditStage.SEMANTIC_SCHEMA_GRAPH_TRAVERSED.name(), plan, false);
-        publish(context.session(), ConvEngineAuditStage.SEMANTIC_JOIN_PATH_RESOLVED.name(), plan, false);
-    }
-
-    private JoinPathResolver resolveJoinResolver(SemanticQueryContext context) {
-        List<JoinPathResolver> resolvers = joinResolversProvider.getIfAvailable(List::of);
-        AnnotationAwareOrderComparator.sort(resolvers);
-        for (JoinPathResolver resolver : resolvers) {
-            if (resolver != null && resolver.supports(context.session())) {
-                return resolver;
+        AstPlanner planner = resolvePlanner(context);
+        List<AstPlanningInterceptor> planningInterceptors = planningInterceptorsProvider.getIfAvailable(List::of);
+        AnnotationAwareOrderComparator.sort(planningInterceptors);
+        for (AstPlanningInterceptor interceptor : planningInterceptors) {
+            if (interceptor != null && interceptor.supports(context.session())) {
+                interceptor.beforePlan(context.retrieval(), context.session());
             }
         }
-        throw new IllegalStateException("No JoinPathResolver available.");
+        JoinPathPlan plan;
+        try {
+            plan = planner.plan(context.retrieval(), context.session());
+            for (AstPlanningInterceptor interceptor : planningInterceptors) {
+                if (interceptor != null && interceptor.supports(context.session())) {
+                    plan = interceptor.afterPlan(plan, context.session());
+                }
+            }
+        } catch (Exception ex) {
+            for (AstPlanningInterceptor interceptor : planningInterceptors) {
+                if (interceptor != null && interceptor.supports(context.session())) {
+                    interceptor.onError(context.retrieval(), context.session(), ex);
+                }
+            }
+            throw ex;
+        }
+        context.joinPath(plan);
+        publish(context.session(), ConvEngineAuditStage.JOIN_PATH_RESOLVED.name(), plan, false);
+    }
+
+    private AstPlanner resolvePlanner(SemanticQueryContext context) {
+        List<AstPlanner> planners = plannersProvider.getIfAvailable(List::of);
+        AnnotationAwareOrderComparator.sort(planners);
+        for (AstPlanner planner : planners) {
+            if (planner != null && planner.supports(context.session())) {
+                return planner;
+            }
+        }
+        throw new IllegalStateException("No AstPlanner available.");
     }
 
     private void publish(EngineSession session, String determinant, JoinPathPlan plan, boolean error) {
@@ -76,9 +99,7 @@ public class SemanticJoinPathStage implements SemanticQueryStage {
         meta.put("component", "semantic-query");
         meta.put("stage", stageCode());
         meta.put("toolCode", resolveToolCode());
-        meta.put("joinPathStageDone", ConvEngineAuditStage.SEMANTIC_JOIN_PATH_STAGE.name().equals(determinant));
-        meta.put("graphTraversalDone", ConvEngineAuditStage.SEMANTIC_SCHEMA_GRAPH_TRAVERSED.name().equals(determinant));
-        meta.put("joinPathResolved", ConvEngineAuditStage.SEMANTIC_JOIN_PATH_RESOLVED.name().equals(determinant));
+        meta.put("joinPathResolved", ConvEngineAuditStage.JOIN_PATH_RESOLVED.name().equals(determinant));
         meta.put("error", error);
         payload.put("_meta", meta);
 

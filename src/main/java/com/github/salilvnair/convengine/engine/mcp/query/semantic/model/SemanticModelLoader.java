@@ -26,22 +26,22 @@ public class SemanticModelLoader {
                 : (mcpConfig.getDb().getSemantic() == null ? new ConvEngineMcpConfig.Db.Semantic() : mcpConfig.getDb().getSemantic());
         String path = cfg.getModelPath();
         if (path == null || path.isBlank()) {
-            return new SemanticModel(1, "", "", null, null, null, null);
+            return new SemanticModel(1, "", "", null, null, null, null, null);
         }
         try {
             Resource resource = resourceLoader.getResource(path);
             if (!resource.exists()) {
                 log.warn("Semantic model not found at path={}. Using empty model.", path);
-                return new SemanticModel(1, "", "", null, null, null, null);
+                return new SemanticModel(1, "", "", null, null, null, null, null);
             }
             try (InputStream in = resource.getInputStream()) {
                 SemanticModel model = mapper().readValue(in, SemanticModel.class);
                 log.info("Loaded semantic model from path={}", path);
-                return model == null ? new SemanticModel(1, "", "", null, null, null, null) : model;
+                return model == null ? new SemanticModel(1, "", "", null, null, null, null, null) : model;
             }
         } catch (Exception ex) {
             log.warn("Failed to load semantic model from path={}. Using empty model. cause={}", path, ex.getMessage());
-            return new SemanticModel(1, "", "", null, null, null, null);
+            return new SemanticModel(1, "", "", null, null, null, null, null);
         }
     }
 

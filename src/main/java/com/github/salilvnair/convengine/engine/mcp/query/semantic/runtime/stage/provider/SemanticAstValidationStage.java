@@ -3,11 +3,12 @@ package com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstValidationResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstValidator;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.validate.AstValidationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.validate.AstValidator;
 import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.context.SemanticQueryContext;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.core.SemanticQueryStage;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
@@ -39,14 +40,13 @@ public class SemanticAstValidationStage implements SemanticQueryStage {
 
     @Override
     public void execute(SemanticQueryContext context) {
-        if (context.astGeneration() == null || context.astGeneration().ast() == null) {
+        if (context.astGeneration() == null || context.astGeneration().ast() == null || context.canonicalAst() == null) {
             throw new IllegalStateException("ast-generation must complete before ast-validation stage");
         }
         AstValidator validator = resolveValidator(context);
         SemanticModel model = modelRegistry.getModel();
-        AstValidationResult result = validator.validate(context.astGeneration().ast(), model, context.joinPath(), context.session());
+        AstValidationResult result = validator.validate(context.canonicalAst(), model, context.joinPath(), context.session());
         context.astValidation(result);
-        publishValidationStage(context.session(), context, result);
         publishValidated(context.session(), context, result);
         if (!result.valid()) {
             throw new IllegalStateException("semantic AST validation failed: " + result.errors());
@@ -72,7 +72,7 @@ public class SemanticAstValidationStage implements SemanticQueryStage {
         boolean valid = result != null && result.valid();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("component", "semantic-query");
-        String determinant = ConvEngineAuditStage.SEMANTIC_AST_VALIDATED.name();
+        String determinant = ConvEngineAuditStage.AST_VALIDATED.name();
         payload.put("determinant", determinant);
         payload.put("valid", valid);
         payload.put("errorCount", result == null || result.errors() == null ? 0 : result.errors().size());
@@ -86,34 +86,6 @@ public class SemanticAstValidationStage implements SemanticQueryStage {
         meta.put("toolCode", resolveToolCode());
         meta.put("astPrepared", context != null && context.astGeneration() != null && context.astGeneration().ast() != null);
         meta.put("astValidated", true);
-        meta.put("astValid", valid);
-        payload.put("_meta", meta);
-
-        auditService.audit(determinant, conversationId, payload);
-        if (verbosePublisher != null) {
-            verbosePublisher.publish(session, getClass().getSimpleName(), determinant, null, resolveToolCode(), !valid, payload);
-        }
-    }
-
-    private void publishValidationStage(EngineSession session, SemanticQueryContext context, AstValidationResult result) {
-        UUID conversationId = session == null ? null : session.getConversationId();
-        if (conversationId == null) {
-            return;
-        }
-        boolean valid = result != null && result.valid();
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("component", "semantic-query");
-        String determinant = ConvEngineAuditStage.SEMANTIC_AST_VALIDATION_STAGE.name();
-        payload.put("determinant", determinant);
-        payload.put("valid", valid);
-        payload.put("errorCount", result == null || result.errors() == null ? 0 : result.errors().size());
-        payload.put("entity", context == null || context.astGeneration() == null || context.astGeneration().ast() == null
-                ? null : context.astGeneration().ast().entity());
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("component", "semantic-query");
-        meta.put("stage", stageCode());
-        meta.put("toolCode", resolveToolCode());
-        meta.put("astValidationDone", true);
         meta.put("astValid", valid);
         payload.put("_meta", meta);
 

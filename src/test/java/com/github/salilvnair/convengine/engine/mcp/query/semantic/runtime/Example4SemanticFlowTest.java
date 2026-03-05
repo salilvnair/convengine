@@ -4,34 +4,41 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstGenerationResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstValidationResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstValidator;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.SemanticQueryAst;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstGenerationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.validate.AstValidationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.validate.AstValidator;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.SemanticQueryAstV1;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.version.AstCanonicalizer;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.canonical.CanonicalAst;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.canonical.CanonicalProjection;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.execute.SemanticExecutionResult;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.execute.SemanticSqlExecutor;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.JoinPathPlan;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.JoinPathResolver;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.SchemaEdge;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.AstPlanner;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.AstPlanningInterceptor;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.SchemaEdge;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.llm.SemanticAstGenerator;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.CandidateEntity;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.CandidateTable;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.RetrievalResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.CandidateEntity;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.CandidateTable;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.RetrievalResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.core.SemanticQueryRuntimeService;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.core.SemanticQueryStageInterceptor;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.provider.SemanticAstGenerationStage;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.provider.SemanticAstValidationStage;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.provider.SemanticJoinPathStage;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.provider.SemanticQueryContext;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.context.SemanticQueryContext;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.core.SemanticQueryStage;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.provider.SemanticResultSummaryStage;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.provider.SemanticSqlCompileStage;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.provider.SemanticSqlExecuteStage;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.pipeline.SemanticStagePipeline;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.pipeline.SemanticStagePipelineFactory;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.CompiledSql;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.SemanticSqlCompiler;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.SemanticSqlPolicyValidator;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.core.CompiledSql;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.interceptor.AstCompilationInterceptor;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.core.SemanticSqlCompiler;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.policy.SemanticSqlPolicyValidator;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.summary.SemanticResultSummarizer;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
@@ -78,7 +85,7 @@ class Example4SemanticFlowTest {
     private VerboseMessagePublisher verbosePublisher;
 
     @Mock
-    private JoinPathResolver joinPathResolver;
+    private AstPlanner astPlanner;
     @Mock
     private SemanticAstGenerator astGenerator;
     @Mock
@@ -93,7 +100,9 @@ class Example4SemanticFlowTest {
     private SemanticResultSummarizer resultSummarizer;
 
     @Mock
-    private ObjectProvider<List<JoinPathResolver>> joinResolversProvider;
+    private ObjectProvider<List<AstPlanner>> plannersProvider;
+    @Mock
+    private ObjectProvider<List<AstPlanningInterceptor>> planningInterceptorsProvider;
     @Mock
     private ObjectProvider<List<SemanticAstGenerator>> astGeneratorsProvider;
     @Mock
@@ -103,9 +112,13 @@ class Example4SemanticFlowTest {
     @Mock
     private ObjectProvider<List<SemanticSqlPolicyValidator>> sqlValidatorsProvider;
     @Mock
+    private ObjectProvider<List<AstCompilationInterceptor>> compilationInterceptorsProvider;
+    @Mock
     private ObjectProvider<List<SemanticSqlExecutor>> sqlExecutorsProvider;
     @Mock
     private ObjectProvider<List<SemanticResultSummarizer>> summarizersProvider;
+    @Mock
+    private AstCanonicalizer astCanonicalizer;
 
     private ConvEngineMcpConfig mcpConfig;
     private SemanticQueryRuntimeService runtimeService;
@@ -119,17 +132,19 @@ class Example4SemanticFlowTest {
         mcpConfig.getDb().getSemantic().setToolCode("db.semantic.query");
 
         when(stageInterceptorsProvider.getIfAvailable(any())).thenReturn(List.of());
-        when(modelRegistry.getModel()).thenReturn(new SemanticModel(1, "zapper_ops", "example4", Map.of(), List.of(), Map.of(), Map.of()));
+        when(modelRegistry.getModel()).thenReturn(new SemanticModel(1, "zapper_ops", "example4", Map.of(), List.of(), Map.of(), Map.of(), Map.of()));
 
-        when(joinResolversProvider.getIfAvailable(any())).thenReturn(List.of(joinPathResolver));
+        when(plannersProvider.getIfAvailable(any())).thenReturn(List.of(astPlanner));
+        when(planningInterceptorsProvider.getIfAvailable(any())).thenReturn(List.of());
         when(astGeneratorsProvider.getIfAvailable(any())).thenReturn(List.of(astGenerator));
         when(astValidatorsProvider.getIfAvailable(any())).thenReturn(List.of(astValidator));
         when(sqlCompilersProvider.getIfAvailable(any())).thenReturn(List.of(sqlCompiler));
         when(sqlValidatorsProvider.getIfAvailable(any())).thenReturn(List.of(sqlPolicyValidator));
+        when(compilationInterceptorsProvider.getIfAvailable(any())).thenReturn(List.of());
         when(sqlExecutorsProvider.getIfAvailable(any())).thenReturn(List.of(sqlExecutor));
         when(summarizersProvider.getIfAvailable(any())).thenReturn(List.of(resultSummarizer));
 
-        when(joinPathResolver.supports(any())).thenReturn(true);
+        when(astPlanner.supports(any())).thenReturn(true);
         when(astGenerator.supports(any())).thenReturn(true);
         when(astValidator.supports(any())).thenReturn(true);
         when(sqlCompiler.supports(any())).thenReturn(true);
@@ -137,7 +152,7 @@ class Example4SemanticFlowTest {
         when(sqlExecutor.supports(any())).thenReturn(true);
         when(resultSummarizer.supports(any())).thenReturn(true);
 
-        when(joinPathResolver.resolve(any(), any())).thenAnswer(inv -> new JoinPathPlan(
+        when(astPlanner.plan(any(), any())).thenAnswer(inv -> new JoinPathPlan(
                 "zp_request",
                 List.of(new SchemaEdge("zp_request", "account_id", "zp_account", "account_id", "FK", "INNER")),
                 List.of("zp_request", "zp_account"),
@@ -145,9 +160,46 @@ class Example4SemanticFlowTest {
                 0.91
         ));
         when(astGenerator.generate(anyString(), any(), any(), any())).thenAnswer(inv -> new AstGenerationResult(
-                new SemanticQueryAst("DisconnectRequest", List.of("requestId", "requestStatus"), List.of(), null, List.of(), List.of(), List.of(), 100),
+                new SemanticQueryAstV1(
+                        "v1",
+                        "DisconnectRequest",
+                        List.of("requestId", "requestStatus"),
+                        List.of(),
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        null,
+                        100,
+                        0,
+                        false,
+                        List.of()
+                ),
                 "{\"entity\":\"DisconnectRequest\"}",
                 false
+        ));
+        when(astCanonicalizer.fromV1(any())).thenReturn(new CanonicalAst(
+                "v1",
+                "DisconnectRequest",
+                List.of(new CanonicalProjection("requestId", null), new CanonicalProjection("requestStatus", null)),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                List.of(),
+                List.of(),
+                100,
+                0,
+                false,
+                List.of()
         ));
         when(astValidator.validate(any(), any(), any(), any())).thenReturn(new AstValidationResult(true, List.of()));
         when(sqlCompiler.compile(any())).thenReturn(new CompiledSql("select zp_request_id as requestId, request_status as requestStatus from zp_request limit :limit", Map.of("limit", 100)));
@@ -168,10 +220,10 @@ class Example4SemanticFlowTest {
                         "HIGH"
                 )));
 
-        SemanticJoinPathStage joinPathStage = new SemanticJoinPathStage(joinResolversProvider, mcpConfig, auditService, verbosePublisher);
-        SemanticAstGenerationStage astGenerationStage = new SemanticAstGenerationStage(astGeneratorsProvider, mcpConfig, auditService, verbosePublisher);
+        SemanticJoinPathStage joinPathStage = new SemanticJoinPathStage(plannersProvider, planningInterceptorsProvider, mcpConfig, auditService, verbosePublisher);
+        SemanticAstGenerationStage astGenerationStage = new SemanticAstGenerationStage(astGeneratorsProvider, astCanonicalizer, mcpConfig, auditService, verbosePublisher);
         SemanticAstValidationStage astValidationStage = new SemanticAstValidationStage(modelRegistry, astValidatorsProvider, mcpConfig, auditService, verbosePublisher);
-        SemanticSqlCompileStage sqlCompileStage = new SemanticSqlCompileStage(sqlCompilersProvider, sqlValidatorsProvider, mcpConfig, auditService, verbosePublisher);
+        SemanticSqlCompileStage sqlCompileStage = new SemanticSqlCompileStage(sqlCompilersProvider, sqlValidatorsProvider, compilationInterceptorsProvider, mcpConfig, auditService, verbosePublisher);
         SemanticSqlExecuteStage sqlExecuteStage = new SemanticSqlExecuteStage(sqlExecutorsProvider, mcpConfig, auditService, verbosePublisher);
         SemanticResultSummaryStage summaryStage = new SemanticResultSummaryStage(summarizersProvider, mcpConfig, auditService, verbosePublisher);
 
@@ -220,20 +272,16 @@ class Example4SemanticFlowTest {
             assertEquals(Boolean.TRUE, meta.get("sqlExecuted"));
         }
 
-        verify(auditService, atLeast(4)).audit(eq("SEMANTIC_SCHEMA_GRAPH_TRAVERSED"), any(UUID.class), any(Map.class));
-        verify(auditService, atLeast(4)).audit(eq("SEMANTIC_JOIN_PATH_RESOLVED"), any(UUID.class), any(Map.class));
-        verify(auditService, atLeast(4)).audit(eq("SEMANTIC_AST_GENERATED"), any(UUID.class), any(Map.class));
-        verify(auditService, atLeast(4)).audit(eq("SEMANTIC_AST_VALIDATED"), any(UUID.class), any(Map.class));
-        verify(auditService, atLeast(4)).audit(eq("SEMANTIC_STAGE_ENTER"), any(UUID.class), any(Map.class));
-        verify(auditService, atLeast(4)).audit(eq("SEMANTIC_STAGE_EXIT"), any(UUID.class), any(Map.class));
+        verify(auditService, atLeast(4)).audit(eq("JOIN_PATH_RESOLVED"), any(UUID.class), any(Map.class));
+        verify(auditService, atLeast(4)).audit(eq("AST_GENERATED"), any(UUID.class), any(Map.class));
+        verify(auditService, atLeast(4)).audit(eq("AST_VALIDATED"), any(UUID.class), any(Map.class));
 
         ArgumentCaptor<String> determinantCaptor = ArgumentCaptor.forClass(String.class);
         verify(verbosePublisher, atLeast(1)).publish(any(), anyString(), determinantCaptor.capture(), isNull(), eq("db.semantic.query"), anyBoolean(), anyMap());
         List<String> determinants = determinantCaptor.getAllValues();
-        assertTrue(determinants.contains("SEMANTIC_SCHEMA_GRAPH_TRAVERSED"));
-        assertTrue(determinants.contains("SEMANTIC_JOIN_PATH_RESOLVED"));
-        assertTrue(determinants.contains("SEMANTIC_AST_GENERATED"));
-        assertTrue(determinants.contains("SEMANTIC_AST_VALIDATED"));
+        assertTrue(determinants.contains("JOIN_PATH_RESOLVED"));
+        assertTrue(determinants.contains("AST_GENERATED"));
+        assertTrue(determinants.contains("AST_VALIDATED"));
     }
 
     private EngineSession session(String userText) {

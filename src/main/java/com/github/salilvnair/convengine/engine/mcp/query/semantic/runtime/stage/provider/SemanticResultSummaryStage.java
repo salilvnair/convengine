@@ -5,6 +5,7 @@ import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.core.step.annotation.TerminalStep;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.context.SemanticQueryContext;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.core.SemanticQueryStage;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.summary.SemanticResultSummarizer;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
@@ -64,7 +65,7 @@ public class SemanticResultSummaryStage implements SemanticQueryStage {
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("component", "semantic-query");
-        String determinant = ConvEngineAuditStage.SEMANTIC_RESULT_SUMMARY_STAGE.name();
+        String determinant = ConvEngineAuditStage.RESULT_SUMMARIZED.name();
         payload.put("determinant", determinant);
         payload.put("summaryPreview", abbreviate(summary, 300));
         payload.put("summaryLength", summary == null ? 0 : summary.length());

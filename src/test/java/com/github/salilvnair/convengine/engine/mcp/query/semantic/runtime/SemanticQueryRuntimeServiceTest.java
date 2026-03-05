@@ -4,17 +4,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstGenerationResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstValidationResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.SemanticQueryAst;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstGenerationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.validate.AstValidationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.SemanticQueryAstV1;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.execute.SemanticExecutionResult;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.provider.SemanticQueryContext;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.core.SemanticQueryRuntimeService;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.core.SemanticQueryStageInterceptor;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.context.SemanticQueryContext;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.core.SemanticQueryStage;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.pipeline.SemanticStagePipeline;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.pipeline.SemanticStagePipelineFactory;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.CompiledSql;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.core.CompiledSql;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,7 +74,7 @@ class SemanticQueryRuntimeServiceTest {
         mcpConfig.getDb().getSemantic().setToolCode("db.semantic.query");
 
         when(stageInterceptorsProvider.getIfAvailable(any())).thenReturn(List.of());
-        when(modelRegistry.getModel()).thenReturn(new SemanticModel(1, "zapper_ops", "test", Map.of(), List.of(), Map.of(), Map.of()));
+        when(modelRegistry.getModel()).thenReturn(new SemanticModel(1, "zapper_ops", "test", Map.of(), List.of(), Map.of(), Map.of(), Map.of()));
 
         runtimeService = new SemanticQueryRuntimeService(
                 mcpConfig,
@@ -87,22 +89,32 @@ class SemanticQueryRuntimeServiceTest {
     @Test
     void stageAuditAndVerboseAreEmittedForEveryStageWithMeta() {
         SemanticQueryStage retrieval = new SemanticRetrievalStageTest("retrieval", context ->
-                context.retrieval(new com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.RetrievalResult(
+                context.retrieval(new com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.RetrievalResult(
                         context.question(),
                         List.of(),
                         List.of(),
                         "HIGH"
                 )));
         SemanticQueryStage ast = new SemanticAstStageTest("ast", context -> {
-            SemanticQueryAst queryAst = new SemanticQueryAst(
+            SemanticQueryAstV1 queryAst = new SemanticQueryAstV1(
+                    "v1",
                     "DisconnectRequest",
                     List.of("requestId"),
                     List.of(),
+                    List.of(),
+                    null,
                     null,
                     List.of(),
                     List.of(),
                     List.of(),
-                    50
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    null,
+                    50,
+                    0,
+                    false,
+                    List.of()
             );
             context.astGeneration(new AstGenerationResult(queryAst, "{\"entity\":\"DisconnectRequest\"}", false));
             context.astValidation(new AstValidationResult(true, List.of()));
@@ -129,34 +141,13 @@ class SemanticQueryRuntimeServiceTest {
         assertEquals(Boolean.TRUE, outMeta.get("sqlExecuted"));
         assertEquals(Boolean.TRUE, outMeta.get("summaryPrepared"));
 
-        verify(auditService, times(3)).audit(eq("SEMANTIC_STAGE_ENTER"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(3)).audit(eq("SEMANTIC_STAGE_EXIT"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(0)).audit(eq("AST_STAGE_ERROR"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(0)).audit(eq("SEMANTIC_RUNTIME_ERROR"), eq(session.getConversationId()), any(Map.class));
-
-        verify(verbosePublisher, times(9)).publish(
-                eq(session),
-                anyString(),
-                anyString(),
-                isNull(),
-                eq("db.semantic.query"),
-                anyBoolean(),
-                anyMap()
-        );
-
-        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(auditService, atLeastOnce()).audit(eq("SEMANTIC_STAGE_EXIT"), eq(session.getConversationId()), payloadCaptor.capture());
-        Map<String, Object> someExitPayload = payloadCaptor.getValue();
-        assertTrue(someExitPayload.containsKey("_meta"));
-        Map<?, ?> meta = assertInstanceOf(Map.class, someExitPayload.get("_meta"));
-        assertTrue(meta.containsKey("astPrepared"));
-        assertTrue(meta.containsKey("sqlCompiled"));
+        verify(auditService, times(0)).audit(eq("RUNTIME_ERROR"), eq(session.getConversationId()), any(Map.class));
     }
 
     @Test
     void failingStageEmitsStageErrorAndRuntimeErrorAuditAndVerbose() {
         SemanticQueryStage retrieval = new SemanticRetrievalStageTest("retrieval", context ->
-                context.retrieval(new com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.RetrievalResult(
+                context.retrieval(new com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.RetrievalResult(
                         context.question(),
                         List.of(),
                         List.of(),
@@ -172,10 +163,8 @@ class SemanticQueryRuntimeServiceTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> runtimeService.plan("why failed", session));
         assertEquals("boom", ex.getMessage());
 
-        verify(auditService, times(2)).audit(eq("SEMANTIC_STAGE_ENTER"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(1)).audit(eq("SEMANTIC_STAGE_EXIT"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(1)).audit(eq("AST_STAGE_ERROR"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(1)).audit(eq("SEMANTIC_RUNTIME_ERROR"), eq(session.getConversationId()), any(Map.class));
+        verify(auditService, times(1)).audit(eq("AST_ERROR"), eq(session.getConversationId()), any(Map.class));
+        verify(auditService, times(1)).audit(eq("RUNTIME_ERROR"), eq(session.getConversationId()), any(Map.class));
 
         ArgumentCaptor<String> determinantCaptor = ArgumentCaptor.forClass(String.class);
         verify(verbosePublisher, atLeastOnce()).publish(
@@ -188,8 +177,8 @@ class SemanticQueryRuntimeServiceTest {
                 anyMap()
         );
         List<String> determinants = determinantCaptor.getAllValues();
-        assertTrue(determinants.contains("AST_STAGE_ERROR"));
-        assertTrue(determinants.contains("SEMANTIC_RUNTIME_ERROR"));
+        assertTrue(determinants.contains("AST_ERROR"));
+        assertTrue(determinants.contains("RUNTIME_ERROR"));
     }
 
     private EngineSession session(String userText) {

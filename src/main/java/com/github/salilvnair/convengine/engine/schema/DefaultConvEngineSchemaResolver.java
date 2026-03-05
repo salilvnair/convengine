@@ -20,7 +20,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Component
-@Order(Ordered.LOWEST_PRECEDENCE)
+@Order()
 public class DefaultConvEngineSchemaResolver implements ConvEngineSchemaResolver {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

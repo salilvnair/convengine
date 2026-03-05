@@ -223,7 +223,7 @@ The following runtime stages are now implemented:
 Key implementation points:
 
 1. All new semantic-query code lives under `com.github.salilvnair.convengine.engine.mcp.query.semantic`.
-2. Every stage is interface-first with default lowest-priority implementation (`@Order(Ordered.LOWEST_PRECEDENCE)`), so consumers can override with higher priority beans.
+2. Every stage is interface-first with default lowest-priority implementation (`@Order()`), so consumers can override with higher priority beans.
 3. Interceptor hooks were added for retrieval, graph, AST generation, AST validation, and runtime stage lifecycle.
 4. Graph path uses adapter pattern (`SchemaGraphEngine`), with default JGraphT adapter now.
 5. Retrieval supports deterministic + vector blending, and uses `LlmClient.generateEmbedding(EngineSession, String)`.

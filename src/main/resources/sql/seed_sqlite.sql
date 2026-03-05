@@ -207,7 +207,14 @@ VALUES(21, 'DialogueActStep', 'REGEX_GREETING', '^(\\s)*(hi|hello|hey|greetings|
 
 INSERT INTO ce_config
 (config_id, config_type, config_key, config_value, enabled)
-VALUES(24, 'DefaultSemanticAstGenerator', 'SYSTEM_PROMPT', 'You are a semantic SQL AST planner. Return JSON only. Do not generate SQL text.', 1);
+VALUES(24, 'DefaultSemanticAstGenerator', 'SYSTEM_PROMPT', 'You are a semantic SQL AST planner.
+Return JSON only.
+Do not generate SQL text.
+Use semantic field keys only.
+Use where as boolean tree.
+Use exists for existence checks and not_exists true for anti existence.
+Use subquery_filters for scalar subquery comparisons.
+Use windows only for ROW_NUMBER ranking when needed.', 1);
 
 INSERT INTO ce_config
 (config_id, config_type, config_key, config_value, enabled)
@@ -216,7 +223,14 @@ Selected entity: {{selected_entity}}
 Selected entity description: {{selected_entity_description}}
 Allowed fields for selected entity: {{selected_entity_fields_json}}
 Allowed entities: {{allowed_entities}}
+Candidate entities: {{candidate_entities_json}}
+Candidate tables: {{candidate_tables_json}}
 Join path: {{join_path_json}}
+Guidance:
+- Prefer where for filters.
+- Use exists when asking has or has not related records.
+- Use subquery_filters for compare with subquery result.
+- Use windows for ranking only.
 Context JSON: {{context_json}}', 1);
 
 INSERT INTO ce_config
@@ -224,10 +238,15 @@ INSERT INTO ce_config
 VALUES(26, 'DefaultSemanticAstGenerator', 'SCHEMA_PROMPT', '{
   "type":"object",
   "additionalProperties":false,
-  "required":["entity","select","filters","sort","group_by","metrics","limit"],
+  "required":["astVersion","entity","select","projections","filters","where","exists","subquery_filters","sort","group_by","metrics","windows","having","limit","offset","distinct","join_hints"],
   "properties":{
+    "astVersion":{"type":"string","enum":["v1"]},
     "entity":{"type":"string"},
     "select":{"type":"array","items":{"type":"string"}},
+    "projections":{
+      "type":"array",
+      "items":{"type":"object","additionalProperties":false,"required":["field","alias"],"properties":{"field":{"type":"string"},"alias":{"type":["string","null"]}}}
+    },
     "filters":{
       "type":"array",
       "items":{
@@ -237,14 +256,61 @@ VALUES(26, 'DefaultSemanticAstGenerator', 'SCHEMA_PROMPT', '{
         "properties":{
           "field":{"type":"string"},
           "op":{"type":"string"},
-          "value":{"type":["string","number","integer","boolean","null"]}
+          "value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}
         }
       }
     },
-    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]}}}},
+    "where":{"$ref":"#/$defs/filter_group"},
+    "exists":{
+      "type":"array",
+      "items":{"type":"object","additionalProperties":false,"required":["entity","where","not_exists"],"properties":{"entity":{"type":"string"},"where":{"$ref":"#/$defs/filter_group"},"not_exists":{"type":"boolean"}}}
+    },
+    "subquery_filters":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "additionalProperties":false,
+        "required":["field","op","subquery"],
+        "properties":{
+          "field":{"type":"string"},
+          "op":{"type":"string"},
+          "subquery":{
+            "type":"object",
+            "additionalProperties":false,
+            "required":["entity","select_field","where","group_by","having","limit"],
+            "properties":{
+              "entity":{"type":"string"},
+              "select_field":{"type":"string"},
+              "where":{"$ref":"#/$defs/filter_group"},
+              "group_by":{"type":"array","items":{"type":"string"}},
+              "having":{"$ref":"#/$defs/filter_group"},
+              "limit":{"type":"integer"}
+            }
+          }
+        }
+      }
+    },
+    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction","nulls"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]},"nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}}}},
     "group_by":{"type":"array","items":{"type":"string"}},
     "metrics":{"type":"array","items":{"type":"string"}},
-    "limit":{"type":"integer"}
+    "windows":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["name","function","partition_by","order_by"],"properties":{"name":{"type":["string","null"]},"function":{"type":"string","enum":["ROW_NUMBER"]},"partition_by":{"type":"array","items":{"type":"string"}},"order_by":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction","nulls"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]},"nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}}}}}}},
+    "having":{"$ref":"#/$defs/filter_group"},
+    "limit":{"type":"integer"},
+    "offset":{"type":"integer"},
+    "distinct":{"type":"boolean"},
+    "join_hints":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["leftField","rightField","joinType"],"properties":{"leftField":{"type":"string"},"rightField":{"type":"string"},"joinType":{"type":"string"}}}}
+  },
+  "$defs":{
+    "filter_group":{
+      "type":"object",
+      "additionalProperties":false,
+      "required":["op","conditions","groups"],
+      "properties":{
+        "op":{"type":"string","enum":["AND","OR","NOT"]},
+        "conditions":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","op","value"],"properties":{"field":{"type":"string"},"op":{"type":"string"},"value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}}}},
+        "groups":{"type":"array","items":{"$ref":"#/$defs/filter_group"}}
+      }
+    }
   }
 }', 1);
 

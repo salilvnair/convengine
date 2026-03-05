@@ -17,7 +17,7 @@ public class SemanticModelRegistry {
     private final SemanticModelValidator validator;
 
     @Getter
-    private volatile SemanticModel model = new SemanticModel(1, "", "", null, null, null, null);
+    private volatile SemanticModel model = new SemanticModel(1, "", "", null, null, null, null, null);
 
     @PostConstruct
     public void init() {

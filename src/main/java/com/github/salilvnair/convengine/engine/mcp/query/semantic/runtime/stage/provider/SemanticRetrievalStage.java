@@ -3,9 +3,10 @@ package com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.RetrievalResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.SemanticEntityTableRetriever;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.RetrievalResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.SemanticEntityTableRetriever;
 import com.github.salilvnair.convengine.engine.core.step.annotation.StartStep;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.context.SemanticQueryContext;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.core.SemanticQueryStage;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
@@ -60,7 +61,7 @@ public class SemanticRetrievalStage implements SemanticQueryStage {
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("component", "semantic-query");
-        String determinant = ConvEngineAuditStage.SEMANTIC_RETRIEVAL_STAGE.name();
+        String determinant = ConvEngineAuditStage.RETRIEVAL_DONE.name();
         payload.put("determinant", determinant);
         payload.put("confidence", retrieval == null ? null : retrieval.confidence());
         payload.put("candidateEntitiesCount",

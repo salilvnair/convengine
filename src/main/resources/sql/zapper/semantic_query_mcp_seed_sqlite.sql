@@ -22,13 +22,27 @@ SELECT
   COALESCE(MAX(config_id), 0) + 1,
   'DefaultSemanticAstGenerator',
   'SYSTEM_PROMPT',
-  'You are a semantic SQL AST planner. Return JSON only. Do not generate SQL text.',
+  'You are a semantic SQL AST planner.
+Return JSON only.
+Do not generate SQL text.
+Use semantic field keys only.
+Use where as boolean tree.
+Use exists for existence checks and not_exists true for anti existence.
+Use subquery_filters for scalar subquery comparisons.
+Use windows only for ROW_NUMBER ranking when needed.',
   1,
   CURRENT_TIMESTAMP
 FROM ce_config;
 
 UPDATE ce_config
-SET config_value = 'You are a semantic SQL AST planner. Return JSON only. Do not generate SQL text.',
+SET config_value = 'You are a semantic SQL AST planner.
+Return JSON only.
+Do not generate SQL text.
+Use semantic field keys only.
+Use where as boolean tree.
+Use exists for existence checks and not_exists true for anti existence.
+Use subquery_filters for scalar subquery comparisons.
+Use windows only for ROW_NUMBER ranking when needed.',
     enabled = 1
 WHERE config_type = 'DefaultSemanticAstGenerator'
   AND config_key = 'SYSTEM_PROMPT';
@@ -43,7 +57,14 @@ Selected entity: {{selected_entity}}
 Selected entity description: {{selected_entity_description}}
 Allowed fields for selected entity: {{selected_entity_fields_json}}
 Allowed entities: {{allowed_entities}}
+Candidate entities: {{candidate_entities_json}}
+Candidate tables: {{candidate_tables_json}}
 Join path: {{join_path_json}}
+Guidance:
+- Prefer where for filters.
+- Use exists when asking has or has not related records.
+- Use subquery_filters for compare with subquery result.
+- Use windows for ranking only.
 Context JSON: {{context_json}}',
   1,
   CURRENT_TIMESTAMP
@@ -55,7 +76,14 @@ Selected entity: {{selected_entity}}
 Selected entity description: {{selected_entity_description}}
 Allowed fields for selected entity: {{selected_entity_fields_json}}
 Allowed entities: {{allowed_entities}}
+Candidate entities: {{candidate_entities_json}}
+Candidate tables: {{candidate_tables_json}}
 Join path: {{join_path_json}}
+Guidance:
+- Prefer where for filters.
+- Use exists when asking has or has not related records.
+- Use subquery_filters for compare with subquery result.
+- Use windows for ranking only.
 Context JSON: {{context_json}}',
     enabled = 1
 WHERE config_type = 'DefaultSemanticAstGenerator'
@@ -69,10 +97,15 @@ SELECT
   '{
   "type":"object",
   "additionalProperties":false,
-  "required":["entity","select","filters","sort","group_by","metrics","limit"],
+  "required":["astVersion","entity","select","projections","filters","where","exists","subquery_filters","sort","group_by","metrics","windows","having","limit","offset","distinct","join_hints"],
   "properties":{
+    "astVersion":{"type":"string","enum":["v1"]},
     "entity":{"type":"string"},
     "select":{"type":"array","items":{"type":"string"}},
+    "projections":{
+      "type":"array",
+      "items":{"type":"object","additionalProperties":false,"required":["field","alias"],"properties":{"field":{"type":"string"},"alias":{"type":["string","null"]}}}
+    },
     "filters":{
       "type":"array",
       "items":{
@@ -82,14 +115,61 @@ SELECT
         "properties":{
           "field":{"type":"string"},
           "op":{"type":"string"},
-          "value":{"type":["string","number","integer","boolean","null"]}
+          "value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}
         }
       }
     },
-    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]}}}},
+    "where":{"$ref":"#/$defs/filter_group"},
+    "exists":{
+      "type":"array",
+      "items":{"type":"object","additionalProperties":false,"required":["entity","where","not_exists"],"properties":{"entity":{"type":"string"},"where":{"$ref":"#/$defs/filter_group"},"not_exists":{"type":"boolean"}}}
+    },
+    "subquery_filters":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "additionalProperties":false,
+        "required":["field","op","subquery"],
+        "properties":{
+          "field":{"type":"string"},
+          "op":{"type":"string"},
+          "subquery":{
+            "type":"object",
+            "additionalProperties":false,
+            "required":["entity","select_field","where","group_by","having","limit"],
+            "properties":{
+              "entity":{"type":"string"},
+              "select_field":{"type":"string"},
+              "where":{"$ref":"#/$defs/filter_group"},
+              "group_by":{"type":"array","items":{"type":"string"}},
+              "having":{"$ref":"#/$defs/filter_group"},
+              "limit":{"type":"integer"}
+            }
+          }
+        }
+      }
+    },
+    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction","nulls"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]},"nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}}}},
     "group_by":{"type":"array","items":{"type":"string"}},
     "metrics":{"type":"array","items":{"type":"string"}},
-    "limit":{"type":"integer"}
+    "windows":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["name","function","partition_by","order_by"],"properties":{"name":{"type":["string","null"]},"function":{"type":"string","enum":["ROW_NUMBER"]},"partition_by":{"type":"array","items":{"type":"string"}},"order_by":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction","nulls"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]},"nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}}}}}}},
+    "having":{"$ref":"#/$defs/filter_group"},
+    "limit":{"type":"integer"},
+    "offset":{"type":"integer"},
+    "distinct":{"type":"boolean"},
+    "join_hints":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["leftField","rightField","joinType"],"properties":{"leftField":{"type":"string"},"rightField":{"type":"string"},"joinType":{"type":"string"}}}}
+  },
+  "$defs":{
+    "filter_group":{
+      "type":"object",
+      "additionalProperties":false,
+      "required":["op","conditions","groups"],
+      "properties":{
+        "op":{"type":"string","enum":["AND","OR","NOT"]},
+        "conditions":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","op","value"],"properties":{"field":{"type":"string"},"op":{"type":"string"},"value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}}}},
+        "groups":{"type":"array","items":{"$ref":"#/$defs/filter_group"}}
+      }
+    }
   }
 }',
   1,
@@ -100,10 +180,15 @@ UPDATE ce_config
 SET config_value = '{
   "type":"object",
   "additionalProperties":false,
-  "required":["entity","select","filters","sort","group_by","metrics","limit"],
+  "required":["astVersion","entity","select","projections","filters","where","exists","subquery_filters","sort","group_by","metrics","windows","having","limit","offset","distinct","join_hints"],
   "properties":{
+    "astVersion":{"type":"string","enum":["v1"]},
     "entity":{"type":"string"},
     "select":{"type":"array","items":{"type":"string"}},
+    "projections":{
+      "type":"array",
+      "items":{"type":"object","additionalProperties":false,"required":["field","alias"],"properties":{"field":{"type":"string"},"alias":{"type":["string","null"]}}}
+    },
     "filters":{
       "type":"array",
       "items":{
@@ -113,14 +198,61 @@ SET config_value = '{
         "properties":{
           "field":{"type":"string"},
           "op":{"type":"string"},
-          "value":{"type":["string","number","integer","boolean","null"]}
+          "value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}
         }
       }
     },
-    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]}}}},
+    "where":{"$ref":"#/$defs/filter_group"},
+    "exists":{
+      "type":"array",
+      "items":{"type":"object","additionalProperties":false,"required":["entity","where","not_exists"],"properties":{"entity":{"type":"string"},"where":{"$ref":"#/$defs/filter_group"},"not_exists":{"type":"boolean"}}}
+    },
+    "subquery_filters":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "additionalProperties":false,
+        "required":["field","op","subquery"],
+        "properties":{
+          "field":{"type":"string"},
+          "op":{"type":"string"},
+          "subquery":{
+            "type":"object",
+            "additionalProperties":false,
+            "required":["entity","select_field","where","group_by","having","limit"],
+            "properties":{
+              "entity":{"type":"string"},
+              "select_field":{"type":"string"},
+              "where":{"$ref":"#/$defs/filter_group"},
+              "group_by":{"type":"array","items":{"type":"string"}},
+              "having":{"$ref":"#/$defs/filter_group"},
+              "limit":{"type":"integer"}
+            }
+          }
+        }
+      }
+    },
+    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction","nulls"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]},"nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}}}},
     "group_by":{"type":"array","items":{"type":"string"}},
     "metrics":{"type":"array","items":{"type":"string"}},
-    "limit":{"type":"integer"}
+    "windows":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["name","function","partition_by","order_by"],"properties":{"name":{"type":["string","null"]},"function":{"type":"string","enum":["ROW_NUMBER"]},"partition_by":{"type":"array","items":{"type":"string"}},"order_by":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction","nulls"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]},"nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}}}}}}},
+    "having":{"$ref":"#/$defs/filter_group"},
+    "limit":{"type":"integer"},
+    "offset":{"type":"integer"},
+    "distinct":{"type":"boolean"},
+    "join_hints":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["leftField","rightField","joinType"],"properties":{"leftField":{"type":"string"},"rightField":{"type":"string"},"joinType":{"type":"string"}}}}
+  },
+  "$defs":{
+    "filter_group":{
+      "type":"object",
+      "additionalProperties":false,
+      "required":["op","conditions","groups"],
+      "properties":{
+        "op":{"type":"string","enum":["AND","OR","NOT"]},
+        "conditions":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","op","value"],"properties":{"field":{"type":"string"},"op":{"type":"string"},"value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}}}},
+        "groups":{"type":"array","items":{"$ref":"#/$defs/filter_group"}}
+      }
+    }
   }
 }',
     enabled = 1
@@ -250,81 +382,77 @@ VALUES
 INSERT INTO ce_verbose
 (intent_code, state_code, step_match, step_value, determinant, rule_id, tool_code, message, error_message, priority, enabled)
 VALUES
-('SEMANTIC_QUERY', 'ANALYZE', 'REGEX', '^Semantic.*Stage$', 'SEMANTIC_STAGE_ENTER', NULL, 'db.semantic.query',
- 'Semantic stage [[${stageCode}]] started. (entityCount=[[${retrievalEntitiesCount}]], tableCount=[[${retrievalTablesCount}]])',
- 'Failed to start semantic stage [[${stageCode}]].',
- 12, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'REGEX', '^Semantic.*Stage$', 'SEMANTIC_STAGE_EXIT', NULL, 'db.semantic.query',
- 'Semantic stage [[${stageCode}]] completed. (astValid=[[${astValid}]], rows=[[${executionRowCount}]])',
- 'Semantic stage [[${stageCode}]] completed with issues.',
- 13, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'REGEX', '^Semantic.*Stage$', 'SEMANTIC_STAGE_META', NULL, 'db.semantic.query',
- 'Semantic stage [[${stageCode}]] metadata captured. (entity=[[${astEntity}]], sqlCompiled=[[${_meta.sqlCompiled}]])',
- 'Semantic stage [[${stageCode}]] metadata capture failed.',
- 13, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'REGEX', '^Semantic.*Stage$', 'SEMANTIC_STAGE_ERROR', NULL, 'db.semantic.query',
- 'Semantic stage [[${stageCode}]] failed.',
- 'Semantic stage [[${stageCode}]] failed: [[${errorMessage}]]',
- 5, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticQueryRuntimeService', 'SEMANTIC_RUNTIME_ERROR', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticQueryRuntimeService', 'RUNTIME_ERROR', NULL, 'db.semantic.query',
  'Semantic runtime failed.',
  'Semantic runtime failed: [[${errorMessage}]]',
  4, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'DefaultSemanticAstGenerator', 'SEMANTIC_AST_LLM_INPUT', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'DefaultSemanticAstGenerator', 'AST_INPUT', NULL, 'db.semantic.query',
  'Generating semantic AST using LLM.',
  'Failed before AST LLM generation.',
  11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'DefaultSemanticAstGenerator', 'SEMANTIC_AST_LLM_OUTPUT', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'DefaultSemanticAstGenerator', 'AST_OUTPUT', NULL, 'db.semantic.query',
  'Semantic AST generated by LLM for entity [[${entity}]].',
  'AST LLM output could not be parsed.',
  11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'DefaultSemanticAstGenerator', 'SEMANTIC_AST_LLM_ERROR', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'DefaultSemanticAstGenerator', 'AST_ERROR', NULL, 'db.semantic.query',
  'Semantic AST generation failed.',
  'Semantic AST LLM error: [[${errorMessage}]]',
  4, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticRetrievalStage', 'SEMANTIC_RETRIEVAL_STAGE', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticRetrievalStage', 'RETRIEVAL_DONE', NULL, 'db.semantic.query',
  'Semantic retrieval stage completed (entities=[[${candidateEntitiesCount}]], tables=[[${candidateTablesCount}]])',
  'Semantic retrieval stage failed.',
  11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticJoinPathStage', 'SEMANTIC_JOIN_PATH_STAGE', NULL, 'db.semantic.query',
- 'Semantic join-path stage completed (base=[[${baseTable}]])',
- 'Semantic join-path stage failed.',
- 11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticAstGenerationStage', 'SEMANTIC_AST_GENERATION_STAGE', NULL, 'db.semantic.query',
- 'Semantic AST generation stage completed for entity [[${entity}]].',
- 'Semantic AST generation stage failed.',
- 11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticAstValidationStage', 'SEMANTIC_AST_VALIDATION_STAGE', NULL, 'db.semantic.query',
- 'Semantic AST validation stage completed. valid=[[${valid}]].',
- 'Semantic AST validation stage failed.',
- 11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticSqlCompileStage', 'SEMANTIC_SQL_COMPILE_STAGE', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticSqlCompileStage', 'SQL_COMPILED', NULL, 'db.semantic.query',
  'Semantic SQL compile stage completed (params=[[${paramCount}]])',
  'Semantic SQL compile stage failed.',
  11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticSqlExecuteStage', 'SEMANTIC_SQL_EXECUTE_STAGE', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticSqlExecuteStage', 'SQL_EXECUTED', NULL, 'db.semantic.query',
  'Semantic SQL execute stage completed (rows=[[${rowCount}]])',
  'Semantic SQL execute stage failed.',
  11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticResultSummaryStage', 'SEMANTIC_RESULT_SUMMARY_STAGE', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticResultSummaryStage', 'RESULT_SUMMARIZED', NULL, 'db.semantic.query',
  'Semantic result summary stage completed.',
  'Semantic result summary stage failed.',
  11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticJoinPathStage', 'SEMANTIC_SCHEMA_GRAPH_TRAVERSED', NULL, 'db.semantic.query',
- 'Schema graph traversal completed with [[${edgesCount}]] edges.',
- 'Schema graph traversal failed.',
- 11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticJoinPathStage', 'SEMANTIC_JOIN_PATH_RESOLVED', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticJoinPathStage', 'JOIN_PATH_RESOLVED', NULL, 'db.semantic.query',
  'Join path resolved from [[${baseTable}]] (unresolved=[[${unresolvedTablesCount}]]).',
  'Join path resolution failed.',
  11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticAstGenerationStage', 'SEMANTIC_AST_GENERATED', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticAstGenerationStage', 'AST_GENERATED', NULL, 'db.semantic.query',
  'AST generated for entity [[${entity}]] (filters=[[${filterCount}]], limit=[[${limit}]])',
  'AST generation stage failed.',
  11, 1),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticAstValidationStage', 'SEMANTIC_AST_VALIDATED', NULL, 'db.semantic.query',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticAstValidationStage', 'AST_VALIDATED', NULL, 'db.semantic.query',
  'AST validation completed. valid=[[${valid}]] errorCount=[[${errorCount}]].',
  'AST validation failed: [[${errors}]]',
+ 4, 1),
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticRetrievalStage', 'RETRIEVAL_ERROR', NULL, 'db.semantic.query',
+ 'Semantic retrieval stage failed.',
+ 'Semantic retrieval stage failed: [[${errorMessage}]]',
+ 4, 1),
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticJoinPathStage', 'JOIN_PATH_ERROR', NULL, 'db.semantic.query',
+ 'Semantic join-path stage failed.',
+ 'Semantic join-path stage failed: [[${errorMessage}]]',
+ 4, 1),
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticAstGenerationStage', 'AST_GENERATION_ERROR', NULL, 'db.semantic.query',
+ 'Semantic AST generation stage failed.',
+ 'Semantic AST generation stage failed: [[${errorMessage}]]',
+ 4, 1),
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticAstValidationStage', 'AST_VALIDATION_ERROR', NULL, 'db.semantic.query',
+ 'Semantic AST validation stage failed.',
+ 'Semantic AST validation stage failed: [[${errorMessage}]]',
+ 4, 1),
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticSqlCompileStage', 'SQL_COMPILE_ERROR', NULL, 'db.semantic.query',
+ 'Semantic SQL compile stage failed.',
+ 'Semantic SQL compile stage failed: [[${errorMessage}]]',
+ 4, 1),
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticSqlExecuteStage', 'SQL_EXECUTE_ERROR', NULL, 'db.semantic.query',
+ 'Semantic SQL execute stage failed.',
+ 'Semantic SQL execute stage failed: [[${errorMessage}]]',
+ 4, 1),
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticResultSummaryStage', 'SUMMARY_ERROR', NULL, 'db.semantic.query',
+ 'Semantic summary stage failed.',
+ 'Semantic summary stage failed: [[${errorMessage}]]',
  4, 1);
 
 -- -----------------------------------------------------------------------------
@@ -341,7 +469,7 @@ VALUES
   5301,
   'SEMANTIC_QUERY',
   'ANALYZE',
-  'You are an MCP planning agent for semantic DB querying. If question needs database facts, CALL_TOOL db.semantic.query. Use ANSWER only for pure greetings/chitchat. Return strict JSON only.',
+  'You are an MCP planning agent for semantic DB querying. If question needs database facts, CALL_TOOL db.semantic.query. Use ANSWER only for pure greetings/chitchat. When tool observations include tabular rows and action is ANSWER, format the answer using a markdown table (header + rows) and keep it concise. Return strict JSON only.',
   'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
   1,
   CURRENT_TIMESTAMP

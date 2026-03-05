@@ -394,6 +394,16 @@ relationships:
       column: zp_request_id
     type: one_to_many
 
+  - name: request_to_ui_data
+    description: request to latest UI note payload
+    from:
+      table: zp_request
+      column: zp_request_id
+    to:
+      table: zp_ui_data
+      column: zp_request_id
+    type: one_to_one
+
   - name: disconnect_order_to_check
     description: disconnect order to downstream checks
     from:
@@ -412,6 +422,16 @@ relationships:
     to:
       table: zp_billbank_record
       column: account_id
+    type: one_to_many
+
+  - name: disconnect_to_billbank
+    description: disconnect id mapped to billbank records when generated
+    from:
+      table: zp_disconnect_order
+      column: zp_disconnect_id
+    to:
+      table: zp_billbank_record
+      column: zp_disconnect_id
     type: one_to_many
 
 synonyms:

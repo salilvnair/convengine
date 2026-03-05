@@ -20,7 +20,7 @@ import java.util.Map;
  * Consumers can override by providing a higher-priority interceptor bean.
  */
 @Component
-@Order(Ordered.LOWEST_PRECEDENCE)
+@Order()
 @RequiredArgsConstructor
 public class DefaultSemanticCatalogVectorSearchInterceptor implements SemanticCatalogVectorSearchInterceptor {
 

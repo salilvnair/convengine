@@ -4,14 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstGenerationResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.JoinPathPlan;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.SchemaEdge;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstGenerationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.normalize.AstNormalizer;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.SchemaEdge;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.CandidateEntity;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.CandidateTable;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.RetrievalResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.CandidateEntity;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.CandidateTable;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.RetrievalResult;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
@@ -40,6 +41,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,6 +63,8 @@ class DefaultSemanticAstGeneratorTest {
     private CeConfigResolver configResolver;
     @Mock
     private PromptTemplateRenderer renderer;
+    @Mock
+    private AstNormalizer astNormalizer;
 
     private DefaultSemanticAstGenerator generator;
     private EngineSession session;
@@ -78,6 +82,7 @@ class DefaultSemanticAstGeneratorTest {
                 Map.of(),
                 List.of(),
                 Map.of(),
+                Map.of(),
                 Map.of()
         ));
         generator = new DefaultSemanticAstGenerator(
@@ -87,8 +92,10 @@ class DefaultSemanticAstGeneratorTest {
                 auditService,
                 verbosePublisher,
                 configResolver,
-                renderer
+                renderer,
+                astNormalizer
         );
+        lenient().when(astNormalizer.normalize(any(), any(), anyString(), any())).thenAnswer(inv -> inv.getArgument(0));
         when(configResolver.resolveString(eq(generator), eq("SYSTEM_PROMPT"), anyString()))
                 .thenAnswer(inv -> inv.getArgument(2));
         when(configResolver.resolveString(eq(generator), eq("USER_PROMPT"), anyString()))
@@ -124,9 +131,9 @@ class DefaultSemanticAstGeneratorTest {
         assertEquals("DisconnectRequest", out.ast().entity());
         assertEquals(50, out.ast().limit());
 
-        verify(auditService, times(1)).audit(eq("SEMANTIC_AST_LLM_INPUT"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(1)).audit(eq("SEMANTIC_AST_LLM_OUTPUT"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(0)).audit(eq("SEMANTIC_AST_LLM_ERROR"), eq(session.getConversationId()), any(Map.class));
+        verify(auditService, times(1)).audit(eq("AST_INPUT"), eq(session.getConversationId()), any(Map.class));
+        verify(auditService, times(1)).audit(eq("AST_OUTPUT"), eq(session.getConversationId()), any(Map.class));
+        verify(auditService, times(0)).audit(eq("AST_ERROR"), eq(session.getConversationId()), any(Map.class));
 
         verify(verbosePublisher, times(2)).publish(
                 eq(session),
@@ -139,7 +146,7 @@ class DefaultSemanticAstGeneratorTest {
         );
 
         ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(auditService, atLeastOnce()).audit(eq("SEMANTIC_AST_LLM_OUTPUT"), eq(session.getConversationId()), payloadCaptor.capture());
+        verify(auditService, atLeastOnce()).audit(eq("AST_OUTPUT"), eq(session.getConversationId()), payloadCaptor.capture());
         Map<String, Object> payload = payloadCaptor.getValue();
         assertTrue(payload.containsKey("_meta"));
         Map<?, ?> meta = assertInstanceOf(Map.class, payload.get("_meta"));
@@ -157,9 +164,9 @@ class DefaultSemanticAstGeneratorTest {
                 () -> generator.generate("show failed disconnect requests", retrieval, joinPathPlan, session));
         assertTrue(ex.getMessage().contains("Failed to generate semantic AST"));
 
-        verify(auditService, times(1)).audit(eq("SEMANTIC_AST_LLM_INPUT"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(0)).audit(eq("SEMANTIC_AST_LLM_OUTPUT"), eq(session.getConversationId()), any(Map.class));
-        verify(auditService, times(1)).audit(eq("SEMANTIC_AST_LLM_ERROR"), eq(session.getConversationId()), any(Map.class));
+        verify(auditService, times(1)).audit(eq("AST_INPUT"), eq(session.getConversationId()), any(Map.class));
+        verify(auditService, times(0)).audit(eq("AST_OUTPUT"), eq(session.getConversationId()), any(Map.class));
+        verify(auditService, times(1)).audit(eq("AST_ERROR"), eq(session.getConversationId()), any(Map.class));
 
         ArgumentCaptor<String> determinantCaptor = ArgumentCaptor.forClass(String.class);
         verify(verbosePublisher, atLeastOnce()).publish(
@@ -172,8 +179,8 @@ class DefaultSemanticAstGeneratorTest {
                 anyMap()
         );
         List<String> determinants = determinantCaptor.getAllValues();
-        assertTrue(determinants.contains("SEMANTIC_AST_LLM_INPUT"));
-        assertTrue(determinants.contains("SEMANTIC_AST_LLM_ERROR"));
+        assertTrue(determinants.contains("AST_INPUT"));
+        assertTrue(determinants.contains("AST_ERROR"));
     }
 
     private EngineSession session(String userText) {

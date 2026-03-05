@@ -3,9 +3,11 @@ package com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.AstGenerationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstGenerationResult;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.version.AstCanonicalizer;
 import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.llm.SemanticAstGenerator;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.context.SemanticQueryContext;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.core.SemanticQueryStage;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
@@ -25,6 +27,7 @@ import java.util.UUID;
 public class SemanticAstGenerationStage implements SemanticQueryStage {
 
     private final ObjectProvider<List<SemanticAstGenerator>> generatorsProvider;
+    private final AstCanonicalizer astCanonicalizer;
     private final ConvEngineMcpConfig mcpConfig;
     private final AuditService auditService;
     private final VerboseMessagePublisher verbosePublisher;
@@ -42,7 +45,9 @@ public class SemanticAstGenerationStage implements SemanticQueryStage {
         SemanticAstGenerator generator = resolveGenerator(context);
         AstGenerationResult generated = generator.generate(context.question(), context.retrieval(), context.joinPath(), context.session());
         context.astGeneration(generated);
-        publishAstStage(context.session(), generated);
+        if (generated != null && generated.ast() != null) {
+            context.canonicalAst(astCanonicalizer.fromV1(generated.ast()));
+        }
         publishAstGenerated(context.session(), generated);
     }
 
@@ -64,7 +69,7 @@ public class SemanticAstGenerationStage implements SemanticQueryStage {
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("component", "semantic-query");
-        String determinant = ConvEngineAuditStage.SEMANTIC_AST_GENERATED.name();
+        String determinant = ConvEngineAuditStage.AST_GENERATED.name();
         payload.put("determinant", determinant);
         payload.put("entity", generated == null || generated.ast() == null ? null : generated.ast().entity());
         payload.put("selectCount", generated == null || generated.ast() == null || generated.ast().select() == null ? 0 : generated.ast().select().size());
@@ -79,31 +84,6 @@ public class SemanticAstGenerationStage implements SemanticQueryStage {
         meta.put("toolCode", resolveToolCode());
         meta.put("astPrepared", generated != null && generated.ast() != null);
         meta.put("astRepaired", generated != null && generated.repaired());
-        payload.put("_meta", meta);
-
-        auditService.audit(determinant, conversationId, payload);
-        if (verbosePublisher != null) {
-            verbosePublisher.publish(session, getClass().getSimpleName(), determinant, null, resolveToolCode(), false, payload);
-        }
-    }
-
-    private void publishAstStage(EngineSession session, AstGenerationResult generated) {
-        UUID conversationId = session == null ? null : session.getConversationId();
-        if (conversationId == null) {
-            return;
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("component", "semantic-query");
-        String determinant = ConvEngineAuditStage.SEMANTIC_AST_GENERATION_STAGE.name();
-        payload.put("determinant", determinant);
-        payload.put("entity", generated == null || generated.ast() == null ? null : generated.ast().entity());
-        payload.put("selectCount", generated == null || generated.ast() == null || generated.ast().select() == null ? 0 : generated.ast().select().size());
-        payload.put("filterCount", generated == null || generated.ast() == null || generated.ast().filters() == null ? 0 : generated.ast().filters().size());
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("component", "semantic-query");
-        meta.put("stage", stageCode());
-        meta.put("toolCode", resolveToolCode());
-        meta.put("astGenerationDone", generated != null && generated.ast() != null);
         payload.put("_meta", meta);
 
         auditService.audit(determinant, conversationId, payload);
