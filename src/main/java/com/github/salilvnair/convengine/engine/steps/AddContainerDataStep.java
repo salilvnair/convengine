@@ -13,8 +13,8 @@ import com.github.salilvnair.convengine.container.interceptor.ContainerDataInter
 import com.github.salilvnair.convengine.container.service.ContainerDataTransformerService;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeContainerConfig;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;

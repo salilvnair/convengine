@@ -14,9 +14,9 @@ import com.github.salilvnair.convengine.engine.constants.RoutingDecisionConstant
 import com.github.salilvnair.convengine.engine.dialogue.DialogueAct;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunBefore;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaComputation;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolver;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolverFactory;

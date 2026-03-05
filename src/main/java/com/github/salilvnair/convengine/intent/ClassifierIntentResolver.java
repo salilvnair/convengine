@@ -58,10 +58,12 @@ public class ClassifierIntentResolver implements IntentResolver {
 
         if (matchedIntents.size() == 1) {
             String intent = matchedIntents.iterator().next();
-            String resolvedState = normalizeState(firstMatchedClassifier == null ? null : firstMatchedClassifier.getStateCode());
-            session.setState(resolvedState);
-            if (session.getConversation() != null) {
-                session.getConversation().setStateCode(resolvedState);
+            String resolvedState = normalizeState(firstMatchedClassifier.getStateCode());
+            if (resolvedState != null) {
+                session.setState(resolvedState);
+                if (session.getConversation() != null) {
+                    session.getConversation().setStateCode(resolvedState);
+                }
             }
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put(ConvEnginePayloadKey.INTENT, intent);

@@ -2,6 +2,8 @@ package com.github.salilvnair.convengine.engine.factory;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.AuditSessionContext;
+import com.github.salilvnair.convengine.engine.core.step.CoreStepDagOrderer;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
@@ -10,11 +12,10 @@ import com.github.salilvnair.convengine.engine.model.StepTiming;
 import com.github.salilvnair.convengine.engine.pipeline.EnginePipeline;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.*;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -22,7 +23,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-@RequiredArgsConstructor
 @Component
 public class EnginePipelineFactory {
 
@@ -31,205 +31,76 @@ public class EnginePipelineFactory {
     private final List<EngineStep> discoveredSteps;
     private final List<EngineStepHook> stepHooks;
     private final AuditService audit;
+    private final CoreStepDagOrderer dagOrderer;
 
     private EnginePipeline pipeline;
+
+    @Autowired
+    public EnginePipelineFactory(
+            List<EngineStep> discoveredSteps,
+            List<EngineStepHook> stepHooks,
+            AuditService audit
+    ) {
+        this(discoveredSteps, stepHooks, audit, new CoreStepDagOrderer());
+    }
+
+    public EnginePipelineFactory(
+            List<EngineStep> discoveredSteps,
+            List<EngineStepHook> stepHooks,
+            AuditService audit,
+            CoreStepDagOrderer dagOrderer
+    ) {
+        this.discoveredSteps = discoveredSteps;
+        this.stepHooks = stepHooks;
+        this.audit = audit;
+        this.dagOrderer = dagOrderer;
+    }
 
     // ---------------------------------------------------------------------
     // Init
     // ---------------------------------------------------------------------
     @PostConstruct
     public void init() {
-        List<EngineStep> ordered = orderByDag(discoveredSteps);
-        debugPrint(ordered);
-        this.pipeline = new EnginePipeline(wrapWithTiming(ordered));
+        try {
+            List<EngineStep> ordered = dagOrderer.order(
+                    discoveredSteps,
+                    EngineStep.class,
+                    "ConvEngine pipeline",
+                    c -> c.getAnnotation(RequiresConversationPersisted.class) != null
+            );
+            debugPrint(ordered);
+            this.pipeline = new EnginePipeline(wrapWithTiming(ordered));
+        } catch (ConversationEngineException ex) {
+            throw ex;
+        } catch (IllegalStateException ex) {
+            ConversationEngineException wrapped = new ConversationEngineException(resolveDagErrorCode(ex), ex.getMessage());
+            wrapped.initCause(ex);
+            throw wrapped;
+        }
+    }
+
+    private ConversationEngineErrorCode resolveDagErrorCode(IllegalStateException ex) {
+        String msg = ex == null || ex.getMessage() == null ? "" : ex.getMessage().toLowerCase(Locale.ROOT);
+        if (msg.contains("duplicate step")) {
+            return ConversationEngineErrorCode.DUPLICATE_ENGINE_STEP;
+        }
+        if (msg.contains("start step")) {
+            return ConversationEngineErrorCode.MISSING_BOOTSTRAP_STEP;
+        }
+        if (msg.contains("terminal step")) {
+            return ConversationEngineErrorCode.MISSING_TERMINAL_STEP;
+        }
+        if (msg.contains("depends on missing")) {
+            return ConversationEngineErrorCode.MISSING_DEPENDENT_STEP;
+        }
+        if (msg.contains("dag cycle")) {
+            return ConversationEngineErrorCode.MISSING_DAG_CYCLE;
+        }
+        return ConversationEngineErrorCode.PIPELINE_CONSTRAINT_VIOLATION;
     }
 
     public EnginePipeline create() {
         return pipeline;
-    }
-
-    // ---------------------------------------------------------------------
-    // DAG ordering using annotations
-    // ---------------------------------------------------------------------
-    private List<EngineStep> orderByDag(List<EngineStep> steps) {
-
-        // --------------------------------------------
-        // Map step class → bean (1:1 enforced)
-        // --------------------------------------------
-        Map<Class<?>, EngineStep> stepByClass = new HashMap<>();
-        for (EngineStep s : steps) {
-            if (stepByClass.put(s.getClass(), s) != null) {
-                throw new ConversationEngineException(
-                        ConversationEngineErrorCode.DUPLICATE_ENGINE_STEP,
-                        "Duplicate EngineStep bean for class: " + s.getClass().getName()
-                );
-            }
-        }
-
-        // --------------------------------------------
-        // TerminalStep enforcement (EXACTLY ONE)
-        // --------------------------------------------
-        List<Class<?>> terminalSteps = stepByClass.keySet().stream()
-                .filter(c -> c.getAnnotation(TerminalStep.class) != null)
-                .toList();
-
-        if (terminalSteps.size() != 1) {
-            throw new ConversationEngineException(
-                    ConversationEngineErrorCode.MISSING_TERMINAL_STEP,
-                    "Exactly ONE @TerminalStep required, found: " +
-                            terminalSteps.stream()
-                                    .map(Class::getSimpleName)
-                                    .collect(Collectors.joining(", "))
-            );
-        }
-
-        Class<?> terminal = terminalSteps.getFirst();
-
-        // --------------------------------------------
-        // ConversationBootstrapStep enforcement (EXACTLY ONE)
-        // --------------------------------------------
-        List<Class<?>> bootstrapSteps = stepByClass.keySet().stream()
-                .filter(c -> c.getAnnotation(ConversationBootstrapStep.class) != null)
-                .toList();
-
-        if (bootstrapSteps.size() != 1) {
-            throw new ConversationEngineException(
-                    ConversationEngineErrorCode.MISSING_BOOTSTRAP_STEP,
-                    "Exactly ONE @ConversationBootstrapStep required, found: " +
-                            bootstrapSteps.stream()
-                                    .map(Class::getSimpleName)
-                                    .collect(Collectors.joining(", "))
-            );
-        }
-
-        Class<?> bootstrap = bootstrapSteps.getFirst();
-
-        // --------------------------------------------
-        // DAG structures
-        // --------------------------------------------
-        Map<Class<?>, Set<Class<?>>> outgoing = new HashMap<>();
-        Map<Class<?>, Set<Class<?>>> incoming = new HashMap<>();
-
-        for (Class<?> c : stepByClass.keySet()) {
-            outgoing.put(c, new LinkedHashSet<>());
-            incoming.put(c, new LinkedHashSet<>());
-        }
-
-        // --------------------------------------------
-        // @MustRunBefore
-        // --------------------------------------------
-        for (Class<?> c : stepByClass.keySet()) {
-            MustRunBefore before = c.getAnnotation(MustRunBefore.class);
-            if (before != null) {
-                for (Class<? extends EngineStep> b : before.value()) {
-                    requirePresent(stepByClass, c, b);
-                    addEdge(outgoing, incoming, c, b);
-                }
-            }
-        }
-
-        // --------------------------------------------
-        // @MustRunAfter   (A must run after B ⇒ B → A)
-        // --------------------------------------------
-        for (Class<?> c : stepByClass.keySet()) {
-            MustRunAfter after = c.getAnnotation(MustRunAfter.class);
-            if (after != null) {
-                for (Class<? extends EngineStep> a : after.value()) {
-                    requirePresent(stepByClass, c, a);
-                    addEdge(outgoing, incoming, a, c);
-                }
-            }
-        }
-
-        // --------------------------------------------
-        // @RequiresConversationPersisted
-        // Enforce: bootstrap → step
-        // --------------------------------------------
-        for (Class<?> c : stepByClass.keySet()) {
-            if (c.getAnnotation(RequiresConversationPersisted.class) != null) {
-                addEdge(outgoing, incoming, bootstrap, c);
-            }
-        }
-
-        // --------------------------------------------
-        // Terminal must be LAST
-        // --------------------------------------------
-        for (Class<?> c : stepByClass.keySet()) {
-            if (!c.equals(terminal)) {
-                addEdge(outgoing, incoming, c, terminal);
-            }
-        }
-
-        // --------------------------------------------
-        // Topological sort
-        // --------------------------------------------
-        List<Class<?>> sorted = topoSort(stepByClass.keySet(), outgoing, incoming);
-
-        return sorted.stream().map(stepByClass::get).toList();
-    }
-
-    private void requirePresent(Map<Class<?>, EngineStep> stepByClass,
-                                Class<?> owner,
-                                Class<?> dep) {
-        if (!stepByClass.containsKey(dep)) {
-            throw new ConversationEngineException(
-                    ConversationEngineErrorCode.MISSING_DEPENDENT_STEP,
-                    owner.getSimpleName() + " depends on missing step: " + dep.getName()
-            );
-        }
-    }
-
-    private void addEdge(Map<Class<?>, Set<Class<?>>> outgoing,
-                         Map<Class<?>, Set<Class<?>>> incoming,
-                         Class<?> from,
-                         Class<?> to) {
-        if (from.equals(to)) return;
-        if (outgoing.get(from).add(to)) {
-            incoming.get(to).add(from);
-        }
-    }
-
-    private List<Class<?>> topoSort(Set<Class<?>> nodes,
-                                    Map<Class<?>, Set<Class<?>>> outgoing,
-                                    Map<Class<?>, Set<Class<?>>> incoming) {
-
-        Map<Class<?>, Integer> indegree = new HashMap<>();
-        for (Class<?> n : nodes) {
-            indegree.put(n, incoming.get(n).size());
-        }
-
-        PriorityQueue<Class<?>> q =
-                new PriorityQueue<>(Comparator.comparing(Class::getName));
-
-        indegree.forEach((k, v) -> {
-            if (v == 0) q.add(k);
-        });
-
-        List<Class<?>> result = new ArrayList<>();
-
-        while (!q.isEmpty()) {
-            Class<?> n = q.poll();
-            result.add(n);
-
-            for (Class<?> m : outgoing.get(n)) {
-                indegree.put(m, indegree.get(m) - 1);
-                if (indegree.get(m) == 0) q.add(m);
-            }
-        }
-
-        if (result.size() != nodes.size()) {
-            Set<Class<?>> remaining = new LinkedHashSet<>(nodes);
-            result.forEach(remaining::remove);
-            throw new ConversationEngineException(
-                    ConversationEngineErrorCode.MISSING_DAG_CYCLE,
-                    "EngineStep DAG cycle or unsatisfied constraints: " +
-                            remaining.stream()
-                                    .map(Class::getSimpleName)
-                                    .collect(Collectors.joining(" -> "))
-            );
-        }
-
-        return result;
     }
 
     // ---------------------------------------------------------------------

@@ -10,7 +10,7 @@ import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaComputation;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolver;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolverFactory;

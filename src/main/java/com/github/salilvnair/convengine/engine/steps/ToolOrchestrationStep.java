@@ -12,9 +12,9 @@ import com.github.salilvnair.convengine.engine.mcp.McpToolRegistry;
 import com.github.salilvnair.convengine.engine.mcp.executor.McpToolExecutor;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunBefore;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
@@ -251,7 +251,7 @@ public class ToolOrchestrationStep implements EngineStep {
         }
         meta.put("tool_id", null);
         meta.put("tool_code", request == null ? null : request.toolCode());
-        meta.put("tool_group", resolvedToolGroup == null ? null : resolvedToolGroup);
+        meta.put("tool_group", resolvedToolGroup);
         meta.put("intent_code", null);
         meta.put("state_code", null);
         meta.put("enabled", null);

@@ -51,6 +51,9 @@ public class McpDbToolExecutor implements McpToolExecutor {
         if (isKnowledgeToolCode(toolCode)) {
             throw new IllegalStateException(buildKnowledgeHandlerMissingMessage(toolCode));
         }
+        if (isSemanticQueryToolCode(toolCode)) {
+            throw new IllegalStateException(buildSemanticQueryHandlerMissingMessage(toolCode));
+        }
         if (isDbkgToolCode(toolCode)) {
             throw new IllegalStateException(buildDbkgHandlerMissingMessage(toolCode));
         }
@@ -79,6 +82,30 @@ public class McpDbToolExecutor implements McpToolExecutor {
 
     private boolean isDbkgToolCode(String toolCode) {
         return toolCode != null && toolCode.trim().toLowerCase(java.util.Locale.ROOT).startsWith("dbkg.");
+    }
+
+    private boolean isSemanticQueryToolCode(String toolCode) {
+        String configured = mcpConfig != null
+                && mcpConfig.getDb() != null
+                && mcpConfig.getDb().getSemantic() != null
+                ? mcpConfig.getDb().getSemantic().getToolCode()
+                : "db.semantic.query";
+        String expected = (configured == null || configured.isBlank()) ? "db.semantic.query" : configured.trim();
+        return toolCode != null && expected.equalsIgnoreCase(toolCode.trim());
+    }
+
+    private String buildSemanticQueryHandlerMissingMessage(String toolCode) {
+        boolean enabled = mcpConfig != null
+                && mcpConfig.getDb() != null
+                && mcpConfig.getDb().getSemantic() != null
+                && mcpConfig.getDb().getSemantic().isEnabled();
+        if (!enabled) {
+            return "Semantic query tool handler is not registered for toolCode=" + toolCode
+                    + ". Enable convengine.mcp.db.semantic.enabled=true.";
+        }
+        return "Semantic query tool handler is not registered for toolCode=" + toolCode
+                + " even though convengine.mcp.db.semantic.enabled=true. "
+                + "Check bean registration for DbSemanticQueryToolHandler.";
     }
 
     private String buildDbkgHandlerMissingMessage(String toolCode) {

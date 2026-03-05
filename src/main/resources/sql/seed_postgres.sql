@@ -205,6 +205,49 @@ INSERT INTO ce_config
 (config_id, config_type, config_key, config_value, enabled, created_at)
 VALUES(21, 'DialogueActStep', 'REGEX_GREETING', '^(\\s)*(hi|hello|hey|greetings|good morning|good afternoon|good evening|howdy)(\\s)*$', true, '2026-02-24 10:15:54.230');
 
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(24, 'DefaultSemanticAstGenerator', 'SYSTEM_PROMPT', 'You are a semantic SQL AST planner. Return JSON only. Do not generate SQL text.', true, '2026-03-04 10:15:54.230');
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(25, 'DefaultSemanticAstGenerator', 'USER_PROMPT', 'Question: {{question}}
+Selected entity: {{selected_entity}}
+Selected entity description: {{selected_entity_description}}
+Allowed fields for selected entity: {{selected_entity_fields_json}}
+Allowed entities: {{allowed_entities}}
+Join path: {{join_path_json}}
+Context JSON: {{context_json}}', true, '2026-03-04 10:15:54.230');
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled, created_at)
+VALUES(26, 'DefaultSemanticAstGenerator', 'SCHEMA_PROMPT', '{
+  "type":"object",
+  "additionalProperties":false,
+  "required":["entity","select","filters","sort","group_by","metrics","limit"],
+  "properties":{
+    "entity":{"type":"string"},
+    "select":{"type":"array","items":{"type":"string"}},
+    "filters":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "additionalProperties":false,
+        "required":["field","op","value"],
+        "properties":{
+          "field":{"type":"string"},
+          "op":{"type":"string"},
+          "value":{"type":["string","number","integer","boolean","null"]}
+        }
+      }
+    },
+    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]}}}},
+    "group_by":{"type":"array","items":{"type":"string"}},
+    "metrics":{"type":"array","items":{"type":"string"}},
+    "limit":{"type":"integer"}
+  }
+}', true, '2026-03-04 10:15:54.230');
+
 INSERT INTO ce_verbose
 (verbose_id, intent_code, state_code, step_match, step_value, determinant, rule_id, tool_code, message, error_message, priority, enabled, created_at)
 VALUES

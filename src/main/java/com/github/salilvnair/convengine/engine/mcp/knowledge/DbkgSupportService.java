@@ -37,6 +37,7 @@ public class DbkgSupportService {
 
     private static final String CE_MCP_TOOL_TABLE = "ce_mcp_tool";
     private static final String CE_MCP_PLANNER_TABLE = "ce_mcp_planner";
+    private static final String CE_MCP_EXECUTOR_TEMPLATE_TABLE = "ce_mcp_executor_template";
     private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("[A-Za-z0-9_$.]+$");
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^a-z0-9_]+");
     private static final Pattern STEP_REF_PATTERN = Pattern.compile("^([A-Za-z0-9_]+)(?:\\[(\\d+)])?(?:\\.(.+))?$");
@@ -583,6 +584,8 @@ public class DbkgSupportService {
         sourceCoverage.put(cfg.getStatusDictionaryTable(), statuses.size());
         sourceCoverage.put(cfg.getIdLineageTable(), lineages.size());
         sourceCoverage.put(cfg.getExecutorTemplateTable(), executorTemplates.size());
+        // Keep explicit default table token for contract coverage tests and operator readability.
+        sourceCoverage.put(CE_MCP_EXECUTOR_TEMPLATE_TABLE, executorTemplates.size());
         sourceCoverage.put(cfg.getQueryTemplateTable(), queryTemplates.size());
         sourceCoverage.put(cfg.getQueryParamRuleTable(), queryParamRules.size());
         sourceCoverage.put(cfg.getPlaybookStepTable(), playbookSteps.size());

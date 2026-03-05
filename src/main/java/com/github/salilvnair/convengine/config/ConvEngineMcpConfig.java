@@ -28,8 +28,10 @@ public class ConvEngineMcpConfig {
     @Getter
     @Setter
     public static class Db {
+        private Query query = new Query();
         private Knowledge semanticCatalog = new Knowledge();
         private KnowledgeGraph knowledgeGraph = new KnowledgeGraph();
+        private Semantic semantic = new Semantic();
         private String sqlGuardrailTable = "ce_mcp_sql_guardrail";
 
         public Knowledge semanticCatalogConfig() {
@@ -109,6 +111,88 @@ public class ConvEngineMcpConfig {
             private String playbookTransitionTable = "ce_mcp_playbook_transition";
             private String outcomeRuleTable = "ce_mcp_outcome_rule";
             private String executorTemplateTable = "ce_mcp_executor_template";
+        }
+
+        @Getter
+        @Setter
+        public static class Query {
+            /**
+             * Supported values:
+             * semantic-catalog | knowledge-graph | semantic
+             */
+            private String mode = "semantic-catalog";
+        }
+
+        @Getter
+        @Setter
+        public static class Semantic {
+            private boolean enabled = false;
+            private String toolCode = "db.semantic.query";
+            private String modelPath = "classpath:/mcp/semantic-layer.yaml";
+            private int defaultLimit = 100;
+            private int maxLimit = 500;
+            private String sqlDialect = "postgres";
+            private String timezone = "UTC";
+            private int maxJoinHops = 6;
+            private int maxTables = 10;
+
+            private Retrieval retrieval = new Retrieval();
+            private Vector vector = new Vector();
+            private Graph graph = new Graph();
+            private Sql sql = new Sql();
+
+            @Getter
+            @Setter
+            public static class Retrieval {
+                private int maxEntities = 3;
+                private int maxTables = 6;
+                private double minEntityScore = 0.35d;
+                private double minTableScore = 0.30d;
+                private double synonymWeight = 0.40d;
+                private double fieldWeight = 0.25d;
+                private double idPatternWeight = 0.20d;
+                private double lexicalWeight = 0.15d;
+                private double deterministicBlendWeight = 0.70d;
+                private double vectorBlendWeight = 0.30d;
+            }
+
+            @Getter
+            @Setter
+            public static class Vector {
+                private boolean enabled = false;
+                /**
+                 * Postgres table containing semantic embedding rows.
+                 */
+                private String table = "ce_mcp_semantic_embedding";
+                private String namespaceColumn = "namespace";
+                private String targetTypeColumn = "target_type";
+                private String targetNameColumn = "target_name";
+                private String embeddingColumn = "embedding";
+                private String metadataColumn = "metadata_json";
+                private int maxResults = 20;
+            }
+
+            @Getter
+            @Setter
+            public static class Graph {
+                /**
+                 * Adapter key for graph engine implementation.
+                 * Supported default: jgrapht
+                 */
+                private String adapter = "jgrapht";
+            }
+
+            @Getter
+            @Setter
+            public static class Sql {
+                /**
+                 * SQL compiler adapter key.
+                 * Supported:
+                 * - default
+                 * - jooq
+                 */
+                private String compiler = "default";
+            }
         }
     }
 

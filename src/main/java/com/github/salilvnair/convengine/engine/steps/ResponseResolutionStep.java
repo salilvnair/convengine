@@ -10,8 +10,8 @@ import com.github.salilvnair.convengine.engine.history.core.ConversationHistoryP
 import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.response.service.ResponseTransformerService;
 import com.github.salilvnair.convengine.engine.response.type.factory.ResponseTypeResolverFactory;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
