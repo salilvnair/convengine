@@ -10,6 +10,7 @@ public record AstSubqueryFilter(
             return AstOperator.EQ;
         }
         String normalized = op.trim().toUpperCase().replace("-", "_");
+        if ("CONTAINS".equals(normalized)) return AstOperator.ILIKE;
         if ("=".equals(normalized)) return AstOperator.EQ;
         if ("!=".equals(normalized) || "<>".equals(normalized)) return AstOperator.NE;
         if (">".equals(normalized)) return AstOperator.GT;

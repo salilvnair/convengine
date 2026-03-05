@@ -2,8 +2,11 @@ package com.github.salilvnair.convengine.api.controller;
 
 import com.github.salilvnair.convengine.api.dto.DbSchemaAgentGenerateRequest;
 import com.github.salilvnair.convengine.api.dto.DbSchemaAgentGenerateResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildResponse;
 import com.github.salilvnair.convengine.cache.DbSchemaAgentService;
 import com.github.salilvnair.convengine.cache.DbSchemaInspectorService;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +25,7 @@ public class DbSchemaController {
 
     private final DbSchemaInspectorService dbSchemaInspectorService;
     private final DbSchemaAgentService dbSchemaAgentService;
+    private final SemanticEmbeddingService semanticEmbeddingService;
 
     @GetMapping("/inspect-schema")
     public ResponseEntity<Map<String, Object>> inspectSchema(
@@ -36,5 +40,14 @@ public class DbSchemaController {
             @RequestBody DbSchemaAgentGenerateRequest request
     ) {
         return ResponseEntity.ok(dbSchemaAgentService.generateSeedSql(request));
+    }
+
+    @PostMapping("/semantic/embeddings/rebuild")
+    public ResponseEntity<SemanticEmbeddingRebuildResponse> rebuildSemanticEmbeddings(
+            @RequestBody(required = false) SemanticEmbeddingRebuildRequest request
+    ) {
+        SemanticEmbeddingRebuildRequest safeRequest =
+                request == null ? new SemanticEmbeddingRebuildRequest() : request;
+        return ResponseEntity.ok(semanticEmbeddingService.rebuildFromSemanticModel(safeRequest));
     }
 }

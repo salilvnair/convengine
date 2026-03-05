@@ -1,5 +1,7 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool;
 DROP TABLE IF EXISTS ce_mcp_planner;
+DROP TABLE IF EXISTS ce_mcp_semantic_embedding;
+DROP TABLE IF EXISTS ce_user_query_knowledge;
 DROP TABLE IF EXISTS ce_mcp_user_feedback;
 DROP TABLE IF EXISTS ce_mcp_user_query_knowledge;
 DROP TABLE IF EXISTS ce_conversation_history;
@@ -304,3 +306,36 @@ CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
                                                    FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_ce_mcp_user_feedback_conversation ON ce_mcp_user_feedback (conversation_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
+                                                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                   conversation_id TEXT,
+                                                   feedback_id INTEGER,
+                                                   feedback_type TEXT,
+                                                   tool_code TEXT,
+                                                   intent_code TEXT,
+                                                   state_code TEXT,
+                                                   query_text TEXT NOT NULL,
+                                                   description TEXT,
+                                                   prepared_sql TEXT,
+                                                   tags TEXT,
+                                                   api_hints TEXT,
+                                                   embedding TEXT,
+                                                   metadata_json TEXT,
+                                                   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_user_query_knowledge_query_text ON ce_user_query_knowledge (query_text);
+CREATE INDEX idx_ce_user_query_knowledge_tool_code ON ce_user_query_knowledge (tool_code, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_semantic_embedding (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     namespace TEXT NOT NULL,
+                                                     target_type TEXT NOT NULL,
+                                                     target_name TEXT NOT NULL,
+                                                     embedding TEXT NOT NULL,
+                                                     metadata_json TEXT,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+                                                     updated_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE UNIQUE INDEX ux_ce_mcp_semantic_embedding_target ON ce_mcp_semantic_embedding (namespace, target_type, target_name);
+CREATE INDEX idx_ce_mcp_semantic_embedding_lookup ON ce_mcp_semantic_embedding (target_type, target_name);

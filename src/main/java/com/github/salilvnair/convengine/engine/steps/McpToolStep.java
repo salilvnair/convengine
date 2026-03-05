@@ -142,6 +142,7 @@ public class McpToolStep implements EngineStep {
 
         clearMcpContext(session);
         List<McpObservation> observations = readObservationsFromContext(session);
+        Set<String> executedToolSignatures = new HashSet<>();
         boolean mcpTouched = false;
         boolean finalAnswerDetermined = false;
         boolean toolExecutionAbrupted = false;
@@ -195,6 +196,33 @@ public class McpToolStep implements EngineStep {
 
             String toolCode = plan.tool_code();
             Map<String, Object> args = (plan.args() == null) ? Map.of() : plan.args();
+            String toolSignature = buildToolCallSignature(toolCode, args);
+            if (executedToolSignatures.contains(toolSignature)) {
+                String duplicateLoopAnswer = latestObservationSummary(observations);
+                if (duplicateLoopAnswer == null || duplicateLoopAnswer.isBlank()) {
+                    duplicateLoopAnswer = McpConstants.FALLBACK_UNSAFE_NEXT_STEP;
+                }
+                writeFinalAnswerToContext(session, duplicateLoopAnswer);
+                finalAnswerDetermined = true;
+                writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
+                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, duplicateLoopAnswer);
+                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_ANSWER);
+                writeLifecycleToContext(session, McpConstants.STATUS_ANSWER, McpConstants.OUTCOME_ANSWERED,
+                        true, false, false, McpConstants.ACTION_ANSWER, toolCode, null, args, null);
+                Map<String, Object> suppressedPayload = mapOf(
+                        "answer", duplicateLoopAnswer,
+                        "reason", "DUPLICATE_TOOL_CALL_SUPPRESSED",
+                        "tool_code", toolCode,
+                        "args", args);
+                verbosePublisher.publish(session, "McpToolStep",
+                        McpConstants.VERBOSE_EVENT_MCP_DUPLICATE_TOOL_CALL_SUPPRESSED, null, toolCode, false,
+                        suppressedPayload);
+                audit.audit(
+                        McpConstants.AUDIT_STAGE_MCP_DUPLICATE_TOOL_CALL_SUPPRESSED,
+                        session.getConversationId(),
+                        suppressedPayload);
+                break;
+            }
             Map<String, Object> toolCallPayload = mapOf(
                     "tool_code", toolCode,
                     "args", args,
@@ -244,6 +272,7 @@ public class McpToolStep implements EngineStep {
                 String rowsJson = executor.execute(tool, args, session);
 
                 observations.add(new McpObservation(toolCode, rowsJson));
+                executedToolSignatures.add(toolSignature);
                 writeObservationsToContext(session, observations);
                 session.putInputParam(ConvEngineInputParamKey.MCP_OBSERVATIONS, observations);
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_TOOL_RESULT);
@@ -454,12 +483,14 @@ public class McpToolStep implements EngineStep {
             if (session.getConversation() != null) {
                 session.getConversation().setContextJson(session.getContextJson());
             }
+            clearStaleMcpInputParams(session);
 
             audit.audit(
                     McpConstants.AUDIT_STAGE_MCP_CONTEXT_CLEARED,
                     session.getConversationId(),
                     Map.of());
-        } catch (Exception ignored) {
+        }
+        catch (Exception ignored) {
         }
     }
 
@@ -650,6 +681,84 @@ public class McpToolStep implements EngineStep {
         details.put("root_cause_message", root == null ? null : root.getMessage());
         details.put("error_stack_trace", stackTrace(error));
         return details;
+    }
+
+    private void clearStaleMcpInputParams(EngineSession session) {
+        if (session == null || session.getInputParams() == null) {
+            return;
+        }
+        List<String> staleKeys = List.of(
+                ConvEngineInputParamKey.MCP_ACTION,
+                ConvEngineInputParamKey.MCP_STATUS,
+                ConvEngineInputParamKey.MCP_TOOL_CODE,
+                ConvEngineInputParamKey.MCP_TOOL_GROUP,
+                ConvEngineInputParamKey.MCP_TOOL_ARGS,
+                ConvEngineInputParamKey.MCP_OBSERVATIONS,
+                ConvEngineInputParamKey.MCP_FINAL_ANSWER);
+        for (String key : staleKeys) {
+            session.getInputParams().remove(key);
+            if (session.getSafeInputParamsForOutput() != null) {
+                session.getSafeInputParamsForOutput().remove(key);
+            }
+        }
+    }
+
+    private String buildToolCallSignature(String toolCode, Map<String, Object> args) {
+        String normalizedToolCode = normalize(toolCode);
+        String normalizedArgs = normalizeArgs(args);
+        return normalizedToolCode + "|" + normalizedArgs;
+    }
+
+    private String normalizeArgs(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) {
+            return "{}";
+        }
+        try {
+            JsonNode node = mapper.valueToTree(args);
+            JsonNode normalized = canonicalizeJson(node);
+            return mapper.writeValueAsString(normalized);
+        } catch (Exception ignored) {
+            return String.valueOf(args);
+        }
+    }
+
+    private JsonNode canonicalizeJson(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return mapper.nullNode();
+        }
+        if (node.isObject()) {
+            ObjectNode out = mapper.createObjectNode();
+            Map<String, JsonNode> sorted = new java.util.TreeMap<>();
+            node.fields().forEachRemaining(entry -> sorted.put(entry.getKey(), canonicalizeJson(entry.getValue())));
+            sorted.forEach(out::set);
+            return out;
+        }
+        if (node.isArray()) {
+            ArrayNode out = mapper.createArrayNode();
+            for (JsonNode item : node) {
+                out.add(canonicalizeJson(item));
+            }
+            return out;
+        }
+        return node;
+    }
+
+    private String latestObservationSummary(List<McpObservation> observations) {
+        if (observations == null || observations.isEmpty()) {
+            return null;
+        }
+        for (int i = observations.size() - 1; i >= 0; i--) {
+            McpObservation observation = observations.get(i);
+            try {
+                JsonNode root = mapper.readTree(observation.json());
+                String summary = root.path("summary").asText(null);
+                if (summary != null && !summary.isBlank()) {
+                    return summary;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     private String stackTrace(Throwable error) {

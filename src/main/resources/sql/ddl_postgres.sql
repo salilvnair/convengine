@@ -1,5 +1,7 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool CASCADE;
 DROP TABLE IF EXISTS ce_mcp_planner CASCADE;
+DROP TABLE IF EXISTS ce_mcp_semantic_embedding CASCADE;
+DROP TABLE IF EXISTS ce_user_query_knowledge CASCADE;
 DROP TABLE IF EXISTS ce_mcp_user_feedback CASCADE;
 DROP TABLE IF EXISTS ce_mcp_user_query_knowledge CASCADE;
 DROP TABLE IF EXISTS ce_conversation_history CASCADE;
@@ -18,6 +20,8 @@ DROP TABLE IF EXISTS ce_intent CASCADE;
 DROP TABLE IF EXISTS ce_conversation CASCADE;
 DROP TABLE IF EXISTS ce_container_config CASCADE;
 DROP TABLE IF EXISTS ce_config CASCADE;
+
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE ce_config (
                            config_id int4 NOT NULL,
@@ -331,3 +335,40 @@ CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
                                 CONSTRAINT ce_mcp_user_feedback_conversation_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
 );
 CREATE INDEX idx_ce_mcp_user_feedback_conversation ON public.ce_mcp_user_feedback USING btree (conversation_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
+                                id BIGSERIAL PRIMARY KEY,
+                                conversation_id uuid,
+                                feedback_id BIGINT,
+                                feedback_type VARCHAR(32),
+                                tool_code VARCHAR(255),
+                                intent_code VARCHAR(255),
+                                state_code VARCHAR(255),
+                                query_text VARCHAR(1000) NOT NULL,
+                                description VARCHAR(2000),
+                                prepared_sql TEXT,
+                                tags VARCHAR(2000),
+                                api_hints VARCHAR(2000),
+                                embedding TEXT,
+                                metadata_json jsonb,
+                                created_at timestamptz DEFAULT now() NOT NULL,
+                                CONSTRAINT ce_user_query_knowledge_feedback_fkey FOREIGN KEY (feedback_id) REFERENCES ce_mcp_user_feedback(feedback_id) ON DELETE SET NULL,
+                                CONSTRAINT ce_user_query_knowledge_conversation_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE SET NULL
+);
+CREATE INDEX idx_ce_user_query_knowledge_query_text ON public.ce_user_query_knowledge USING btree (query_text);
+CREATE INDEX idx_ce_user_query_knowledge_tool_code ON public.ce_user_query_knowledge USING btree (tool_code, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_semantic_embedding (
+                                id BIGSERIAL PRIMARY KEY,
+                                namespace VARCHAR(128) NOT NULL,
+                                target_type VARCHAR(32) NOT NULL,
+                                target_name VARCHAR(255) NOT NULL,
+                                embedding vector NOT NULL,
+                                metadata_json jsonb,
+                                created_at timestamptz DEFAULT now() NOT NULL,
+                                updated_at timestamptz DEFAULT now() NOT NULL
+);
+CREATE UNIQUE INDEX ux_ce_mcp_semantic_embedding_target
+    ON public.ce_mcp_semantic_embedding USING btree (namespace, target_type, target_name);
+CREATE INDEX idx_ce_mcp_semantic_embedding_lookup
+    ON public.ce_mcp_semantic_embedding USING btree (target_type, target_name);

@@ -160,6 +160,11 @@ public class ConvEngineMcpConfig {
             public static class Vector {
                 private boolean enabled = false;
                 /**
+                 * Controls whether USER_QUERY embeddings from thumbs feedback
+                 * are indexed and used as retrieval-time boost.
+                 */
+                private boolean feedbackEnabled = true;
+                /**
                  * Postgres table containing semantic embedding rows.
                  */
                 private String table = "ce_mcp_semantic_embedding";

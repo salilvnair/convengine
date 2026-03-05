@@ -28,12 +28,14 @@ public class DefaultComparisonAstOperatorHandler implements AstOperatorHandler {
 
     @Override
     public Condition buildCondition(Field<Object> field, Object value, AstOperator operator, OperatorHandlerContext context) {
-        return DSL.condition("{0} " + sqlToken(operator) + " {1}", field, context.nextParam(value));
+        Object effectiveValue = normalizePatternValue(value, operator);
+        return DSL.condition("{0} " + sqlToken(operator) + " {1}", field, context.nextParam(effectiveValue));
     }
 
     @Override
     public String buildSql(Field<Object> field, Object value, AstOperator operator, OperatorHandlerContext context) {
-        String key = context.nextParamKey(value);
+        Object effectiveValue = normalizePatternValue(value, operator);
+        String key = context.nextParamKey(effectiveValue);
         return field + " " + sqlToken(operator) + " :" + key;
     }
 
@@ -50,5 +52,14 @@ public class DefaultComparisonAstOperatorHandler implements AstOperatorHandler {
             case ILIKE -> "ILIKE";
             default -> null;
         };
+    }
+
+    private Object normalizePatternValue(Object value, AstOperator operator) {
+        if ((operator == AstOperator.LIKE || operator == AstOperator.ILIKE) && value instanceof String s) {
+            if (!s.contains("%") && !s.contains("_")) {
+                return "%" + s + "%";
+            }
+        }
+        return value;
     }
 }

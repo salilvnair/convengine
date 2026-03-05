@@ -1,17 +1,23 @@
 package com.github.salilvnair.convengine.engine.mcp.query.semantic.llm;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstFilter;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstFilterGroup;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstGenerationResult;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.normalize.AstNormalizer;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstProjection;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstSort;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstSubqueryFilter;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstSubquerySpec;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstWindowSpec;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.SemanticQueryAstV1;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.normalize.AstNormalizer;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticEntity;
-import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.RetrievalResult;
@@ -24,21 +30,24 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.core.Ordered;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 @Component
-@Order()
+@Order
 @RequiredArgsConstructor
 public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
+
+    private static final String TOOL_CODE = "db.semantic.query";
 
     private final LlmClient llmClient;
     private final SemanticModelRegistry modelRegistry;
@@ -49,6 +58,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
     private final PromptTemplateRenderer renderer;
     private final AstNormalizer astNormalizer;
     private final ObjectMapper mapper = new ObjectMapper();
+
     private String astSystemPrompt;
     private String astUserPrompt;
     private String astSchemaJson;
@@ -69,7 +79,13 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 Selected entity description: {{selected_entity_description}}
                 Allowed fields for selected entity: {{selected_entity_fields_json}}
                 Allowed entities: {{allowed_entities}}
+                Candidate entities: {{candidate_entities_json}}
+                Candidate tables: {{candidate_tables_json}}
                 Join path: {{join_path_json}}
+                Guidance:
+                - Use ONLY fields from Allowed fields for selected entity.
+                - If question field does not belong to selected entity, switch to the correct allowed entity.
+                - Do NOT invent field names.
                 Context JSON: {{context_json}}
                 """
         );
@@ -87,6 +103,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 interceptor.beforeGenerate(question, retrieval, joinPathPlan, session);
             }
         }
+
         try {
             AstGenerationResult result = doGenerate(question, retrieval, joinPathPlan, session);
             AstGenerationResult current = result;
@@ -108,26 +125,81 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
 
     private AstGenerationResult doGenerate(String question, RetrievalResult retrieval, JoinPathPlan joinPathPlan, EngineSession session) throws Exception {
         SemanticModel model = modelRegistry.getModel();
-        String entity = retrieval.candidateEntities().isEmpty() ? "" : retrieval.candidateEntities().get(0).name();
+        String selectedEntity = retrieval == null || retrieval.candidateEntities() == null || retrieval.candidateEntities().isEmpty()
+                ? ""
+                : retrieval.candidateEntities().getFirst().name();
 
+        GenerationAttempt first = generateAttempt(question, retrieval, joinPathPlan, session, model, selectedEntity, 1, null);
+        RepairSuggestion suggestion = inferRepairTarget(first.ast, selectedEntity, model);
+        if (suggestion == null || suggestion.targetEntity() == null || suggestion.targetEntity().isBlank()) {
+            return new AstGenerationResult(first.ast, first.rawJson, false);
+        }
+
+        // one-shot deterministic repair attempt
+        Map<String, Object> repairPayload = new LinkedHashMap<>();
+        repairPayload.put("sourceEntity", selectedEntity);
+        repairPayload.put("targetEntity", suggestion.targetEntity());
+        repairPayload.put("unknownFields", suggestion.unknownFields());
+        repairPayload.put("reason", "FIELD_OWNERSHIP_REPAIR");
+        repairPayload.put("_meta", meta(question, selectedEntity, true, true, true));
+        publishLlmEvent("AST_REPAIR_ATTEMPT", session, false, repairPayload);
+
+        try {
+            GenerationAttempt repaired = generateAttempt(
+                    question,
+                    retrieval,
+                    joinPathPlan,
+                    session,
+                    model,
+                    suggestion.targetEntity(),
+                    2,
+                    "Previous AST used unsupported fields " + suggestion.unknownFields() +
+                            " for entity " + selectedEntity + ". Use entity " + suggestion.targetEntity() + " and valid fields only."
+            );
+            return new AstGenerationResult(repaired.ast, repaired.rawJson, true);
+        } catch (Exception ex) {
+            Map<String, Object> repairErrorPayload = new LinkedHashMap<>();
+            repairErrorPayload.put("sourceEntity", selectedEntity);
+            repairErrorPayload.put("targetEntity", suggestion.targetEntity());
+            repairErrorPayload.put("errorClass", ex.getClass().getName());
+            repairErrorPayload.put("errorMessage", ex.getMessage());
+            repairErrorPayload.put("_meta", meta(question, selectedEntity, true, true, true));
+            publishLlmEvent("AST_REPAIR_ERROR", session, true, repairErrorPayload);
+            return new AstGenerationResult(first.ast, first.rawJson, false);
+        }
+    }
+
+    private GenerationAttempt generateAttempt(String question,
+                                              RetrievalResult retrieval,
+                                              JoinPathPlan joinPathPlan,
+                                              EngineSession session,
+                                              SemanticModel model,
+                                              String selectedEntity,
+                                              int attempt,
+                                              String repairHint) throws Exception {
+        SemanticEntity selectedEntityModel = model.entities().get(selectedEntity);
+
+        String jsonSchema = specializeSchemaForEntity(astSchemaJson, selectedEntityModel, model);
         String systemPrompt = astSystemPrompt;
         String userPrompt = astUserPrompt;
-        String jsonSchema = astSchemaJson;
+
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put("question", question);
-        ctx.put("selectedEntity", entity);
-        ctx.put("candidateEntities", retrieval.candidateEntities());
-        ctx.put("candidateTables", retrieval.candidateTables());
+        ctx.put("selectedEntity", selectedEntity);
+        ctx.put("candidateEntities", retrieval == null ? List.of() : retrieval.candidateEntities());
+        ctx.put("candidateTables", retrieval == null ? List.of() : retrieval.candidateTables());
         ctx.put("joinPath", joinPathPlan);
         ctx.put("allowedEntities", model.entities().keySet());
+        if (repairHint != null && !repairHint.isBlank()) {
+            ctx.put("repairHint", repairHint);
+        }
 
-        var selectedEntityModel = model.entities().get(entity);
-        jsonSchema = specializeSchemaForEntity(jsonSchema, selectedEntityModel);
         String ctxJson = mapper.writeValueAsString(ctx);
         String selectedEntityDescription = selectedEntityModel == null ? "" : selectedEntityModel.description();
         String selectedEntityFieldsJson = selectedEntityModel == null
                 ? "[]"
                 : JsonUtil.toJson(selectedEntityModel.fields().keySet());
+
         PromptTemplateContext promptContext = PromptTemplateContext.builder()
                 .templateName("SemanticAstGeneration")
                 .systemPrompt(systemPrompt)
@@ -139,49 +211,204 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 .standaloneQuery(session == null ? null : session.getStandaloneQuery())
                 .conversationHistory(session == null ? null : JsonUtil.toJson(session.conversionHistory()))
                 .question(question == null ? "" : question)
-                .selectedEntity(entity == null ? "" : entity)
+                .selectedEntity(selectedEntity == null ? "" : selectedEntity)
                 .selectedEntityDescription(selectedEntityDescription == null ? "" : selectedEntityDescription)
                 .selectedEntityFieldsJson(selectedEntityFieldsJson)
                 .allowedEntitiesJson(JsonUtil.toJson(model.entities().keySet()))
-                .candidateEntitiesJson(JsonUtil.toJson(retrieval.candidateEntities()))
-                .candidateTablesJson(JsonUtil.toJson(retrieval.candidateTables()))
+                .candidateEntitiesJson(JsonUtil.toJson(retrieval == null ? List.of() : retrieval.candidateEntities()))
+                .candidateTablesJson(JsonUtil.toJson(retrieval == null ? List.of() : retrieval.candidateTables()))
                 .joinPathJson(JsonUtil.toJson(joinPathPlan))
                 .session(session)
                 .extra(session == null ? Map.of() : session.promptTemplateVars())
                 .build();
         promptContext.setContext(ctxJson);
+
         systemPrompt = renderer.render(systemPrompt, promptContext);
         userPrompt = renderer.render(userPrompt, promptContext);
+        if (repairHint != null && !repairHint.isBlank()) {
+            userPrompt = userPrompt + "\n\nRepair hint: " + repairHint;
+        }
 
         String llmPrompt = systemPrompt + "\n\n" + userPrompt;
         Map<String, Object> llmInputPayload = new LinkedHashMap<>();
+        llmInputPayload.put("attempt", attempt);
         llmInputPayload.put("systemPrompt", abbreviate(systemPrompt, 800));
-        llmInputPayload.put("userPrompt", abbreviate(userPrompt, 1200));
-        llmInputPayload.put("hint", abbreviate(llmPrompt, 400));
-        llmInputPayload.put("jsonSchemaPreview", abbreviate(jsonSchema, 400));
+        llmInputPayload.put("userPrompt", abbreviate(userPrompt, 1400));
+        llmInputPayload.put("hint", abbreviate(llmPrompt, 500));
+        llmInputPayload.put("jsonSchemaPreview", abbreviate(jsonSchema, 500));
         llmInputPayload.put("contextPreview", abbreviate(ctxJson, 1200));
-        llmInputPayload.put("_meta", meta(question, entity, false, false, false));
+        llmInputPayload.put("_meta", meta(question, selectedEntity, false, false, false));
         publishLlmEvent(ConvEngineAuditStage.AST_INPUT.name(), session, false, llmInputPayload);
+
         try {
             String raw = llmClient.generateJsonStrict(session, llmPrompt, jsonSchema, ctxJson);
             SemanticQueryAstV1 ast = mapper.readValue(raw, SemanticQueryAstV1.class);
-            ast = astNormalizer.normalize(ast, model, entity, session);
+            ast = astNormalizer.normalize(ast, model, selectedEntity, session);
+
             Map<String, Object> llmOutputPayload = new LinkedHashMap<>();
+            llmOutputPayload.put("attempt", attempt);
             llmOutputPayload.put("rawJsonPreview", abbreviate(raw, 1200));
             llmOutputPayload.put("entity", ast == null ? null : ast.entity());
             llmOutputPayload.put("selectCount", ast == null || ast.select() == null ? 0 : ast.select().size());
             llmOutputPayload.put("filterCount", ast == null || ast.filters() == null ? 0 : ast.filters().size());
-            llmOutputPayload.put("_meta", meta(question, entity, true, true, true));
+            llmOutputPayload.put("_meta", meta(question, selectedEntity, true, true, true));
             publishLlmEvent(ConvEngineAuditStage.AST_OUTPUT.name(), session, false, llmOutputPayload);
-            return new AstGenerationResult(ast, raw, false);
-        }
-        catch (Exception ex) {
+            return new GenerationAttempt(ast, raw);
+        } catch (Exception ex) {
             Map<String, Object> llmErrorPayload = new LinkedHashMap<>();
+            llmErrorPayload.put("attempt", attempt);
             llmErrorPayload.put("errorClass", ex.getClass().getName());
             llmErrorPayload.put("errorMessage", ex.getMessage() == null ? "" : ex.getMessage());
-            llmErrorPayload.put("_meta", meta(question, entity, true, false, false));
+            llmErrorPayload.put("_meta", meta(question, selectedEntity, true, false, false));
             publishLlmEvent(ConvEngineAuditStage.AST_ERROR.name(), session, true, llmErrorPayload);
             throw ex;
+        }
+    }
+
+    private RepairSuggestion inferRepairTarget(SemanticQueryAstV1 ast, String selectedEntity, SemanticModel model) {
+        if (ast == null || model == null || model.entities() == null || selectedEntity == null || selectedEntity.isBlank()) {
+            return null;
+        }
+        SemanticEntity current = model.entities().get(selectedEntity);
+        if (current == null || current.fields() == null || current.fields().isEmpty()) {
+            return null;
+        }
+
+        Set<String> referenced = collectReferencedFields(ast);
+        if (referenced.isEmpty()) {
+            return null;
+        }
+
+        List<String> unknown = new ArrayList<>();
+        for (String field : referenced) {
+            if (field == null || field.isBlank()) {
+                continue;
+            }
+            if (current.fields().containsKey(field)) {
+                continue;
+            }
+            if (model.metrics() != null && model.metrics().containsKey(field)) {
+                continue;
+            }
+            unknown.add(field);
+        }
+        if (unknown.isEmpty()) {
+            return null;
+        }
+
+        String target = null;
+        for (String field : unknown) {
+            List<String> owners = new ArrayList<>();
+            for (Map.Entry<String, SemanticEntity> entry : model.entities().entrySet()) {
+                SemanticEntity entity = entry.getValue();
+                if (entity == null || entity.fields() == null) {
+                    continue;
+                }
+                if (entity.fields().containsKey(field)) {
+                    owners.add(entry.getKey());
+                }
+            }
+            if (owners.size() != 1) {
+                return null;
+            }
+            String owner = owners.getFirst();
+            if (target == null) {
+                target = owner;
+            } else if (!target.equals(owner)) {
+                return null;
+            }
+        }
+
+        if (target == null || target.equals(selectedEntity)) {
+            return null;
+        }
+        return new RepairSuggestion(target, List.copyOf(unknown));
+    }
+
+    private Set<String> collectReferencedFields(SemanticQueryAstV1 ast) {
+        Set<String> out = new LinkedHashSet<>();
+        if (ast == null) {
+            return out;
+        }
+        if (ast.select() != null) {
+            out.addAll(ast.select());
+        }
+        if (ast.projections() != null) {
+            for (AstProjection projection : ast.projections()) {
+                if (projection != null && projection.field() != null) {
+                    out.add(projection.field());
+                }
+            }
+        }
+        if (ast.filters() != null) {
+            for (AstFilter filter : ast.filters()) {
+                if (filter != null && filter.field() != null) {
+                    out.add(filter.field());
+                }
+            }
+        }
+        collectGroupFields(ast.where(), out);
+        collectGroupFields(ast.having(), out);
+        if (ast.sort() != null) {
+            for (AstSort sort : ast.sort()) {
+                if (sort != null && sort.field() != null) {
+                    out.add(sort.field());
+                }
+            }
+        }
+        if (ast.groupBy() != null) {
+            out.addAll(ast.groupBy());
+        }
+        if (ast.windows() != null) {
+            for (AstWindowSpec window : ast.windows()) {
+                if (window == null) {
+                    continue;
+                }
+                if (window.partitionBy() != null) {
+                    out.addAll(window.partitionBy());
+                }
+                if (window.orderBy() != null) {
+                    for (AstSort sort : window.orderBy()) {
+                        if (sort != null && sort.field() != null) {
+                            out.add(sort.field());
+                        }
+                    }
+                }
+            }
+        }
+        if (ast.subqueryFilters() != null) {
+            for (AstSubqueryFilter subqueryFilter : ast.subqueryFilters()) {
+                if (subqueryFilter == null) {
+                    continue;
+                }
+                if (subqueryFilter.field() != null) {
+                    out.add(subqueryFilter.field());
+                }
+                AstSubquerySpec sub = subqueryFilter.subquery();
+                if (sub != null && sub.selectField() != null) {
+                    out.add(sub.selectField());
+                }
+            }
+        }
+        out.removeIf(v -> v == null || v.isBlank());
+        return out;
+    }
+
+    private void collectGroupFields(AstFilterGroup group, Set<String> out) {
+        if (group == null) {
+            return;
+        }
+        if (group.conditions() != null) {
+            for (AstFilter filter : group.conditions()) {
+                if (filter != null && filter.field() != null) {
+                    out.add(filter.field());
+                }
+            }
+        }
+        if (group.groups() != null) {
+            for (AstFilterGroup child : group.groups()) {
+                collectGroupFields(child, out);
+            }
         }
     }
 
@@ -196,7 +423,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                     "DefaultSemanticAstGenerator",
                     stage,
                     null,
-                    "db.semantic.query",
+                    TOOL_CODE,
                     error,
                     payload
             );
@@ -266,19 +493,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                         }
                       }
                     },
-                    "where":{
-                      "type":"object",
-                      "additionalProperties":false,
-                      "required":["op","conditions","groups"],
-                      "properties":{
-                        "op":{"type":"string","enum":["AND","OR","NOT"]},
-                        "conditions":{"type":"array","items":{
-                          "type":"object","additionalProperties":false,"required":["field","op","value"],
-                          "properties":{"field":{"type":"string"},"op":{"type":"string"},"value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}}
-                        }},
-                        "groups":{"type":"array","items":{"$ref":"#/$defs/filter_group"}}
-                      }
-                    },
+                    "where": {"$ref":"#/$defs/filter_group"},
                     "exists":{
                       "type":"array",
                       "items":{
@@ -326,7 +541,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                         "properties":{
                           "field":{"type":"string"},
                           "direction":{"type":"string","enum":["ASC","DESC"]},
-                          "nulls":{"type":"string","enum":["FIRST","LAST"]}
+                          "nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}
                         }
                       }
                     },
@@ -378,8 +593,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 """;
     }
 
-    private String specializeSchemaForEntity(String baseSchema, SemanticEntity entity) {
-        if (baseSchema == null || baseSchema.isBlank() || entity == null || entity.fields() == null || entity.fields().isEmpty()) {
+    private String specializeSchemaForEntity(String baseSchema, SemanticEntity entity, SemanticModel model) {
+        if (baseSchema == null || baseSchema.isBlank()) {
             return baseSchema;
         }
         try {
@@ -388,101 +603,224 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             if (properties == null) {
                 return baseSchema;
             }
-            ArrayNode fieldEnum = mapper.createArrayNode();
-            for (String field : entity.fields().keySet()) {
-                fieldEnum.add(field);
+
+            ArrayNode selectedFieldEnum = mapper.createArrayNode();
+            if (entity != null && entity.fields() != null) {
+                for (String field : entity.fields().keySet()) {
+                    selectedFieldEnum.add(field);
+                }
             }
 
-            // select[].items.enum
-            ObjectNode select = asObject(properties.get("select"));
-            ObjectNode selectItems = asObject(select == null ? null : select.get("items"));
-            if (selectItems != null) {
-                selectItems.set("enum", fieldEnum.deepCopy());
+            ArrayNode allFieldEnum = mapper.createArrayNode();
+            if (model != null && model.entities() != null) {
+                Set<String> all = new LinkedHashSet<>();
+                for (SemanticEntity e : model.entities().values()) {
+                    if (e != null && e.fields() != null) {
+                        all.addAll(e.fields().keySet());
+                    }
+                }
+                for (String f : all) {
+                    allFieldEnum.add(f);
+                }
+            }
+
+            ArrayNode metricEnum = mapper.createArrayNode();
+            if (model != null && model.metrics() != null) {
+                for (String metric : model.metrics().keySet()) {
+                    metricEnum.add(metric);
+                }
+            }
+
+            ObjectNode selectItems = asObject(asObject(properties.get("select")) == null ? null : asObject(properties.get("select")).get("items"));
+            if (selectItems != null && selectedFieldEnum.size() > 0) {
+                selectItems.set("enum", selectedFieldEnum.deepCopy());
             }
 
             ObjectNode projections = asObject(properties.get("projections"));
             ObjectNode projectionItems = asObject(projections == null ? null : projections.get("items"));
             ObjectNode projectionProps = asObject(projectionItems == null ? null : projectionItems.get("properties"));
             ObjectNode projectionField = asObject(projectionProps == null ? null : projectionProps.get("field"));
-            if (projectionField != null) {
-                projectionField.set("enum", fieldEnum.deepCopy());
+            if (projectionField != null && selectedFieldEnum.size() > 0) {
+                projectionField.set("enum", selectedFieldEnum.deepCopy());
             }
 
-            // group_by[].items.enum
-            ObjectNode groupBy = asObject(properties.get("group_by"));
-            ObjectNode groupByItems = asObject(groupBy == null ? null : groupBy.get("items"));
-            if (groupByItems != null) {
-                groupByItems.set("enum", fieldEnum.deepCopy());
-            }
-
-            // metrics[].items.enum
-            if (modelRegistry != null && modelRegistry.getModel() != null && modelRegistry.getModel().metrics() != null) {
-                ArrayNode metricEnum = mapper.createArrayNode();
-                for (String metric : modelRegistry.getModel().metrics().keySet()) {
-                    metricEnum.add(metric);
-                }
-                ObjectNode metrics = asObject(properties.get("metrics"));
-                ObjectNode metricsItems = asObject(metrics == null ? null : metrics.get("items"));
-                if (metricsItems != null && metricEnum.size() > 0) {
-                    metricsItems.set("enum", metricEnum);
-                }
-            }
-
-            // filters[].items.properties.field.enum
             ObjectNode filters = asObject(properties.get("filters"));
             ObjectNode filterItems = asObject(filters == null ? null : filters.get("items"));
             ObjectNode filterProps = asObject(filterItems == null ? null : filterItems.get("properties"));
             ObjectNode filterField = asObject(filterProps == null ? null : filterProps.get("field"));
-            if (filterField != null) {
-                filterField.set("enum", fieldEnum.deepCopy());
+            if (filterField != null && selectedFieldEnum.size() > 0) {
+                filterField.set("enum", selectedFieldEnum.deepCopy());
             }
 
-            ObjectNode where = asObject(properties.get("where"));
-            ObjectNode whereProps = asObject(where == null ? null : where.get("properties"));
-            ObjectNode whereConditions = asObject(whereProps == null ? null : whereProps.get("conditions"));
-            ObjectNode whereConditionItems = asObject(whereConditions == null ? null : whereConditions.get("items"));
-            ObjectNode whereConditionProps = asObject(whereConditionItems == null ? null : whereConditionItems.get("properties"));
-            ObjectNode whereField = asObject(whereConditionProps == null ? null : whereConditionProps.get("field"));
-            if (whereField != null) {
-                whereField.set("enum", fieldEnum.deepCopy());
+            ObjectNode groupByItems = asObject(asObject(properties.get("group_by")) == null ? null : asObject(properties.get("group_by")).get("items"));
+            if (groupByItems != null && selectedFieldEnum.size() > 0) {
+                groupByItems.set("enum", selectedFieldEnum.deepCopy());
+            }
+
+            ObjectNode metricsItems = asObject(asObject(properties.get("metrics")) == null ? null : asObject(properties.get("metrics")).get("items"));
+            if (metricsItems != null && metricEnum.size() > 0) {
+                metricsItems.set("enum", metricEnum.deepCopy());
+            }
+
+            ObjectNode sort = asObject(properties.get("sort"));
+            ObjectNode sortItems = asObject(sort == null ? null : sort.get("items"));
+            ObjectNode sortProps = asObject(sortItems == null ? null : sortItems.get("properties"));
+            ObjectNode sortField = asObject(sortProps == null ? null : sortProps.get("field"));
+            if (sortField != null && selectedFieldEnum.size() > 0) {
+                sortField.set("enum", selectedFieldEnum.deepCopy());
+            }
+
+            ObjectNode windows = asObject(properties.get("windows"));
+            ObjectNode windowItems = asObject(windows == null ? null : windows.get("items"));
+            ObjectNode windowProps = asObject(windowItems == null ? null : windowItems.get("properties"));
+            ObjectNode partitionByItems = asObject(asObject(windowProps == null ? null : windowProps.get("partition_by")) == null ? null : asObject(windowProps.get("partition_by")).get("items"));
+            if (partitionByItems != null && selectedFieldEnum.size() > 0) {
+                partitionByItems.set("enum", selectedFieldEnum.deepCopy());
+            }
+            ObjectNode orderBy = asObject(windowProps == null ? null : windowProps.get("order_by"));
+            ObjectNode orderByItems = asObject(orderBy == null ? null : orderBy.get("items"));
+            ObjectNode orderByProps = asObject(orderByItems == null ? null : orderByItems.get("properties"));
+            ObjectNode orderByField = asObject(orderByProps == null ? null : orderByProps.get("field"));
+            if (orderByField != null && selectedFieldEnum.size() > 0) {
+                orderByField.set("enum", selectedFieldEnum.deepCopy());
             }
 
             ObjectNode subqueryFilters = asObject(properties.get("subquery_filters"));
             ObjectNode subqueryFilterItems = asObject(subqueryFilters == null ? null : subqueryFilters.get("items"));
             ObjectNode subqueryFilterProps = asObject(subqueryFilterItems == null ? null : subqueryFilterItems.get("properties"));
             ObjectNode subqueryFilterField = asObject(subqueryFilterProps == null ? null : subqueryFilterProps.get("field"));
-            if (subqueryFilterField != null) {
-                subqueryFilterField.set("enum", fieldEnum.deepCopy());
+            if (subqueryFilterField != null && selectedFieldEnum.size() > 0) {
+                subqueryFilterField.set("enum", selectedFieldEnum.deepCopy());
+            }
+            ObjectNode subquerySpec = asObject(subqueryFilterProps == null ? null : subqueryFilterProps.get("subquery"));
+            ObjectNode subquerySpecProps = asObject(subquerySpec == null ? null : subquerySpec.get("properties"));
+            ObjectNode subquerySelectField = asObject(subquerySpecProps == null ? null : subquerySpecProps.get("select_field"));
+            if (subquerySelectField != null && allFieldEnum.size() > 0) {
+                subquerySelectField.set("enum", allFieldEnum.deepCopy());
             }
 
-            ObjectNode windows = asObject(properties.get("windows"));
-            ObjectNode windowItems = asObject(windows == null ? null : windows.get("items"));
-            ObjectNode windowProps = asObject(windowItems == null ? null : windowItems.get("properties"));
-            ObjectNode partitionBy = asObject(windowProps == null ? null : windowProps.get("partition_by"));
-            ObjectNode partitionByItems = asObject(partitionBy == null ? null : partitionBy.get("items"));
-            if (partitionByItems != null) {
-                partitionByItems.set("enum", fieldEnum.deepCopy());
-            }
-            ObjectNode orderBy = asObject(windowProps == null ? null : windowProps.get("order_by"));
-            ObjectNode orderByItems = asObject(orderBy == null ? null : orderBy.get("items"));
-            ObjectNode orderByProps = asObject(orderByItems == null ? null : orderByItems.get("properties"));
-            ObjectNode orderByField = asObject(orderByProps == null ? null : orderByProps.get("field"));
-            if (orderByField != null) {
-                orderByField.set("enum", fieldEnum.deepCopy());
+            // make top-level where strict to selected entity fields
+            if (selectedFieldEnum.size() > 0) {
+                properties.set("where", inlineFilterGroupSchema(selectedFieldEnum.deepCopy()));
             }
 
-            // sort[].items.properties.field.enum
-            ObjectNode sort = asObject(properties.get("sort"));
-            ObjectNode sortItems = asObject(sort == null ? null : sort.get("items"));
-            ObjectNode sortProps = asObject(sortItems == null ? null : sortItems.get("properties"));
-            ObjectNode sortField = asObject(sortProps == null ? null : sortProps.get("field"));
-            if (sortField != null) {
-                sortField.set("enum", fieldEnum.deepCopy());
+            // top-level having allows selected fields + metrics
+            ArrayNode havingEnum = selectedFieldEnum.deepCopy();
+            if (metricEnum.size() > 0) {
+                Set<String> existing = new LinkedHashSet<>();
+                for (int i = 0; i < havingEnum.size(); i++) {
+                    existing.add(havingEnum.get(i).asText());
+                }
+                for (int i = 0; i < metricEnum.size(); i++) {
+                    String metric = metricEnum.get(i).asText();
+                    if (existing.add(metric)) {
+                        havingEnum.add(metric);
+                    }
+                }
+            }
+            if (havingEnum.size() > 0) {
+                properties.set("having", inlineFilterGroupSchema(havingEnum));
+            }
+
+            // keep recursive/group/subquery filter groups broad enough for cross-entity subqueries
+            ObjectNode defs = asObject(root.get("$defs"));
+            ObjectNode filterGroupDef = asObject(defs == null ? null : defs.get("filter_group"));
+            if (filterGroupDef != null && allFieldEnum.size() > 0) {
+                setFilterGroupFieldEnum(filterGroupDef, allFieldEnum.deepCopy());
             }
 
             return mapper.writeValueAsString(root);
         } catch (Exception ex) {
             return baseSchema;
+        }
+    }
+
+    private ObjectNode inlineFilterGroupSchema(ArrayNode fieldEnum) {
+        ObjectNode group = mapper.createObjectNode();
+        group.put("type", "object");
+        group.put("additionalProperties", false);
+
+        ArrayNode required = mapper.createArrayNode();
+        required.add("op");
+        required.add("conditions");
+        required.add("groups");
+        group.set("required", required);
+
+        ObjectNode props = mapper.createObjectNode();
+        group.set("properties", props);
+
+        ObjectNode op = mapper.createObjectNode();
+        op.put("type", "string");
+        ArrayNode opEnum = mapper.createArrayNode();
+        opEnum.add("AND");
+        opEnum.add("OR");
+        opEnum.add("NOT");
+        op.set("enum", opEnum);
+        props.set("op", op);
+
+        ObjectNode conditions = mapper.createObjectNode();
+        conditions.put("type", "array");
+        ObjectNode items = mapper.createObjectNode();
+        items.put("type", "object");
+        items.put("additionalProperties", false);
+        ArrayNode conditionRequired = mapper.createArrayNode();
+        conditionRequired.add("field");
+        conditionRequired.add("op");
+        conditionRequired.add("value");
+        items.set("required", conditionRequired);
+
+        ObjectNode itemProps = mapper.createObjectNode();
+        ObjectNode field = mapper.createObjectNode();
+        field.put("type", "string");
+        field.set("enum", fieldEnum);
+        itemProps.set("field", field);
+
+        ObjectNode opField = mapper.createObjectNode();
+        opField.put("type", "string");
+        itemProps.set("op", opField);
+
+        ObjectNode value = mapper.createObjectNode();
+        ArrayNode valueTypes = mapper.createArrayNode();
+        valueTypes.add("string");
+        valueTypes.add("number");
+        valueTypes.add("integer");
+        valueTypes.add("boolean");
+        valueTypes.add("null");
+        valueTypes.add("array");
+        value.set("type", valueTypes);
+        ObjectNode itemType = mapper.createObjectNode();
+        ArrayNode itemTypeValues = mapper.createArrayNode();
+        itemTypeValues.add("string");
+        itemTypeValues.add("number");
+        itemTypeValues.add("integer");
+        itemTypeValues.add("boolean");
+        itemTypeValues.add("null");
+        itemType.set("type", itemTypeValues);
+        value.set("items", itemType);
+        itemProps.set("value", value);
+
+        items.set("properties", itemProps);
+        conditions.set("items", items);
+        props.set("conditions", conditions);
+
+        ObjectNode groups = mapper.createObjectNode();
+        groups.put("type", "array");
+        ObjectNode groupItems = mapper.createObjectNode();
+        groupItems.put("$ref", "#/$defs/filter_group");
+        groups.set("items", groupItems);
+        props.set("groups", groups);
+
+        return group;
+    }
+
+    private void setFilterGroupFieldEnum(ObjectNode filterGroupNode, ArrayNode enumValues) {
+        ObjectNode properties = asObject(filterGroupNode.get("properties"));
+        ObjectNode conditions = asObject(properties == null ? null : properties.get("conditions"));
+        ObjectNode items = asObject(conditions == null ? null : conditions.get("items"));
+        ObjectNode itemProps = asObject(items == null ? null : items.get("properties"));
+        ObjectNode field = asObject(itemProps == null ? null : itemProps.get("field"));
+        if (field != null) {
+            field.set("enum", enumValues);
         }
     }
 
@@ -508,8 +846,6 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             ensureStrictRequiredCoverage(root);
             return mapper.writeValueAsString(root);
         } catch (Exception ex) {
-            // Invalid config JSON should not be "fixed" via string replacement.
-            // Fall back to the known-good strict schema.
             return defaultAstJsonSchema();
         }
     }
@@ -569,10 +905,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
 
     private void ensureArrayItemsType(ObjectNode properties, String propertyName, String itemType) {
         ObjectNode propertyNode = asObject(properties.get(propertyName));
-        if (propertyNode == null) {
-            return;
-        }
-        if (!"array".equals(propertyNode.path("type").asText())) {
+        if (propertyNode == null || !"array".equals(propertyNode.path("type").asText())) {
             return;
         }
         if (propertyNode.has("items") && propertyNode.get("items").isObject()) {
@@ -607,6 +940,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             itemProps = mapper.createObjectNode();
             items.set("properties", itemProps);
         }
+
         ObjectNode field = asObject(itemProps.get("field"));
         if (field == null) {
             field = mapper.createObjectNode();
@@ -641,8 +975,6 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         nulls.set("enum", nullEnum);
     }
 
-    // OpenAI strict json_schema requires "required" to include every property key on object schemas.
-    // We enforce it recursively so config mistakes don't break runtime.
     private void ensureStrictRequiredCoverage(ObjectNode schemaNode) {
         if (schemaNode == null) {
             return;
@@ -683,18 +1015,9 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             return null;
         }
         ObjectNode properties = asObject(root.get("properties"));
-        if (properties == null) {
-            return null;
-        }
-        ObjectNode filters = asObject(properties.get("filters"));
-        if (filters == null) {
-            return null;
-        }
-        ObjectNode items = asObject(filters.get("items"));
-        if (items == null) {
-            return null;
-        }
-        ObjectNode itemProperties = asObject(items.get("properties"));
+        ObjectNode filters = asObject(properties == null ? null : properties.get("filters"));
+        ObjectNode items = asObject(filters == null ? null : filters.get("items"));
+        ObjectNode itemProperties = asObject(items == null ? null : items.get("properties"));
         if (itemProperties == null) {
             return null;
         }
@@ -710,4 +1033,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
     private ObjectNode asObject(com.fasterxml.jackson.databind.JsonNode node) {
         return node instanceof ObjectNode objectNode ? objectNode : null;
     }
+
+    private record GenerationAttempt(SemanticQueryAstV1 ast, String rawJson) {}
+
+    private record RepairSuggestion(String targetEntity, List<String> unknownFields) {}
 }

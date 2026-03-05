@@ -110,12 +110,7 @@ public class V1CanonicalAstMapper {
     }
 
     private CanonicalFilter toFilter(AstFilter filter) {
-        AstOperator operator;
-        try {
-            operator = filter.operatorEnum();
-        } catch (Exception ex) {
-            operator = AstOperator.EQ;
-        }
+        AstOperator operator = parseOperator(filter == null ? null : filter.op(), filter == null ? null : filter.field());
         return new CanonicalFilter(filter.field(), operator, filter.value());
     }
 
@@ -140,12 +135,7 @@ public class V1CanonicalAstMapper {
         return filters.stream()
                 .filter(f -> f != null && f.field() != null && !f.field().isBlank() && f.subquery() != null)
                 .map(f -> {
-                    AstOperator operator;
-                    try {
-                        operator = f.operatorEnum();
-                    } catch (Exception ex) {
-                        operator = AstOperator.EQ;
-                    }
+                    AstOperator operator = parseOperator(f.op(), f.field());
                     return new CanonicalSubqueryFilter(
                             f.field(),
                             operator,
@@ -160,6 +150,14 @@ public class V1CanonicalAstMapper {
                     );
                 })
                 .toList();
+    }
+
+    private AstOperator parseOperator(String op, String field) {
+        try {
+            return new AstFilter(field, op, null).operatorEnum();
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unsupported AST operator: " + op + " for field: " + field, ex);
+        }
     }
 
     private List<CanonicalWindowSpec> toWindows(List<AstWindowSpec> windows) {

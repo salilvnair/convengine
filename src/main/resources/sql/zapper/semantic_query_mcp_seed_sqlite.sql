@@ -334,13 +334,14 @@ VALUES
   'SEMANTIC_QUERY',
   'COMPLETED',
   'TEXT',
-  'DERIVED',
+  'EXACT',
+  '[# th:if="${context != null and context.mcp != null and context.mcp.finalAnswer != null and !#strings.isEmpty(context.mcp.finalAnswer)}"][[${context.mcp.finalAnswer}]][/]' || char(10) ||
+  '[# th:unless="${context != null and context.mcp != null and context.mcp.finalAnswer != null and !#strings.isEmpty(context.mcp.finalAnswer)}"]I could not find a finalized semantic answer for this request. Please retry with a more specific filter.[/]',
   NULL,
-  'Render concise final answer from MCP final answer for semantic query.',
   NULL,
   10,
   1,
-  'Semantic query completed response derived from MCP final answer'
+  'Semantic query completed response using EXACT thymeleaf fallback to MCP final answer'
 ),
 (
   'SEMANTIC_QUERY',
@@ -453,6 +454,10 @@ VALUES
 ('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticResultSummaryStage', 'SUMMARY_ERROR', NULL, 'db.semantic.query',
  'Semantic summary stage failed.',
  'Semantic summary stage failed: [[${errorMessage}]]',
+ 4, 1),
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'McpToolStep', 'MCP_DUPLICATE_TOOL_CALL_SUPPRESSED', NULL, 'db.semantic.query',
+ 'Suppressed duplicate semantic tool call in same turn; answering from latest observation.',
+ 'Duplicate semantic tool call suppression failed.',
  4, 1);
 
 -- -----------------------------------------------------------------------------
@@ -469,7 +474,14 @@ VALUES
   5301,
   'SEMANTIC_QUERY',
   'ANALYZE',
-  'You are an MCP planning agent for semantic DB querying. If question needs database facts, CALL_TOOL db.semantic.query. Use ANSWER only for pure greetings/chitchat. When tool observations include tabular rows and action is ANSWER, format the answer using a markdown table (header + rows) and keep it concise. Return strict JSON only.',
+  'You are an MCP planning agent for semantic DB querying.
+Rules:
+1) Use CALL_TOOL db.semantic.query only when no semantic observation exists yet for the current user question.
+2) If existing MCP observations already contain semantic summary or execution rows for the current question, return ANSWER.
+3) Never return CALL_TOOL with the same tool_code and equivalent args more than once in the same turn.
+4) Use ANSWER only for greetings/chitchat or when tool evidence is already sufficient.
+5) When action is ANSWER and observations include rows, format as concise markdown table (header + rows).
+Return strict JSON only.',
   'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
   1,
   CURRENT_TIMESTAMP

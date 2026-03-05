@@ -31,6 +31,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -196,6 +197,44 @@ class SemanticAstSqlMatrixTest {
         String lowered = sql.sql().toLowerCase();
         assertTrue(lowered.contains(" between "));
         assertTrue(lowered.contains(" or "));
+    }
+
+    @Test
+    void compilerWrapsIlikeLiteralWithWildcardsWhenMissing() {
+        SemanticModelRegistry registry = mock(SemanticModelRegistry.class);
+        when(registry.getModel()).thenReturn(model);
+        DefaultSemanticSqlCompiler compiler = new DefaultSemanticSqlCompiler(registry, config);
+
+        CanonicalAst ast = new CanonicalAst(
+                "v1",
+                "DisconnectRequest",
+                List.of(new CanonicalProjection("requestId", null)),
+                new CanonicalFilterGroup(AstLogicalOperator.AND, List.of(
+                        new CanonicalFilter("requestStatus", AstOperator.ILIKE, "failed")
+                ), List.of()),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                List.of(),
+                List.of(),
+                20,
+                0,
+                false,
+                List.of()
+        );
+
+        SemanticQueryContext context = new SemanticQueryContext("ilike", null);
+        context.canonicalAst(ast);
+        context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
+                "zp_request", List.of(), List.of("zp_request"), List.of(), 1.0
+        ));
+
+        CompiledSql sql = compiler.compile(context);
+        assertTrue(sql.sql().toLowerCase().contains(" ilike "));
+        assertEquals("%failed%", sql.params().get("p1"));
     }
 
     @Test
