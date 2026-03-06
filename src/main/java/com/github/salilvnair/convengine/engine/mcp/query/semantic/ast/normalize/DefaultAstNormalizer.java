@@ -632,7 +632,13 @@ public class DefaultAstNormalizer implements AstNormalizer {
 
         boolean originalHasProjectionIntent = hasProjectionIntent(original.select(), original.projections());
         boolean normalizedHasProjectionIntent = hasProjectionIntent(normalized.select(), normalized.projections());
+        boolean normalizedHasMetricIntent = normalized.metrics() != null && !normalized.metrics().isEmpty();
         if (originalHasProjectionIntent && !normalizedHasProjectionIntent) {
+            // Metric-only ASTs are valid (e.g., "show billbank_gap_count"), so allow
+            // projection pruning when metric intent is preserved.
+            if (normalizedHasMetricIntent) {
+                return;
+            }
             throw new IllegalStateException(
                     "AST normalization removed all selected fields for entity '" + safeEntity(targetEntity, normalized.entity())
                             + "'. Likely entity-field mismatch; retry with aligned entity fields.");

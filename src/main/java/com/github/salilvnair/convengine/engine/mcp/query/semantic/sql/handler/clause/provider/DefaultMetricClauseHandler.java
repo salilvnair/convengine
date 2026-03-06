@@ -49,11 +49,11 @@ public class DefaultMetricClauseHandler implements AstMetricHandler {
 
         if (!ast.metrics().isEmpty() && model.metrics() != null) {
             for (String metricName : ast.metrics()) {
-                var metric = model.metrics().get(metricName);
-                if (metric == null || metric.sql() == null || metric.sql().isBlank()) {
+                String metricSql = predicateClauseHandler.resolveMetricSql(metricName, model, aliasByTable);
+                if (metricSql == null || metricSql.isBlank()) {
                     continue;
                 }
-                plan.getQuery().addSelect(DSL.field(DSL.sql(metric.sql())).as(metricName));
+                plan.getQuery().addSelect(DSL.field(DSL.sql(metricSql)).as(metricName));
             }
         }
 
@@ -63,7 +63,7 @@ public class DefaultMetricClauseHandler implements AstMetricHandler {
                 if (sort == null || sort.field() == null) {
                     continue;
                 }
-                String metricSql = predicateClauseHandler.resolveMetricSql(sort.field(), model);
+                String metricSql = predicateClauseHandler.resolveMetricSql(sort.field(), model, aliasByTable);
                 Field<Object> sortField = metricSql != null
                         ? DSL.field(DSL.sql(metricSql))
                         : predicateClauseHandler.resolveEntityField(entity, sort.field(), aliasByTable);
@@ -93,4 +93,3 @@ public class DefaultMetricClauseHandler implements AstMetricHandler {
         return DSL.field(DSL.name(alias, parts[1]));
     }
 }
-

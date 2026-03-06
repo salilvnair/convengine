@@ -110,15 +110,21 @@ public class DefaultAstQueryAssemblyClauseHandler implements AstClauseHandler {
             plan.setParamIdx(new int[]{1});
         }
 
-        List<SelectFieldOrAsterisk> selectExpr = resolveBaseSelectExpressions(entity, aliasByTable, ast.projections());
-        if (selectExpr.isEmpty()) {
+        boolean metricOnlyQuery = ast.metrics() != null && !ast.metrics().isEmpty()
+                && (ast.projections() == null || ast.projections().isEmpty());
+        List<SelectFieldOrAsterisk> selectExpr = metricOnlyQuery
+                ? List.of()
+                : resolveBaseSelectExpressions(entity, aliasByTable, ast.projections());
+        if (selectExpr.isEmpty() && !metricOnlyQuery) {
             throw new IllegalStateException("No valid select expressions could be generated from AST.");
         }
 
         if (ast.distinct()) {
             query.setDistinct(true);
         }
-        query.addSelect(selectExpr);
+        if (!selectExpr.isEmpty()) {
+            query.addSelect(selectExpr);
+        }
         query.addFrom(tableRef(baseTable, aliasByTable.get(baseTable)));
 
         for (SchemaEdge edge : effectiveEdges) {

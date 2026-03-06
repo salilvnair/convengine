@@ -32,11 +32,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 @Order()
 @RequiredArgsConstructor
 public class DefaultPredicateClauseHandler implements AstPredicateHandler {
+    private static final Pattern TABLE_TOKEN_PATTERN = Pattern.compile("\\b([a-zA-Z_][a-zA-Z0-9_]*)\\.");
 
     @FunctionalInterface
     public interface CorrelatedFieldResolver {
@@ -136,7 +139,7 @@ public class DefaultPredicateClauseHandler implements AstPredicateHandler {
         if (filter == null || filter.field() == null || filter.field().isBlank()) {
             return "";
         }
-        String metricSql = resolveMetricSql(filter.field(), model);
+        String metricSql = resolveMetricSql(filter.field(), model, aliases);
         Field<Object> field = metricSql != null ? DSL.field(DSL.sql(metricSql)) : resolveEntityField(entity, filter.field(), aliases);
         if (field == null) {
             return "";
@@ -169,6 +172,14 @@ public class DefaultPredicateClauseHandler implements AstPredicateHandler {
             return null;
         }
         return metric.sql();
+    }
+
+    public String resolveMetricSql(String metricField, SemanticModel model, Map<String, String> aliasByTable) {
+        String raw = resolveMetricSql(metricField, model);
+        if (raw == null) {
+            return null;
+        }
+        return qualifyMetricSql(raw, aliasByTable);
     }
 
     public Field<Object> resolveEntityField(SemanticEntity entity, String fieldName, Map<String, String> aliasByTable) {
@@ -267,7 +278,7 @@ public class DefaultPredicateClauseHandler implements AstPredicateHandler {
             return null;
         }
         Field<Object> target;
-        String metricSql = resolveMetricSql(filter.field(), model);
+        String metricSql = resolveMetricSql(filter.field(), model, aliasByTable);
         if (metricSql != null) {
             target = DSL.field(DSL.sql(metricSql));
         } else {
@@ -386,5 +397,23 @@ public class DefaultPredicateClauseHandler implements AstPredicateHandler {
         } catch (Exception ex) {
             return fallback;
         }
+    }
+
+    private String qualifyMetricSql(String sql, Map<String, String> aliasByTable) {
+        if (sql == null || sql.isBlank() || aliasByTable == null || aliasByTable.isEmpty()) {
+            return sql;
+        }
+        Matcher matcher = TABLE_TOKEN_PATTERN.matcher(sql);
+        StringBuffer out = new StringBuffer();
+        while (matcher.find()) {
+            String table = matcher.group(1);
+            String alias = aliasByTable.get(table);
+            if (alias == null || alias.isBlank()) {
+                continue;
+            }
+            matcher.appendReplacement(out, alias + ".");
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 }
