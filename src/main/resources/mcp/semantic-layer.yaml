@@ -92,6 +92,10 @@ entities:
         key: true
         searchable: true
         filterable: true
+        aliases:
+          - id
+          - request id
+          - req id
         description: unique request id (example pattern ZPR*)
         example: ZPR1003
       accountId:
@@ -104,6 +108,9 @@ entities:
         column: zp_request.request_status
         type: string
         filterable: true
+        aliases:
+          - status
+          - request state
         description: request-level status from orchestration layer
         allowed_values:
           - SUBMITTED
@@ -113,6 +120,10 @@ entities:
       requestedAt:
         column: zp_request.requested_at
         type: timestamp
+        aliases:
+          - created
+          - created at
+          - request time
         description: request timestamp used for time-window diagnostics
       disconnectOrderId:
         column: zp_disconnect_order.don
@@ -141,6 +152,12 @@ entities:
         column: zp_ui_data.zp_asr_team_notes
         type: string
         description: latest operations team note useful for RCA context
+      failureReason:
+        column: zp_ui_data.zp_asr_team_notes
+        type: string
+        filterable: true
+        searchable: true
+        description: normalized failure-reason view for request-level RCA prompts
 
   DownstreamCheck:
     description: >
@@ -155,6 +172,7 @@ entities:
     example_questions:
       - list failed checks for DON9001
       - which check failed for request ZPR1003
+      - show failure reason for request ZPR1003
       - show downstream validation failures last 24 hours
     tables:
       primary: zp_order_downstream_check
@@ -173,6 +191,12 @@ entities:
         filterable: true
         searchable: true
         description: disconnect order linked to this check
+      requestId:
+        column: zp_disconnect_order.zp_request_id
+        type: string
+        filterable: true
+        searchable: true
+        description: request id associated with the disconnect order that this check belongs to
       checkCode:
         column: zp_order_downstream_check.check_code
         type: string
@@ -484,6 +508,77 @@ metrics:
     sql: |
       COUNT(CASE WHEN zp_disconnect_order.zp_disconnect_id IS NOT NULL
                  AND zp_billbank_record.zp_disconnect_id IS NULL THEN 1 END)
+
+value_patterns:
+  - from_field: requestId
+    to_field: disconnectOrderId
+    value_starts_with:
+      - DON
+  - from_field: disconnectOrderId
+    to_field: requestId
+    value_starts_with:
+      - ZPR
+
+intent_rules:
+  don_failure_reason_details:
+    description: stabilize DON-level failure asks to disconnect-order diagnostics output
+    match_any:
+      - why did
+      - fail
+      - failed
+      - failure reason
+    must_contain:
+      - don
+    force_entity: DisconnectRequest
+    force_mode: detail
+    force_select:
+      - disconnectOrderId
+      - downstreamStatus
+      - failureReason
+      - requestId
+
+  request_failure_reason_details:
+    description: stabilize request-level failure-reason asks to request diagnostics output
+    match_any:
+      - failure reason
+      - reason for request
+      - why request failed
+      - failed reason
+    must_contain:
+      - request
+    force_entity: DisconnectRequest
+    force_mode: detail
+    force_select:
+      - requestId
+      - failureReason
+
+  billbank_gap_details:
+    description: force billbank-gap "details" asks into request+order detail mode with deterministic missing-linkage filter
+    match_any:
+      - billbank gap
+      - billbank gaps
+      - billing gap
+      - billing gaps
+    must_contain:
+      - request
+      - order
+      - detail
+    force_entity: DisconnectRequest
+    force_mode: detail
+    force_mode_even_with_metrics: true
+    force_select:
+      - requestId
+      - accountId
+      - requestStatus
+      - requestedAt
+      - disconnectOrderId
+      - downstreamStatus
+      - disconnectId
+      - teamNotes
+    enforce_where:
+      - field: disconnectId
+        op: IS_NULL
+        value: null
 
 rules:
   allowed_tables:

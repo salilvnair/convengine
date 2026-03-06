@@ -341,6 +341,10 @@ VALUES
 ('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'McpToolStep', 'MCP_DUPLICATE_TOOL_CALL_SUPPRESSED', NULL, 'db.semantic.query',
  'Suppressed duplicate semantic tool call in same turn; answering from latest observation.',
  'Duplicate semantic tool call suppression failed.',
+ 4, true, now()),
+('SEMANTIC_QUERY', 'ANY', 'EXACT', 'ExactTextResponseTypeResolver', 'EXACT_RESPONSE_RENDERING', NULL, 'db.semantic.query',
+ 'Exact response template rendering fallback was applied.',
+ 'Exact response template rendering failed: [[${errorMessage}]]',
  4, true, now());
 
 -- -----------------------------------------------------------------------------

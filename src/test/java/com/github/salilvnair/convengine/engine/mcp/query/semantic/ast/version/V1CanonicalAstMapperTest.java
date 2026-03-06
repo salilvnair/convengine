@@ -43,6 +43,60 @@ class V1CanonicalAstMapperTest {
     }
 
     @Test
+    void mapsIsNotOperatorVariantToIsNotNull() {
+        SemanticQueryAstV1 ast = new SemanticQueryAstV1(
+                "v1",
+                "BillingRecord",
+                List.of("billbankId"),
+                List.of(),
+                List.of(),
+                new AstFilterGroup("AND", List.of(new AstFilter("billbankId", "IS NOT", null)), List.of()),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                100,
+                0,
+                false,
+                List.of()
+        );
+
+        var canonical = mapper.from(ast);
+        assertEquals(AstOperator.IS_NOT_NULL, canonical.where().conditions().get(0).operator());
+    }
+
+    @Test
+    void mapsNotInOperatorVariantWithSpace() {
+        SemanticQueryAstV1 ast = new SemanticQueryAstV1(
+                "v1",
+                "DisconnectRequest",
+                List.of("accountId"),
+                List.of(),
+                List.of(),
+                new AstFilterGroup("AND", List.of(new AstFilter("accountId", "NOT IN", List.of("UPSA100"))), List.of()),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                100,
+                0,
+                false,
+                List.of()
+        );
+
+        var canonical = mapper.from(ast);
+        assertEquals(AstOperator.NOT_IN, canonical.where().conditions().get(0).operator());
+    }
+
+    @Test
     void throwsForUnsupportedOperatorInsteadOfFallingBackToEq() {
         SemanticQueryAstV1 ast = new SemanticQueryAstV1(
                 "v1",
@@ -68,4 +122,3 @@ class V1CanonicalAstMapperTest {
         assertThrows(IllegalStateException.class, () -> mapper.from(ast));
     }
 }
-

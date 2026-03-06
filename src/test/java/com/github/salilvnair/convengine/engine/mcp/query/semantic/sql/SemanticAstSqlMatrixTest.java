@@ -21,6 +21,8 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.Semantic
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticMetric;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticRelationship;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticRelationshipEnd;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.stage.context.SemanticQueryContext;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.compiler.DefaultSemanticSqlCompiler;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.core.CompiledSql;
@@ -61,11 +63,20 @@ class SemanticAstSqlMatrixTest {
                                         "requestId", new SemanticField("zp_request.zp_request_id", "uuid", null, true, true, true),
                                         "requestStatus", new SemanticField("zp_request.request_status", "string", null, true, true, false),
                                         "requestedAt", new SemanticField("zp_request.requested_at", "timestamp", null, true, true, false),
-                                        "accountId", new SemanticField("zp_request.account_id", "string", null, true, true, false)
+                                        "accountId", new SemanticField("zp_request.account_id", "string", null, true, true, false),
+                                        "teamNotes", new SemanticField("zp_ui_data.zp_asr_team_notes", "string", null, true, true, false)
                                 )
                         )
                 ),
-                List.of(),
+                List.of(
+                        new SemanticRelationship(
+                                "request-ui",
+                                "request to ui",
+                                new SemanticRelationshipEnd("zp_request", "zp_request_id"),
+                                new SemanticRelationshipEnd("zp_ui_data", "zp_request_id"),
+                                "one_to_one"
+                        )
+                ),
                 Map.of(),
                 Map.of(),
                 Map.of(
@@ -314,6 +325,46 @@ class SemanticAstSqlMatrixTest {
         ));
         CompiledSql sql = compiler.compile(context);
         assertTrue(sql.sql().toLowerCase().contains("row_number() over"));
+    }
+
+    @Test
+    void compilerAddsJoinWhenFilterFieldLivesOnDifferentTableThanSelectedProjection() {
+        SemanticModelRegistry registry = mock(SemanticModelRegistry.class);
+        when(registry.getModel()).thenReturn(model);
+        DefaultSemanticSqlCompiler compiler = new DefaultSemanticSqlCompiler(registry, config);
+
+        CanonicalAst ast = new CanonicalAst(
+                "v1",
+                "DisconnectRequest",
+                List.of(new CanonicalProjection("teamNotes", null)),
+                new CanonicalFilterGroup(AstLogicalOperator.AND, List.of(
+                        new CanonicalFilter("requestId", AstOperator.EQ, "ZPR1003")
+                ), List.of()),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                List.of(),
+                List.of(),
+                100,
+                0,
+                false,
+                List.of()
+        );
+
+        SemanticQueryContext context = new SemanticQueryContext("teamNotes by request", null);
+        context.canonicalAst(ast);
+        context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
+                "zp_ui_data", List.of(), List.of("zp_ui_data"), List.of(), 1.0
+        ));
+
+        CompiledSql sql = compiler.compile(context);
+        String lowered = sql.sql().toLowerCase();
+        assertTrue(lowered.contains("from \"zp_ui_data\""));
+        assertTrue(lowered.contains("join \"zp_request\""));
+        assertTrue(lowered.contains("\"t1\".\"zp_request_id\" = :p1"));
     }
 
     @Test

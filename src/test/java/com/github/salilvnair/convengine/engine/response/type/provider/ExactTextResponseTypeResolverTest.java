@@ -106,7 +106,7 @@ class ExactTextResponseTypeResolverTest {
 
         assertNotNull(session.getPayload());
         assertEquals("Safe fallback final answer", ((TextPayload) session.getPayload()).text());
-        verify(auditService).audit(eq(ConvEngineAuditStage.PROMPT_RENDERING), eq(conversationId), anyMap());
+        verify(auditService).audit(eq(ConvEngineAuditStage.EXACT_RESPONSE_RENDERING), eq(conversationId), anyMap());
         verify(auditService).audit(eq(ConvEngineAuditStage.RESPONSE_EXACT), eq(conversationId), anyMap());
     }
 }

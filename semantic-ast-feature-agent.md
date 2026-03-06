@@ -118,6 +118,9 @@ Implement now. Give complete patch-ready code blocks and SQL.
 - Parameterized SQL only
 - No direct interpolation of user values
 - SQL shape from planner + semantic model + AST only
+- Correlated reference contract:
+  - In `exists.where` and subquery where/having blocks, values in the form `$fieldName`
+    are outer-field references (field-to-field comparison), not string literals.
 
 ### 5) Guardrails
 - SELECT-only
@@ -283,4 +286,3 @@ For every new capability:
 - tests first-class (not afterthought).
 
 That order keeps semantic-query stable as features grow.
-

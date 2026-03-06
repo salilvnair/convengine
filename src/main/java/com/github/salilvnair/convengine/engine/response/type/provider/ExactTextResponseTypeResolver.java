@@ -19,10 +19,12 @@ import org.thymeleaf.exceptions.TemplateInputException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
 public class ExactTextResponseTypeResolver implements ResponseTypeResolver {
+    private static final Pattern MALFORMED_INLINE_EXPR_SUFFIX_BEFORE_CLOSE = Pattern.compile("}]\\[/]");
 
     private final AuditService audit;
     private final ThymeleafTemplateRenderer templateRenderer;
@@ -36,16 +38,17 @@ public class ExactTextResponseTypeResolver implements ResponseTypeResolver {
     public void resolve(EngineSession session, PromptTemplate template, ResponseTemplate response) {
 
         String rawTemplate = response.getExactText() == null ? "" : response.getExactText();
+        String sanitizedTemplate = sanitizeMalformedTemplate(rawTemplate);
         String text;
         try {
-            text = templateRenderer.render(rawTemplate, session, buildRenderMetadata(response, template));
+            text = templateRenderer.render(sanitizedTemplate, session, buildRenderMetadata(response, template));
         } catch (TemplateInputException ex) {
             text = fallbackText(session, rawTemplate);
             auditRenderFallback(session, rawTemplate, ex.getClass().getName(), ex.getMessage());
         }
 
         // Defensive fallback for malformed templates that render blank without throwing parse exceptions.
-        if (text != null && text.isBlank() && looksLikeThymeleafTemplate(rawTemplate)) {
+        if (text != null && text.isBlank() && looksLikeThymeleafTemplate(sanitizedTemplate)) {
             String fallback = fallbackText(session, rawTemplate);
             if (!fallback.equals(rawTemplate) && !fallback.isBlank()) {
                 text = fallback;
@@ -115,7 +118,19 @@ public class ExactTextResponseTypeResolver implements ResponseTypeResolver {
         renderFailurePayload.put("templatePreview", rawTemplate != null && rawTemplate.length() > 500
                 ? rawTemplate.substring(0, 500) + "..."
                 : rawTemplate);
-        audit.audit(ConvEngineAuditStage.PROMPT_RENDERING, session.getConversationId(), renderFailurePayload);
+        audit.audit(ConvEngineAuditStage.EXACT_RESPONSE_RENDERING, session.getConversationId(), renderFailurePayload);
+    }
+
+    private String sanitizeMalformedTemplate(String rawTemplate) {
+        if (rawTemplate == null || rawTemplate.isBlank()) {
+            return rawTemplate == null ? "" : rawTemplate;
+        }
+        String sanitized = rawTemplate
+                .replace("\"{${", "\"${")
+                .replace("'{${", "'${")
+                .replace("[[{${", "[[${");
+        sanitized = MALFORMED_INLINE_EXPR_SUFFIX_BEFORE_CLOSE.matcher(sanitized).replaceAll("}]][/]");
+        return sanitized;
     }
 
     private Map<String, Object> buildRenderMetadata(ResponseTemplate response, PromptTemplate template) {

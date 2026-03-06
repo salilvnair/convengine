@@ -221,7 +221,7 @@ class Example4SemanticFlowTest {
                 )));
 
         SemanticJoinPathStage joinPathStage = new SemanticJoinPathStage(plannersProvider, planningInterceptorsProvider, mcpConfig, auditService, verbosePublisher);
-        SemanticAstGenerationStage astGenerationStage = new SemanticAstGenerationStage(astGeneratorsProvider, astCanonicalizer, mcpConfig, auditService, verbosePublisher);
+        SemanticAstGenerationStage astGenerationStage = new SemanticAstGenerationStage(astGeneratorsProvider, astCanonicalizer, modelRegistry, mcpConfig, auditService, verbosePublisher);
         SemanticAstValidationStage astValidationStage = new SemanticAstValidationStage(modelRegistry, astValidatorsProvider, mcpConfig, auditService, verbosePublisher);
         SemanticSqlCompileStage sqlCompileStage = new SemanticSqlCompileStage(sqlCompilersProvider, sqlValidatorsProvider, compilationInterceptorsProvider, mcpConfig, auditService, verbosePublisher);
         SemanticSqlExecuteStage sqlExecuteStage = new SemanticSqlExecuteStage(sqlExecutorsProvider, mcpConfig, auditService, verbosePublisher);

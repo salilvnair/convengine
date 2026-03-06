@@ -1,6 +1,8 @@
 package com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.handler.clause.orchestrator;
 
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.canonical.CanonicalFilter;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.canonical.CanonicalFilterGroup;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.canonical.CanonicalProjection;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.SchemaEdge;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticEntity;
@@ -286,9 +288,11 @@ public class DefaultAstQueryAssemblyClauseHandler implements AstClauseHandler {
         for (CanonicalProjection projection : plan.getAst().projections()) {
             addFieldTable(tables, entity.fields().get(projection.field()));
         }
+        collectFieldTablesFromGroup(tables, plan.getAst().where(), entity);
         for (String group : plan.getAst().groupBy()) {
             addFieldTable(tables, entity.fields().get(group));
         }
+        collectFieldTablesFromGroup(tables, plan.getAst().having(), entity);
         for (var sort : plan.getAst().sort()) {
             if (sort == null) continue;
             addFieldTable(tables, entity.fields().get(sort.field()));
@@ -311,6 +315,7 @@ public class DefaultAstQueryAssemblyClauseHandler implements AstClauseHandler {
                 SemanticEntity e = model.entities().get(existsBlock.entity());
                 if (e != null && e.tables() != null && e.tables().primary() != null) {
                     tables.add(e.tables().primary());
+                    collectFieldTablesFromGroup(tables, existsBlock.where(), e);
                 }
             }
         }
@@ -325,10 +330,31 @@ public class DefaultAstQueryAssemblyClauseHandler implements AstClauseHandler {
                     for (String gb : subqueryFilter.subquery().groupBy()) {
                         addFieldTable(tables, sqe.fields().get(gb));
                     }
+                    collectFieldTablesFromGroup(tables, subqueryFilter.subquery().where(), sqe);
+                    collectFieldTablesFromGroup(tables, subqueryFilter.subquery().having(), sqe);
                 }
             }
         }
         return tables;
+    }
+
+    private void collectFieldTablesFromGroup(Set<String> tables, CanonicalFilterGroup group, SemanticEntity entity) {
+        if (tables == null || group == null || entity == null || entity.fields() == null || entity.fields().isEmpty()) {
+            return;
+        }
+        if (group.conditions() != null) {
+            for (CanonicalFilter condition : group.conditions()) {
+                if (condition == null || condition.field() == null || condition.field().isBlank()) {
+                    continue;
+                }
+                addFieldTable(tables, entity.fields().get(condition.field()));
+            }
+        }
+        if (group.groups() != null) {
+            for (CanonicalFilterGroup child : group.groups()) {
+                collectFieldTablesFromGroup(tables, child, entity);
+            }
+        }
     }
 
     private void addMetricTablesByName(Set<String> tables, String metricName, SemanticModel model) {

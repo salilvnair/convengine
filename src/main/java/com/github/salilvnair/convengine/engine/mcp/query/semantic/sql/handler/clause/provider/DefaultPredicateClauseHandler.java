@@ -38,6 +38,11 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class DefaultPredicateClauseHandler implements AstPredicateHandler {
 
+    @FunctionalInterface
+    public interface CorrelatedFieldResolver {
+        Field<Object> resolve(String fieldRef);
+    }
+
     private final AstOperatorHandlerRegistry operatorHandlerRegistry;
 
     @Override
@@ -75,18 +80,28 @@ public class DefaultPredicateClauseHandler implements AstPredicateHandler {
                                        Map<String, Object> params,
                                        int[] paramIdx,
                                        SemanticModel model) {
+        return renderFilterGroupSql(group, entity, aliases, params, paramIdx, model, null);
+    }
+
+    public String renderFilterGroupSql(CanonicalFilterGroup group,
+                                       SemanticEntity entity,
+                                       Map<String, String> aliases,
+                                       Map<String, Object> params,
+                                       int[] paramIdx,
+                                       SemanticModel model,
+                                       CorrelatedFieldResolver correlatedFieldResolver) {
         if (group == null || group.isEmpty()) {
             return "";
         }
         List<String> predicates = new ArrayList<>();
         for (CanonicalFilter condition : group.conditions()) {
-            String p = renderFilterSql(condition, entity, aliases, params, paramIdx, model);
+            String p = renderFilterSql(condition, entity, aliases, params, paramIdx, model, correlatedFieldResolver);
             if (!p.isBlank()) {
                 predicates.add(p);
             }
         }
         for (CanonicalFilterGroup child : group.groups()) {
-            String childSql = renderFilterGroupSql(child, entity, aliases, params, paramIdx, model);
+            String childSql = renderFilterGroupSql(child, entity, aliases, params, paramIdx, model, correlatedFieldResolver);
             if (!childSql.isBlank()) {
                 predicates.add("(" + childSql + ")");
             }
@@ -108,6 +123,16 @@ public class DefaultPredicateClauseHandler implements AstPredicateHandler {
                                   Map<String, Object> params,
                                   int[] paramIdx,
                                   SemanticModel model) {
+        return renderFilterSql(filter, entity, aliases, params, paramIdx, model, null);
+    }
+
+    public String renderFilterSql(CanonicalFilter filter,
+                                  SemanticEntity entity,
+                                  Map<String, String> aliases,
+                                  Map<String, Object> params,
+                                  int[] paramIdx,
+                                  SemanticModel model,
+                                  CorrelatedFieldResolver correlatedFieldResolver) {
         if (filter == null || filter.field() == null || filter.field().isBlank()) {
             return "";
         }
@@ -117,6 +142,15 @@ public class DefaultPredicateClauseHandler implements AstPredicateHandler {
             return "";
         }
         AstOperator op = Objects.requireNonNullElse(filter.operator(), AstOperator.EQ);
+        if (correlatedFieldResolver != null && filter.value() instanceof String valueRef && valueRef.startsWith("$") && valueRef.length() > 1) {
+            Field<Object> rhsField = correlatedFieldResolver.resolve(valueRef.substring(1));
+            if (rhsField != null) {
+                String token = operatorSqlToken(op);
+                if (token != null) {
+                    return field + " " + token + " " + rhsField;
+                }
+            }
+        }
         AstOperatorHandler operatorHandler = operatorHandlerRegistry.resolve(op);
         if (operatorHandler == null) {
             throw new IllegalStateException("Unsupported AST operator: " + op);
@@ -146,6 +180,20 @@ public class DefaultPredicateClauseHandler implements AstPredicateHandler {
             return null;
         }
         return columnField(field.column(), aliasByTable);
+    }
+
+    private String operatorSqlToken(AstOperator operator) {
+        return switch (operator) {
+            case EQ -> "=";
+            case NE -> "<>";
+            case GT -> ">";
+            case GTE -> ">=";
+            case LT -> "<";
+            case LTE -> "<=";
+            case LIKE -> "LIKE";
+            case ILIKE -> "ILIKE";
+            default -> null;
+        };
     }
 
     public String buildCorrelationPredicate(SemanticEntity outerEntity,
