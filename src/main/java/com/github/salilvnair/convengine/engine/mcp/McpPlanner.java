@@ -88,7 +88,8 @@ public class McpPlanner {
               "action": "CALL_TOOL" | "ANSWER",
               "tool_code": "<tool_code_or_null>",
               "args": { },
-              "answer": "<text_or_null>"
+              "answer": "<text_or_null>",
+              "operation_tag": "<POLICY_RESTRICTED_OPERATION_or_null>"
             }
 
             """;
@@ -148,12 +149,13 @@ public class McpPlanner {
         String schema = """
                 {
                   "type":"object",
-                  "required":["action","tool_code","args","answer"],
+                  "required":["action","tool_code","args","answer","operation_tag"],
                   "properties":{
                     "action":{"type":"string"},
                     "tool_code":{"type":["string","null"]},
                     "args":{"type":"object"},
-                    "answer":{"type":["string","null"]}
+                    "answer":{"type":["string","null"]},
+                    "operation_tag":{"type":["string","null"]}
                   },
                   "additionalProperties":false
                 }
@@ -195,7 +197,7 @@ public class McpPlanner {
             return normalizePlan(parsed);
         } catch (Exception e) {
             return new McpPlan(McpConstants.ACTION_ANSWER, null, java.util.Map.of(),
-                    McpConstants.FALLBACK_PLAN_ERROR);
+                    McpConstants.FALLBACK_PLAN_ERROR, null);
         }
     }
 
@@ -251,23 +253,24 @@ public class McpPlanner {
 
     private McpPlan normalizePlan(McpPlan plan) {
         if (plan == null) {
-            return new McpPlan(McpConstants.ACTION_ANSWER, null, Map.of(), McpConstants.FALLBACK_PLAN_ERROR);
+            return new McpPlan(McpConstants.ACTION_ANSWER, null, Map.of(), McpConstants.FALLBACK_PLAN_ERROR, null);
         }
 
         String toolCode = trimToNull(plan.tool_code());
         String answer = trimToNull(plan.answer());
+        String operationTag = trimToNull(plan.operation_tag());
         Map<String, Object> args = plan.args() == null ? Map.of() : new LinkedHashMap<>(plan.args());
         String action = normalizeAction(plan.action(), toolCode, answer);
 
         if (McpConstants.ACTION_CALL_TOOL.equals(action)) {
             if (toolCode == null) {
-                return new McpPlan(McpConstants.ACTION_ANSWER, null, Map.of(), McpConstants.FALLBACK_UNSAFE_NEXT_STEP);
+                return new McpPlan(McpConstants.ACTION_ANSWER, null, Map.of(), McpConstants.FALLBACK_UNSAFE_NEXT_STEP, null);
             }
         } else {
             args = Map.of();
         }
 
-        return new McpPlan(action, toolCode, args, answer);
+        return new McpPlan(action, toolCode, args, answer, operationTag);
     }
 
     private String normalizeAction(String rawAction, String toolCode, String answer) {

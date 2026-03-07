@@ -6,5 +6,6 @@ public record McpPlan(
         String action,          // CALL_TOOL | ANSWER
         String tool_code,
         Map<String, Object> args,
-        String answer
+        String answer,
+        String operation_tag
 ) {}

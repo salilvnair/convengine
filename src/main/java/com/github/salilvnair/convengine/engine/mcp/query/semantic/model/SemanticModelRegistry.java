@@ -32,4 +32,15 @@ public class SemanticModelRegistry {
         }
         this.model = loaded;
     }
+
+    public synchronized void setModel(SemanticModel newModel) {
+        if (newModel == null) {
+            return;
+        }
+        List<String> errors = validator.validate(newModel);
+        if (!errors.isEmpty()) {
+            log.warn("Semantic model validation errors: {}", errors);
+        }
+        this.model = newModel;
+    }
 }

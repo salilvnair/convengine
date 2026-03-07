@@ -145,6 +145,54 @@ DO UPDATE SET
 -- -----------------------------------------------------------------------------
 -- Intent + classifier
 -- -----------------------------------------------------------------------------
+WITH next_id AS (
+  SELECT COALESCE(MAX(config_id), 0) AS max_id FROM ce_config
+),
+rows AS (
+  SELECT 1 AS rn, 'SYSTEM_PROMPT'::text AS config_key, $$You are generating semantic-query model YAML for ConvEngine.
+Return ONLY YAML text. No markdown.
+
+Output requirements:
+- include version, database, settings, entities, tables, relationships, metrics, value_patterns, intent_rules.
+- fields must use semantic names with table.column mapping.
+- include synonyms and example_questions where possible.
+- do not invent table/column names outside provided schema.
+- keep YAML valid and loadable.$$::text AS config_value
+  UNION ALL
+  SELECT 2 AS rn, 'USER_PROMPT'::text AS config_key, $$business_hints:
+{{business_hints}}
+
+existing_yaml:
+{{existing_yaml}}
+
+inspected_schema:
+{{inspected_schema}}
+
+edited_rows:
+{{edited_rows}}
+
+database:
+{{schema}}
+
+prefix:
+{{prefix}}$$::text AS config_value
+)
+INSERT INTO ce_config (config_id, config_type, config_key, config_value, enabled, created_at)
+SELECT
+  next_id.max_id + rows.rn,
+  'SemanticQueryModelAdminService',
+  rows.config_key,
+  rows.config_value,
+  true,
+  now()
+FROM next_id
+CROSS JOIN rows
+ON CONFLICT (config_type, config_key)
+DO UPDATE SET
+  config_value = EXCLUDED.config_value,
+  enabled = EXCLUDED.enabled,
+  created_at = now();
+
 INSERT INTO ce_intent (intent_code, description, priority, enabled, display_name, llm_hint)
 VALUES
 ('SEMANTIC_QUERY', 'Run semantic query planning and SQL execution against Zapper schema', 45, true, 'Semantic Query',
@@ -368,8 +416,9 @@ Rules:
 3) Never return CALL_TOOL with the same tool_code and equivalent args more than once in the same turn.
 4) Use ANSWER only for greetings/chitchat or when tool evidence is already sufficient.
 5) When action is ANSWER and observations include rows, format as concise markdown table (header + rows).
+6) If user asks destructive SQL/DML/DDL intent (delete/update/drop/alter/truncate/insert/create table/grant/revoke), keep action as CALL_TOOL only when needed but set operation_tag=POLICY_RESTRICTED_OPERATION.
 Return strict JSON only.',
-  'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
+  'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>",\n  "operation_tag":"<POLICY_RESTRICTED_OPERATION_or_null>"\n}',
   true,
   now()
 )

@@ -2,8 +2,17 @@ package com.github.salilvnair.convengine.api.controller;
 
 import com.github.salilvnair.convengine.api.dto.DbSchemaAgentGenerateRequest;
 import com.github.salilvnair.convengine.api.dto.DbSchemaAgentGenerateResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticModelGenerateRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticModelGenerateResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticModelReloadRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticModelReloadResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticModelSaveRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticModelSaveResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticModelValidateRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticModelValidateResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildResponse;
+import com.github.salilvnair.convengine.api.service.SemanticQueryModelAdminService;
 import com.github.salilvnair.convengine.cache.DbSchemaAgentService;
 import com.github.salilvnair.convengine.cache.DbSchemaInspectorService;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
@@ -26,6 +35,7 @@ public class DbSchemaController {
     private final DbSchemaInspectorService dbSchemaInspectorService;
     private final DbSchemaAgentService dbSchemaAgentService;
     private final SemanticEmbeddingService semanticEmbeddingService;
+    private final SemanticQueryModelAdminService semanticQueryModelAdminService;
 
     @GetMapping("/inspect-schema")
     public ResponseEntity<Map<String, Object>> inspectSchema(
@@ -49,5 +59,42 @@ public class DbSchemaController {
         SemanticEmbeddingRebuildRequest safeRequest =
                 request == null ? new SemanticEmbeddingRebuildRequest() : request;
         return ResponseEntity.ok(semanticEmbeddingService.rebuildFromSemanticModel(safeRequest));
+    }
+
+    @PostMapping("/semantic-query/generate-model")
+    public ResponseEntity<SemanticModelGenerateResponse> generateSemanticModel(
+            @RequestBody(required = false) SemanticModelGenerateRequest request
+    ) {
+        SemanticModelGenerateRequest safeRequest = request == null ? new SemanticModelGenerateRequest() : request;
+        return ResponseEntity.ok(semanticQueryModelAdminService.generateDraft(safeRequest));
+    }
+
+    @PostMapping("/semantic-query/validate-model")
+    public ResponseEntity<SemanticModelValidateResponse> validateSemanticModel(
+            @RequestBody(required = false) SemanticModelValidateRequest request
+    ) {
+        SemanticModelValidateRequest safeRequest = request == null ? new SemanticModelValidateRequest() : request;
+        return ResponseEntity.ok(semanticQueryModelAdminService.validate(safeRequest));
+    }
+
+    @PostMapping("/semantic-query/save-model")
+    public ResponseEntity<SemanticModelSaveResponse> saveSemanticModel(
+            @RequestBody(required = false) SemanticModelSaveRequest request
+    ) {
+        SemanticModelSaveRequest safeRequest = request == null ? new SemanticModelSaveRequest() : request;
+        return ResponseEntity.ok(semanticQueryModelAdminService.save(safeRequest));
+    }
+
+    @PostMapping("/semantic-query/reload-model")
+    public ResponseEntity<SemanticModelReloadResponse> reloadSemanticModel(
+            @RequestBody(required = false) SemanticModelReloadRequest request
+    ) {
+        SemanticModelReloadRequest safeRequest = request == null ? new SemanticModelReloadRequest() : request;
+        return ResponseEntity.ok(semanticQueryModelAdminService.reload(safeRequest));
+    }
+
+    @GetMapping("/semantic-query/current-model-yaml")
+    public ResponseEntity<Map<String, String>> currentSemanticModelYaml() {
+        return ResponseEntity.ok(Map.of("yaml", semanticQueryModelAdminService.currentModelYaml()));
     }
 }

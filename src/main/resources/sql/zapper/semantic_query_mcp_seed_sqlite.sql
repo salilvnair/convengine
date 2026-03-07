@@ -92,6 +92,86 @@ WHERE config_type = 'DefaultSemanticAstGenerator'
 INSERT OR IGNORE INTO ce_config (config_id, config_type, config_key, config_value, enabled, created_at)
 SELECT
   COALESCE(MAX(config_id), 0) + 1,
+  'SemanticQueryModelAdminService',
+  'SYSTEM_PROMPT',
+  'You are generating semantic-query model YAML for ConvEngine.
+Return ONLY YAML text. No markdown.
+
+Output requirements:
+- include version, database, settings, entities, tables, relationships, metrics, value_patterns, intent_rules.
+- fields must use semantic names with table.column mapping.
+- include synonyms and example_questions where possible.
+- do not invent table/column names outside provided schema.
+- keep YAML valid and loadable.',
+  1,
+  CURRENT_TIMESTAMP
+FROM ce_config;
+
+UPDATE ce_config
+SET config_value = 'You are generating semantic-query model YAML for ConvEngine.
+Return ONLY YAML text. No markdown.
+
+Output requirements:
+- include version, database, settings, entities, tables, relationships, metrics, value_patterns, intent_rules.
+- fields must use semantic names with table.column mapping.
+- include synonyms and example_questions where possible.
+- do not invent table/column names outside provided schema.
+- keep YAML valid and loadable.',
+    enabled = 1
+WHERE config_type = 'SemanticQueryModelAdminService'
+  AND config_key = 'SYSTEM_PROMPT';
+
+INSERT OR IGNORE INTO ce_config (config_id, config_type, config_key, config_value, enabled, created_at)
+SELECT
+  COALESCE(MAX(config_id), 0) + 1,
+  'SemanticQueryModelAdminService',
+  'USER_PROMPT',
+  'business_hints:
+{{business_hints}}
+
+existing_yaml:
+{{existing_yaml}}
+
+inspected_schema:
+{{inspected_schema}}
+
+edited_rows:
+{{edited_rows}}
+
+database:
+{{schema}}
+
+prefix:
+{{prefix}}',
+  1,
+  CURRENT_TIMESTAMP
+FROM ce_config;
+
+UPDATE ce_config
+SET config_value = 'business_hints:
+{{business_hints}}
+
+existing_yaml:
+{{existing_yaml}}
+
+inspected_schema:
+{{inspected_schema}}
+
+edited_rows:
+{{edited_rows}}
+
+database:
+{{schema}}
+
+prefix:
+{{prefix}}',
+    enabled = 1
+WHERE config_type = 'SemanticQueryModelAdminService'
+  AND config_key = 'USER_PROMPT';
+
+INSERT OR IGNORE INTO ce_config (config_id, config_type, config_key, config_value, enabled, created_at)
+SELECT
+  COALESCE(MAX(config_id), 0) + 1,
   'DefaultSemanticAstGenerator',
   'SCHEMA_PROMPT',
   '{
@@ -485,8 +565,9 @@ Rules:
 3) Never return CALL_TOOL with the same tool_code and equivalent args more than once in the same turn.
 4) Use ANSWER only for greetings/chitchat or when tool evidence is already sufficient.
 5) When action is ANSWER and observations include rows, format as concise markdown table (header + rows).
+6) If user asks destructive SQL/DML/DDL intent (delete/update/drop/alter/truncate/insert/create table/grant/revoke), keep action as CALL_TOOL only when needed but set operation_tag=POLICY_RESTRICTED_OPERATION.
 Return strict JSON only.',
-  'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
+  'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>",\n  "operation_tag":"<POLICY_RESTRICTED_OPERATION_or_null>"\n}',
   1,
   CURRENT_TIMESTAMP
 );

@@ -55,6 +55,8 @@ public class McpToolStep implements EngineStep {
     private static final String CONFIG_KEY_TOOL_CALL_DELAY_AFTER_CALLS = "MCP_TOOL_CALL_DELAY_AFTER_CALLS";
     private static final String CONFIG_KEY_TOOL_CALL_DELAY_AFTER_MS = "MCP_TOOL_CALL_DELAY_AFTER_MS";
     private static final String GREETING_REGEX = "^(hi|hello|hey|greetings|good morning|good afternoon|good evening)\\b.*";
+    private static final String OPERATION_TAG_POLICY_RESTRICTED_OPERATION = "POLICY_RESTRICTED_OPERATION";
+    private static final String FALLBACK_POLICY_RESTRICTED = "This request is restricted by policy. Read-only operations are allowed.";
 
     private final McpToolRegistry registry;
     private final McpPlanner planner;
@@ -156,6 +158,7 @@ public class McpToolStep implements EngineStep {
             session.putInputParam(ConvEngineInputParamKey.MCP_ACTION, plan.action());
             session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_CODE, plan.tool_code());
             session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_ARGS, plan.args() == null ? Map.of() : plan.args());
+            session.putInputParam("mcp_operation_tag", plan.operation_tag());
             writeLifecycleToContext(session, McpConstants.STATUS_TOOL_RESULT, McpConstants.OUTCOME_IN_PROGRESS,
                     false, false, false, plan.action(), plan.tool_code(), null,
                     plan.args() == null ? Map.of() : plan.args(), null);
@@ -196,6 +199,23 @@ public class McpToolStep implements EngineStep {
 
             String toolCode = plan.tool_code();
             Map<String, Object> args = (plan.args() == null) ? Map.of() : plan.args();
+            if (isPolicyRestrictedOperationTag(plan.operation_tag())) {
+                writeFinalAnswerToContext(session, FALLBACK_POLICY_RESTRICTED);
+                finalAnswerDetermined = true;
+                writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
+                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, FALLBACK_POLICY_RESTRICTED);
+                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_GUARDRAIL_BLOCKED);
+                writeLifecycleToContext(session, McpConstants.STATUS_GUARDRAIL_BLOCKED, McpConstants.OUTCOME_BLOCKED,
+                        true, true, false, plan.action(), toolCode, null, args, OPERATION_TAG_POLICY_RESTRICTED_OPERATION);
+                Map<String, Object> blockedPayload = mapOf(
+                        "tool_code", toolCode,
+                        "args", args,
+                        "operation_tag", plan.operation_tag(),
+                        "error", "planner-marked restricted operation");
+                verbosePublisher.publish(session, STEP_NAME, "MCP_TOOL_ERROR", null, toolCode, true, blockedPayload);
+                audit.audit(ConvEngineAuditStage.MCP_TOOL_ERROR, session.getConversationId(), blockedPayload);
+                break;
+            }
             String toolSignature = buildToolCallSignature(toolCode, args);
             if (executedToolSignatures.contains(toolSignature)) {
                 String duplicateLoopAnswer = latestObservationSummary(observations);
@@ -514,6 +534,13 @@ public class McpToolStep implements EngineStep {
             return "NEXT_TOOL_GUARDRAIL_BLOCKED";
         }
         return null;
+    }
+
+    private boolean isPolicyRestrictedOperationTag(String operationTag) {
+        if (operationTag == null || operationTag.isBlank()) {
+            return false;
+        }
+        return OPERATION_TAG_POLICY_RESTRICTED_OPERATION.equalsIgnoreCase(operationTag.trim());
     }
 
     private boolean isAllowedByConfiguredNextToolGuardrail(String nextToolCode, List<McpObservation> observations) {

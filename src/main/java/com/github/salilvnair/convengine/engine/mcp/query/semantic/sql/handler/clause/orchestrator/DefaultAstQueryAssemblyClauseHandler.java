@@ -291,7 +291,13 @@ public class DefaultAstQueryAssemblyClauseHandler implements AstClauseHandler {
 
     private Set<String> requiredTablesFromAst(CompileWorkPlan plan, SemanticEntity entity, SemanticModel model) {
         Set<String> tables = new LinkedHashSet<>();
-        for (CanonicalProjection projection : plan.getAst().projections()) {
+        List<CanonicalProjection> astProjections = plan.getAst().projections();
+        List<CanonicalProjection> effectiveProjections =
+                astProjections == null || astProjections.isEmpty() ? defaultProjections(entity) : astProjections;
+        for (CanonicalProjection projection : effectiveProjections) {
+            if (projection == null || projection.field() == null || projection.field().isBlank()) {
+                continue;
+            }
             addFieldTable(tables, entity.fields().get(projection.field()));
         }
         collectFieldTablesFromGroup(tables, plan.getAst().where(), entity);
