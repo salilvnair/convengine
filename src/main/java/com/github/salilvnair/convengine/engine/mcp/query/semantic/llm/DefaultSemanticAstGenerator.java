@@ -82,6 +82,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 Selected entity description: {{selected_entity_description}}
                 Allowed fields for selected entity: {{selected_entity_fields_json}}
                 Allowed values by field (selected entity only): {{selected_entity_allowed_values_json}}
+                Supported filter operators: {{supported_filter_operators_json}}
+                Operator usage guide: {{supported_filter_operators_usage}}
                 Relevant metrics: {{relevant_metrics_json}}
                 Matched intent rules (max 2): {{matched_intent_rules_json}}
                 Relevant value patterns: {{relevant_value_patterns_json}}
@@ -98,6 +100,9 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 - If question field does not belong to selected entity, switch to the correct allowed entity.
                 - If a field has allowed_values, only use those values in filters.
                 - Do NOT invent field names.
+                - Prefer supported operators from "Supported filter operators".
+                - If no supported operator fits, you may derive a new operator token in UPPER_SNAKE_CASE and use it in op.
+                - For derived/unknown operators, keep value explicit and deterministic; do not emit SQL.
                 Context JSON: {{context_json}}
                 """
         );
@@ -222,6 +227,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         String relevantJoinHintsJson = JsonUtil.toJson(buildRelevantJoinHints(model, entityTables));
         String relevantSynonymsJson = JsonUtil.toJson(buildRelevantSynonyms(question, model));
         String relevantRulesJson = JsonUtil.toJson(buildRelevantRules(model, entityTables));
+        String supportedFilterOperatorsJson = JsonUtil.toJson(supportedFilterOperators());
+        String supportedFilterOperatorsUsage = supportedFilterOperatorsUsage();
 
         Map<String, Object> promptExtra = new LinkedHashMap<>();
         if (session != null && session.promptTemplateVars() != null) {
@@ -234,6 +241,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         promptExtra.put("relevant_join_hints_json", relevantJoinHintsJson);
         promptExtra.put("relevant_synonyms_json", relevantSynonymsJson);
         promptExtra.put("relevant_rules_json", relevantRulesJson);
+        promptExtra.put("supported_filter_operators_json", supportedFilterOperatorsJson);
+        promptExtra.put("supported_filter_operators_usage", supportedFilterOperatorsUsage);
 
         PromptTemplateContext promptContext = PromptTemplateContext.builder()
                 .templateName("SemanticAstGeneration")
@@ -1144,6 +1153,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 types.add("null");
                 valueNode.set("type", types);
             }
+            ensureOperatorNodes(root);
             ensureRootRequired(root);
             ensureFilterItemRequired(root);
             ensureArrayItems(root);
@@ -1332,6 +1342,84 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         ObjectNode created = mapper.createObjectNode();
         itemProperties.set("value", created);
         return created;
+    }
+
+    private void ensureOperatorNodes(ObjectNode root) {
+        if (root == null) {
+            return;
+        }
+        ObjectNode properties = asObject(root.get("properties"));
+        if (properties == null) {
+            return;
+        }
+
+        // filters[].op
+        ObjectNode filters = asObject(properties.get("filters"));
+        ObjectNode filterItems = asObject(filters == null ? null : filters.get("items"));
+        ObjectNode filterProps = asObject(filterItems == null ? null : filterItems.get("properties"));
+        applyOperatorSchema(filterProps);
+
+        // where/having inline groups
+        applyInlineGroupOperatorSchema(asObject(properties.get("where")));
+        applyInlineGroupOperatorSchema(asObject(properties.get("having")));
+
+        // $defs.filter_group
+        ObjectNode defs = asObject(root.get("$defs"));
+        applyInlineGroupOperatorSchema(asObject(defs == null ? null : defs.get("filter_group")));
+
+        // subquery_filters[].op
+        ObjectNode subqueryFilters = asObject(properties.get("subquery_filters"));
+        ObjectNode subqueryItems = asObject(subqueryFilters == null ? null : subqueryFilters.get("items"));
+        ObjectNode subqueryProps = asObject(subqueryItems == null ? null : subqueryItems.get("properties"));
+        applyOperatorSchema(subqueryProps);
+    }
+
+    private void applyInlineGroupOperatorSchema(ObjectNode filterGroupNode) {
+        ObjectNode properties = asObject(filterGroupNode == null ? null : filterGroupNode.get("properties"));
+        ObjectNode conditions = asObject(properties == null ? null : properties.get("conditions"));
+        ObjectNode conditionItems = asObject(conditions == null ? null : conditions.get("items"));
+        ObjectNode conditionProps = asObject(conditionItems == null ? null : conditionItems.get("properties"));
+        applyOperatorSchema(conditionProps);
+    }
+
+    private void applyOperatorSchema(ObjectNode filterProps) {
+        if (filterProps == null) {
+            return;
+        }
+        ObjectNode opNode = asObject(filterProps.get("op"));
+        if (opNode == null) {
+            opNode = mapper.createObjectNode();
+            filterProps.set("op", opNode);
+        }
+        opNode.removeAll();
+        opNode.put("type", "string");
+        opNode.put("description", "Use known operators whenever possible. If needed, derive a new UPPER_SNAKE_CASE operator.");
+        ArrayNode oneOf = mapper.createArrayNode();
+        ObjectNode knownNode = mapper.createObjectNode();
+        knownNode.put("type", "string");
+        ArrayNode knownEnum = mapper.createArrayNode();
+        for (String operator : supportedFilterOperators()) {
+            knownEnum.add(operator);
+        }
+        knownNode.set("enum", knownEnum);
+        oneOf.add(knownNode);
+        ObjectNode derivedNode = mapper.createObjectNode();
+        derivedNode.put("type", "string");
+        derivedNode.put("pattern", "^[A-Z][A-Z0-9_]{1,63}$");
+        oneOf.add(derivedNode);
+        opNode.set("oneOf", oneOf);
+    }
+
+    private List<String> supportedFilterOperators() {
+        return List.of(
+                "EQ", "NE", "GT", "GTE", "LT", "LTE",
+                "IN", "NOT_IN", "LIKE", "ILIKE",
+                "BETWEEN", "IS_NULL", "IS_NOT_NULL", "WITHIN_LAST"
+        );
+    }
+
+    private String supportedFilterOperatorsUsage() {
+        return "EQ/NE/GT/GTE/LT/LTE for scalar compare; IN/NOT_IN for list values; LIKE/ILIKE for text search; BETWEEN for inclusive ranges; IS_NULL/IS_NOT_NULL for null checks; WITHIN_LAST for relative time windows like 24h.";
     }
 
     private ObjectNode asObject(com.fasterxml.jackson.databind.JsonNode node) {

@@ -36,15 +36,28 @@ Use windows only for ROW_NUMBER ranking when needed.$$::text AS config_value
 Selected entity: {{selected_entity}}
 Selected entity description: {{selected_entity_description}}
 Allowed fields for selected entity: {{selected_entity_fields_json}}
+Allowed values by field (selected entity only): {{selected_entity_allowed_values_json}}
+Supported filter operators: {{supported_filter_operators_json}}
+Operator usage guide: {{supported_filter_operators_usage}}
+Relevant metrics: {{relevant_metrics_json}}
+Matched intent rules (max 2): {{matched_intent_rules_json}}
+Relevant value patterns: {{relevant_value_patterns_json}}
+Relevant relationships: {{relevant_relationships_json}}
+Relevant join hints: {{relevant_join_hints_json}}
+Relevant synonyms: {{relevant_synonyms_json}}
+Relevant rules: {{relevant_rules_json}}
 Allowed entities: {{allowed_entities}}
 Candidate entities: {{candidate_entities_json}}
 Candidate tables: {{candidate_tables_json}}
 Join path: {{join_path_json}}
 Guidance:
-- Prefer where for filters.
-- Use exists when asking has or has not related records.
-- Use subquery_filters for compare with subquery result.
-- Use windows for ranking only.
+- Use ONLY fields from Allowed fields for selected entity.
+- If question field does not belong to selected entity, switch to the correct allowed entity.
+- If a field has allowed_values, only use those values in filters.
+- Do NOT invent field names.
+- Prefer supported operators from "Supported filter operators".
+- If no supported operator fits, you may derive a new operator token in UPPER_SNAKE_CASE and use it in op.
+- For derived/unknown operators, keep value explicit and deterministic; do not emit SQL.
 Context JSON: {{context_json}}$$::text AS config_value
   UNION ALL
   SELECT 3 AS rn, 'SCHEMA_PROMPT'::text AS config_key, $${
