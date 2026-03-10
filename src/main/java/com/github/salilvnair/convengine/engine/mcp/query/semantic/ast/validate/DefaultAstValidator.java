@@ -297,6 +297,13 @@ public class DefaultAstValidator implements AstSemanticValidator {
                     errors.add("operator BETWEEN requires exactly two values");
                 }
             }
+            case WITHIN_LAST -> {
+                if (value == null) {
+                    errors.add("operator WITHIN_LAST requires value");
+                } else if (!isWithinLastValueValid(value)) {
+                    errors.add("operator WITHIN_LAST requires positive amount (examples: 24, '24h', 'last 24 hr', {amount:24,unit:'hour'})");
+                }
+            }
             default -> {
                 if (value == null) {
                     errors.add("operator " + op + " requires value");
@@ -309,6 +316,10 @@ public class DefaultAstValidator implements AstSemanticValidator {
             String type = field == null || field.type() == null ? "" : field.type().toLowerCase(Locale.ROOT);
             if ((op == AstOperator.LIKE || op == AstOperator.ILIKE) && !(type.contains("char") || type.contains("text") || type.contains("string"))) {
                 errors.add("operator " + op + " requires string/text field: " + filter.field());
+            }
+            if (op == AstOperator.WITHIN_LAST
+                    && !(type.contains("time") || type.contains("date") || type.contains("timestamp"))) {
+                errors.add("operator WITHIN_LAST requires date/timestamp field: " + filter.field());
             }
             if (field != null && field.allowedValues() != null && !field.allowedValues().isEmpty()) {
                 if (op == AstOperator.EQ || op == AstOperator.NE) {
@@ -340,6 +351,45 @@ public class DefaultAstValidator implements AstSemanticValidator {
             }
             if (candidate.equalsIgnoreCase(allowed.trim())) {
                 return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isWithinLastValueValid(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue() > 0;
+        }
+        if (value instanceof java.util.Map<?, ?> map) {
+            Object amount = map.get("amount");
+            if (amount == null) {
+                amount = map.get("value");
+            }
+            if (amount == null) {
+                amount = map.get("n");
+            }
+            if (amount == null) {
+                return false;
+            }
+            return isWithinLastValueValid(amount);
+        }
+        if (value instanceof String text) {
+            String normalized = text.trim().toLowerCase(Locale.ROOT)
+                    .replace("within", "")
+                    .replace("last", "")
+                    .replace("_", " ")
+                    .trim();
+            if (normalized.isBlank()) {
+                return false;
+            }
+            String digits = normalized.replaceAll("[^0-9]", "");
+            if (digits.isBlank()) {
+                return false;
+            }
+            try {
+                return Long.parseLong(digits) > 0;
+            } catch (Exception ex) {
+                return false;
             }
         }
         return false;

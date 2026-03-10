@@ -11,6 +11,7 @@ public enum AstOperator {
     NOT_IN,
     LIKE,
     ILIKE,
+    WITHIN_LAST,
     BETWEEN,
     IS_NULL,
     IS_NOT_NULL

@@ -33,7 +33,7 @@ public record AstFilter(
         }
         String[] candidates = {
                 "IS_NOT_NULL", "IS_NULL", "NOT_IN",
-                "BETWEEN", "ILIKE", "LIKE",
+                "WITHIN_LAST", "BETWEEN", "ILIKE", "LIKE",
                 "GTE", "LTE", "GT", "LT",
                 "EQ", "NE", "IN"
         };
@@ -47,6 +47,9 @@ public record AstFilter(
         }
         if (normalized.endsWith("_NULL")) {
             return "IS_NULL";
+        }
+        if ("WITHINLAST".equals(normalized)) {
+            return "WITHIN_LAST";
         }
         return normalized;
     }

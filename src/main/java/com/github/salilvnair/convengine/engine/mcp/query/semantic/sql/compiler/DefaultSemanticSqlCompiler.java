@@ -28,6 +28,7 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.handler.op
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.handler.operator.provider.DefaultComparisonAstOperatorHandler;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.handler.operator.provider.DefaultInAstOperatorHandler;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.handler.operator.provider.DefaultNullCheckAstOperatorHandler;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.handler.operator.provider.DefaultWithinLastAstOperatorHandler;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.handler.window.core.AstWindowFunctionHandlerRegistry;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.handler.window.provider.DefaultRowNumberWindowFunctionHandler;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +59,7 @@ public class DefaultSemanticSqlCompiler implements AstSqlCompiler {
                 new DefaultNullCheckAstOperatorHandler(),
                 new DefaultBetweenAstOperatorHandler(),
                 new DefaultInAstOperatorHandler(),
+                new DefaultWithinLastAstOperatorHandler(),
                 new DefaultComparisonAstOperatorHandler()
         ));
         var windowFunctionRegistry = new AstWindowFunctionHandlerRegistry(List.of(
