@@ -15,6 +15,7 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.core.SemanticQueryRuntimeService;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeAudit;
+import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.repo.AuditRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +43,10 @@ public class SemanticQueryDebugService {
     private final ObjectMapper objectMapper;
 
     public SemanticQueryDebugResponse analyze(SemanticQueryDebugRequest request) {
+        return analyze(request, null);
+    }
+
+    public SemanticQueryDebugResponse analyze(SemanticQueryDebugRequest request, Consumer<Map<String, Object>> eventConsumer) {
         String question = request == null || request.getQuestion() == null ? "" : request.getQuestion().trim();
         if (question.isBlank()) {
             return new SemanticQueryDebugResponse(
@@ -65,6 +71,8 @@ public class SemanticQueryDebugService {
             );
         }
 
+        emit(eventConsumer, "STARTED", "Debug analysis started.", Map.of("question", question));
+
         Map<String, Object> runtime = Map.of();
         EngineContext context = EngineContext.builder()
                 .conversationId(UUID.randomUUID().toString())
@@ -73,66 +81,143 @@ public class SemanticQueryDebugService {
                 .userInputParams(Map.of())
                 .build();
         EngineSession session = engineSessionFactory.open(context);
-        RetrievalResult retrieval = resolveRetriever(session).retrieve(question, session);
-        JoinPathPlan joinPath = resolvePlanner(session).plan(retrieval, session);
-        AstGenerationResult generated = resolveGenerator(session).generate(question, retrieval, joinPath, session);
+        UUID conversationId = session.getConversationId();
+        LlmInvocationContext.set(conversationId, "SEMANTIC_QUERY_DEBUG", "ANALYZE");
 
-        Map<String, Object> retrievalMap = asMap(retrieval);
-        Map<String, Object> ast = asMap(generated == null ? null : generated.ast());
-        List<Map<String, Object>> candidateEntities = asListOfMaps(retrievalMap.get("candidateEntities"));
-        String astRawJson = generated == null ? "" : stringValue(generated.rawJson());
-        String astVersion = generated == null || generated.ast() == null ? "" : stringValue(generated.ast().astVersion());
-
-        String runtimeError = "";
         try {
-            runtime = semanticQueryRuntimeService.plan(question, session);
-        } catch (Exception ex) {
-            runtimeError = ex.getMessage() == null ? "" : ex.getMessage();
+            RetrievalResult retrieval = null;
+            JoinPathPlan joinPath = null;
+            AstGenerationResult generated = null;
+            String runtimeError = "";
+            try {
+                retrieval = resolveRetriever(session).retrieve(question, session);
+                emit(eventConsumer, "RETRIEVAL_DONE", "Entity retrieval completed.", asMap(retrieval));
+            } catch (Exception ex) {
+                runtimeError = messageOrClass(ex);
+                emit(eventConsumer, "RETRIEVAL_ERROR", runtimeError, Map.of());
+            }
+
+            if (retrieval != null) {
+                try {
+                    joinPath = resolvePlanner(session).plan(retrieval, session);
+                    emit(eventConsumer, "JOIN_PATH_DONE", "Join path planned.", asMap(joinPath));
+                } catch (Exception ex) {
+                    runtimeError = appendError(runtimeError, messageOrClass(ex));
+                    emit(eventConsumer, "JOIN_PATH_ERROR", messageOrClass(ex), Map.of());
+                }
+            }
+
+            if (retrieval != null && joinPath != null) {
+                try {
+                    generated = resolveGenerator(session).generate(question, retrieval, joinPath, session);
+                    emit(eventConsumer, "AST_DONE", "AST generated.", Map.of(
+                            "rawJson", generated == null ? "" : stringValue(generated.rawJson()),
+                            "ast", asMap(generated == null ? null : generated.ast())
+                    ));
+                } catch (Exception ex) {
+                    runtimeError = appendError(runtimeError, messageOrClass(ex));
+                    emit(eventConsumer, "AST_ERROR", messageOrClass(ex), Map.of());
+                }
+            }
+
+            Map<String, Object> retrievalMap = asMap(retrieval);
+            Map<String, Object> ast = asMap(generated == null ? null : generated.ast());
+            List<Map<String, Object>> candidateEntities = asListOfMaps(retrievalMap.get("candidateEntities"));
+            String astRawJson = generated == null ? "" : stringValue(generated.rawJson());
+            String astVersion = generated == null || generated.ast() == null ? "" : stringValue(generated.ast().astVersion());
+
+            if (generated != null && generated.ast() != null) {
+                try {
+                    runtime = semanticQueryRuntimeService.plan(question, session);
+                    emit(eventConsumer, "RUNTIME_DONE", "Runtime planning completed.", asMap(runtime));
+                } catch (Exception ex) {
+                    runtimeError = appendError(runtimeError, messageOrClass(ex));
+                    emit(eventConsumer, "RUNTIME_ERROR", messageOrClass(ex), Map.of());
+                }
+            }
+
+            String selectedFromRetrieval = firstName(candidateEntities);
+            String astEntity = stringValue(ast.get("entity"));
+            String selectedEntity = !astEntity.isBlank() ? astEntity : selectedFromRetrieval;
+            boolean astRepaired = generated != null && generated.repaired();
+            String reason = resolveReason(selectedFromRetrieval, astEntity, astRepaired);
+
+            Map<String, Object> analysis = new LinkedHashMap<>();
+            analysis.put("selected_from_retrieval", selectedFromRetrieval);
+            analysis.put("selected_from_ast", astEntity);
+            analysis.put("ast_repaired", astRepaired);
+            analysis.put("candidate_entity_count", candidateEntities.size());
+            analysis.put("retrieval_confidence", retrieval == null ? "" : stringValue(retrieval.confidence()));
+            if (!runtimeError.isBlank()) {
+                analysis.put("runtime_error", runtimeError);
+            }
+
+            Map<String, Object> llmDebug = latestAstLlmPayloads(conversationId);
+            Map<String, Object> llmInput = asMap(llmDebug.get("input"));
+            Map<String, Object> llmOutput = asMap(llmDebug.get("output"));
+            Map<String, Object> llmError = asMap(llmDebug.get("error"));
+
+            SemanticQueryDebugResponse response = new SemanticQueryDebugResponse(
+                    runtimeError.isBlank(),
+                    question,
+                    String.valueOf(conversationId),
+                    selectedEntity,
+                    reason,
+                    candidateEntities,
+                    retrievalMap,
+                    ast,
+                    astVersion,
+                    astRawJson,
+                    stringValue(runtime.get("compiledSql")),
+                    asMap(runtime.get("compiledSqlParams")),
+                    stringValue(runtime.get("summary")),
+                    llmInput,
+                    llmOutput,
+                    llmError,
+                    analysis,
+                    runtimeError.isBlank()
+                            ? "Debug analysis generated."
+                            : "Debug analysis generated (runtime stage error captured)."
+            );
+            emit(eventConsumer, "FINAL", "Debug analysis completed.", asMap(response));
+            return response;
+        } finally {
+            LlmInvocationContext.clear();
         }
+    }
 
-        String selectedFromRetrieval = firstName(candidateEntities);
-        String astEntity = stringValue(ast.get("entity"));
-        String selectedEntity = !astEntity.isBlank() ? astEntity : selectedFromRetrieval;
-        boolean astRepaired = generated != null && generated.repaired();
-        String reason = resolveReason(selectedFromRetrieval, astEntity, astRepaired);
-
-        Map<String, Object> analysis = new LinkedHashMap<>();
-        analysis.put("selected_from_retrieval", selectedFromRetrieval);
-        analysis.put("selected_from_ast", astEntity);
-        analysis.put("ast_repaired", astRepaired);
-        analysis.put("candidate_entity_count", candidateEntities.size());
-        analysis.put("retrieval_confidence", retrieval == null ? "" : stringValue(retrieval.confidence()));
-        if (!runtimeError.isBlank()) {
-            analysis.put("runtime_error", runtimeError);
+    private void emit(Consumer<Map<String, Object>> eventConsumer,
+                      String stage,
+                      String message,
+                      Map<String, Object> payload) {
+        if (eventConsumer == null) {
+            return;
         }
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("stage", stage);
+        event.put("message", message);
+        event.put("payload", payload == null ? Map.of() : payload);
+        eventConsumer.accept(event);
+    }
 
-        Map<String, Object> llmDebug = latestAstLlmPayloads(session.getConversationId());
-        Map<String, Object> llmInput = asMap(llmDebug.get("input"));
-        Map<String, Object> llmOutput = asMap(llmDebug.get("output"));
-        Map<String, Object> llmError = asMap(llmDebug.get("error"));
+    private String messageOrClass(Exception ex) {
+        if (ex == null) {
+            return "";
+        }
+        if (ex.getMessage() != null && !ex.getMessage().isBlank()) {
+            return ex.getMessage();
+        }
+        return ex.getClass().getSimpleName();
+    }
 
-        return new SemanticQueryDebugResponse(
-                true,
-                question,
-                String.valueOf(session.getConversationId()),
-                selectedEntity,
-                reason,
-                candidateEntities,
-                retrievalMap,
-                ast,
-                astVersion,
-                astRawJson,
-                stringValue(runtime.get("compiledSql")),
-                asMap(runtime.get("compiledSqlParams")),
-                stringValue(runtime.get("summary")),
-                llmInput,
-                llmOutput,
-                llmError,
-                analysis,
-                runtimeError.isBlank()
-                        ? "Debug analysis generated."
-                        : "Debug analysis generated (runtime stage error captured)."
-        );
+    private String appendError(String existing, String next) {
+        if (next == null || next.isBlank()) {
+            return existing == null ? "" : existing;
+        }
+        if (existing == null || existing.isBlank()) {
+            return next;
+        }
+        return existing + " | " + next;
     }
 
     private Map<String, Object> latestAstLlmPayloads(UUID conversationId) {

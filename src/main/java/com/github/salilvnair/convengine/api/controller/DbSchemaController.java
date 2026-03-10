@@ -20,6 +20,7 @@ import com.github.salilvnair.convengine.cache.DbSchemaAgentService;
 import com.github.salilvnair.convengine.cache.DbSchemaInspectorService;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,8 +28,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequiredArgsConstructor
@@ -108,5 +113,37 @@ public class DbSchemaController {
     ) {
         SemanticQueryDebugRequest safeRequest = request == null ? new SemanticQueryDebugRequest() : request;
         return ResponseEntity.ok(semanticQueryDebugService.analyze(safeRequest));
+    }
+
+    @GetMapping(value = "/semantic-query/debug-analyze/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter debugAnalyzeSemanticQuerySse(
+            @RequestParam(name = "question", required = false) String question
+    ) {
+        SseEmitter emitter = new SseEmitter(120_000L);
+        SemanticQueryDebugRequest request = new SemanticQueryDebugRequest();
+        request.setQuestion(question);
+        CompletableFuture.runAsync(() -> {
+            try {
+                SemanticQueryDebugResponse response = semanticQueryDebugService.analyze(request, event -> {
+                    try {
+                        emitter.send(SseEmitter.event().name("DEBUG_EVENT").data(event));
+                    } catch (IOException ignored) {
+                    }
+                });
+                Map<String, Object> donePayload = new LinkedHashMap<>();
+                donePayload.put("response", response);
+                emitter.send(SseEmitter.event().name("DEBUG_COMPLETE").data(donePayload));
+                emitter.complete();
+            } catch (Exception ex) {
+                try {
+                    Map<String, Object> errorPayload = new LinkedHashMap<>();
+                    errorPayload.put("message", ex.getMessage() == null ? "Debug stream failed." : ex.getMessage());
+                    emitter.send(SseEmitter.event().name("DEBUG_ERROR").data(errorPayload));
+                } catch (IOException ignored) {
+                }
+                emitter.completeWithError(ex);
+            }
+        });
+        return emitter;
     }
 }
