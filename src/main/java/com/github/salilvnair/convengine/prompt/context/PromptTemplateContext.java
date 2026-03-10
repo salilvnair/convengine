@@ -65,6 +65,9 @@ public class PromptTemplateContext {
     @PromptVar({ "selected_entity_fields_json", "selectedEntityFieldsJson" })
     private String selectedEntityFieldsJson;
 
+    @PromptVar({ "selected_entity_allowed_values_json", "selectedEntityAllowedValuesJson" })
+    private String selectedEntityAllowedValuesJson;
+
     @PromptVar({ "allowed_entities", "allowedEntities", "allowed_entities_json", "allowedEntitiesJson" })
     private String allowedEntitiesJson;
 

@@ -12,6 +12,9 @@ import com.github.salilvnair.convengine.api.dto.SemanticModelValidateRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticModelValidateResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticQueryDebugRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticQueryDebugResponse;
+import com.github.salilvnair.convengine.api.service.SemanticQueryDebugService;
 import com.github.salilvnair.convengine.api.service.SemanticQueryModelAdminService;
 import com.github.salilvnair.convengine.cache.DbSchemaAgentService;
 import com.github.salilvnair.convengine.cache.DbSchemaInspectorService;
@@ -36,6 +39,7 @@ public class DbSchemaController {
     private final DbSchemaAgentService dbSchemaAgentService;
     private final SemanticEmbeddingService semanticEmbeddingService;
     private final SemanticQueryModelAdminService semanticQueryModelAdminService;
+    private final SemanticQueryDebugService semanticQueryDebugService;
 
     @GetMapping("/inspect-schema")
     public ResponseEntity<Map<String, Object>> inspectSchema(
@@ -96,5 +100,13 @@ public class DbSchemaController {
     @GetMapping("/semantic-query/current-model-yaml")
     public ResponseEntity<Map<String, String>> currentSemanticModelYaml() {
         return ResponseEntity.ok(Map.of("yaml", semanticQueryModelAdminService.currentModelYaml()));
+    }
+
+    @PostMapping("/semantic-query/debug-analyze")
+    public ResponseEntity<SemanticQueryDebugResponse> debugAnalyzeSemanticQuery(
+            @RequestBody(required = false) SemanticQueryDebugRequest request
+    ) {
+        SemanticQueryDebugRequest safeRequest = request == null ? new SemanticQueryDebugRequest() : request;
+        return ResponseEntity.ok(semanticQueryDebugService.analyze(safeRequest));
     }
 }

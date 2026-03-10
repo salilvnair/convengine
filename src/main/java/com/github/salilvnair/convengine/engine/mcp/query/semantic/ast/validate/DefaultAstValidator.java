@@ -310,6 +310,38 @@ public class DefaultAstValidator implements AstSemanticValidator {
             if ((op == AstOperator.LIKE || op == AstOperator.ILIKE) && !(type.contains("char") || type.contains("text") || type.contains("string"))) {
                 errors.add("operator " + op + " requires string/text field: " + filter.field());
             }
+            if (field != null && field.allowedValues() != null && !field.allowedValues().isEmpty()) {
+                if (op == AstOperator.EQ || op == AstOperator.NE) {
+                    if (!isAllowedFilterValue(value, field.allowedValues())) {
+                        errors.add("value not in allowed_values for field " + filter.field() + ": " + value);
+                    }
+                } else if (op == AstOperator.IN || op == AstOperator.NOT_IN) {
+                    if (value instanceof List<?> list) {
+                        for (Object item : list) {
+                            if (!isAllowedFilterValue(item, field.allowedValues())) {
+                                errors.add("value not in allowed_values for field " + filter.field() + ": " + item);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private boolean isAllowedFilterValue(Object value, List<String> allowedValues) {
+        if (value == null || allowedValues == null || allowedValues.isEmpty()) {
+            return value == null;
+        }
+        String candidate = String.valueOf(value).trim();
+        for (String allowed : allowedValues) {
+            if (allowed == null) {
+                continue;
+            }
+            if (candidate.equalsIgnoreCase(allowed.trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 }

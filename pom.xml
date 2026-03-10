@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.salilvnair</groupId>
     <artifactId>convengine</artifactId>
-    <version>2.0.12</version>
+    <version>2.0.11</version>
     <name>ConversationEngine Framework</name>
     <description>ConvEngine is a deterministic, database-configured conversational engine designed for enterprise workflows.</description>
     <url>https://github.com/salilvnair/convengine</url>
@@ -53,6 +53,8 @@
         <version.api-processor>1.0.5</version.api-processor>
         <version.json-path>2.9.0</version.json-path>
         <version.spring-boot>4.0.1</version.spring-boot>
+        <version.lombok>1.18.28</version.lombok>
+        <version.jgrapht>1.5.2</version.jgrapht>
     </properties>
 
     <dependencyManagement>
@@ -172,7 +174,7 @@
         <dependency>
             <groupId>org.jgrapht</groupId>
             <artifactId>jgrapht-core</artifactId>
-            <version>1.5.2</version>
+            <version>${version.jgrapht}</version>
         </dependency>
 
         <dependency>

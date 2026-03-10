@@ -18,8 +18,11 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.Seman
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.normalize.AstNormalizer;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticEntity;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticField;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticIntentRule;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticRelationship;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.retrieval.core.RetrievalResult;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
@@ -78,6 +81,14 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 Selected entity: {{selected_entity}}
                 Selected entity description: {{selected_entity_description}}
                 Allowed fields for selected entity: {{selected_entity_fields_json}}
+                Allowed values by field (selected entity only): {{selected_entity_allowed_values_json}}
+                Relevant metrics: {{relevant_metrics_json}}
+                Matched intent rules (max 2): {{matched_intent_rules_json}}
+                Relevant value patterns: {{relevant_value_patterns_json}}
+                Relevant relationships: {{relevant_relationships_json}}
+                Relevant join hints: {{relevant_join_hints_json}}
+                Relevant synonyms: {{relevant_synonyms_json}}
+                Relevant rules: {{relevant_rules_json}}
                 Allowed entities: {{allowed_entities}}
                 Candidate entities: {{candidate_entities_json}}
                 Candidate tables: {{candidate_tables_json}}
@@ -85,6 +96,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 Guidance:
                 - Use ONLY fields from Allowed fields for selected entity.
                 - If question field does not belong to selected entity, switch to the correct allowed entity.
+                - If a field has allowed_values, only use those values in filters.
                 - Do NOT invent field names.
                 Context JSON: {{context_json}}
                 """
@@ -199,6 +211,29 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         String selectedEntityFieldsJson = selectedEntityModel == null
                 ? "[]"
                 : JsonUtil.toJson(selectedEntityModel.fields().keySet());
+        String selectedEntityAllowedValuesJson = selectedEntityModel == null
+                ? "{}"
+                : JsonUtil.toJson(buildSelectedEntityAllowedValues(selectedEntityModel));
+        List<String> entityTables = entityTables(selectedEntityModel);
+        String relevantMetricsJson = JsonUtil.toJson(buildRelevantMetrics(question, model, entityTables));
+        String matchedIntentRulesJson = JsonUtil.toJson(resolveMatchedIntentRules(question, model, 2));
+        String relevantValuePatternsJson = JsonUtil.toJson(buildRelevantValuePatterns(model, selectedEntityModel));
+        String relevantRelationshipsJson = JsonUtil.toJson(buildRelevantRelationships(model, entityTables));
+        String relevantJoinHintsJson = JsonUtil.toJson(buildRelevantJoinHints(model, entityTables));
+        String relevantSynonymsJson = JsonUtil.toJson(buildRelevantSynonyms(question, model));
+        String relevantRulesJson = JsonUtil.toJson(buildRelevantRules(model, entityTables));
+
+        Map<String, Object> promptExtra = new LinkedHashMap<>();
+        if (session != null && session.promptTemplateVars() != null) {
+            promptExtra.putAll(session.promptTemplateVars());
+        }
+        promptExtra.put("relevant_metrics_json", relevantMetricsJson);
+        promptExtra.put("matched_intent_rules_json", matchedIntentRulesJson);
+        promptExtra.put("relevant_value_patterns_json", relevantValuePatternsJson);
+        promptExtra.put("relevant_relationships_json", relevantRelationshipsJson);
+        promptExtra.put("relevant_join_hints_json", relevantJoinHintsJson);
+        promptExtra.put("relevant_synonyms_json", relevantSynonymsJson);
+        promptExtra.put("relevant_rules_json", relevantRulesJson);
 
         PromptTemplateContext promptContext = PromptTemplateContext.builder()
                 .templateName("SemanticAstGeneration")
@@ -214,12 +249,13 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 .selectedEntity(selectedEntity == null ? "" : selectedEntity)
                 .selectedEntityDescription(selectedEntityDescription == null ? "" : selectedEntityDescription)
                 .selectedEntityFieldsJson(selectedEntityFieldsJson)
+                .selectedEntityAllowedValuesJson(selectedEntityAllowedValuesJson)
                 .allowedEntitiesJson(JsonUtil.toJson(model.entities().keySet()))
                 .candidateEntitiesJson(JsonUtil.toJson(retrieval == null ? List.of() : retrieval.candidateEntities()))
                 .candidateTablesJson(JsonUtil.toJson(retrieval == null ? List.of() : retrieval.candidateTables()))
                 .joinPathJson(JsonUtil.toJson(joinPathPlan))
                 .session(session)
-                .extra(session == null ? Map.of() : session.promptTemplateVars())
+                .extra(promptExtra)
                 .build();
         promptContext.setContext(ctxJson);
 
@@ -263,6 +299,274 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             publishLlmEvent(ConvEngineAuditStage.AST_ERROR.name(), session, true, llmErrorPayload);
             throw ex;
         }
+    }
+
+    private Map<String, List<String>> buildSelectedEntityAllowedValues(SemanticEntity selectedEntityModel) {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        if (selectedEntityModel == null || selectedEntityModel.fields() == null) {
+            return out;
+        }
+        for (Map.Entry<String, SemanticField> entry : selectedEntityModel.fields().entrySet()) {
+            String fieldName = entry.getKey();
+            SemanticField field = entry.getValue();
+            if (fieldName == null || fieldName.isBlank()) {
+                continue;
+            }
+            if (field != null && field.allowedValues() != null && !field.allowedValues().isEmpty()) {
+                out.put(fieldName, field.allowedValues());
+            }
+        }
+        return out;
+    }
+
+    private List<String> entityTables(SemanticEntity entity) {
+        if (entity == null || entity.tables() == null) {
+            return List.of();
+        }
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        if (entity.tables().primary() != null && !entity.tables().primary().isBlank()) {
+            out.add(entity.tables().primary());
+        }
+        if (entity.tables().related() != null) {
+            for (String t : entity.tables().related()) {
+                if (t != null && !t.isBlank()) {
+                    out.add(t);
+                }
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private List<Map<String, Object>> buildRelevantMetrics(String question, SemanticModel model, List<String> entityTables) {
+        if (model == null || model.metrics() == null || model.metrics().isEmpty()) {
+            return List.of();
+        }
+        Set<String> tokens = tokenize(question);
+        List<Map<String, Object>> out = new ArrayList<>();
+        model.metrics().forEach((name, metric) -> {
+            if (name == null || name.isBlank() || metric == null) {
+                return;
+            }
+            String desc = metric.description() == null ? "" : metric.description();
+            String sql = metric.sql() == null ? "" : metric.sql();
+            boolean tableMatch = entityTables.stream().anyMatch(t -> !t.isBlank() && sql.toLowerCase().contains(t.toLowerCase()));
+            boolean tokenMatch = tokenize(name + " " + desc).stream().anyMatch(tokens::contains);
+            if (tableMatch || tokenMatch) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("name", name);
+                row.put("description", desc);
+                out.add(row);
+            }
+        });
+        if (out.isEmpty()) {
+            model.metrics().forEach((name, metric) -> {
+                if (out.size() < 3 && name != null && metric != null) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("name", name);
+                    row.put("description", metric.description() == null ? "" : metric.description());
+                    out.add(row);
+                }
+            });
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> resolveMatchedIntentRules(String question, SemanticModel model, int maxRules) {
+        if (question == null || question.isBlank() || model == null || model.intentRules() == null || model.intentRules().isEmpty()) {
+            return List.of();
+        }
+        String q = question.toLowerCase();
+        List<Map<String, Object>> matches = new ArrayList<>();
+        model.intentRules().forEach((ruleName, rule) -> {
+            if (rule == null) {
+                return;
+            }
+            if (!containsAll(q, rule.mustContain())) {
+                return;
+            }
+            int score = matchScore(q, rule.matchAny());
+            if (score <= 0) {
+                return;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("name", ruleName);
+            row.put("description", rule.description());
+            row.put("force_entity", rule.forceEntity());
+            row.put("force_mode", rule.forceMode());
+            row.put("force_select", rule.forceSelect());
+            row.put("_score", score);
+            matches.add(row);
+        });
+        matches.sort((a, b) -> Integer.compare(((Number) b.get("_score")).intValue(), ((Number) a.get("_score")).intValue()));
+        List<Map<String, Object>> limited = matches;
+        if (matches.size() > maxRules) {
+            limited = new ArrayList<>(matches.subList(0, maxRules));
+        }
+        for (Map<String, Object> row : limited) {
+            row.remove("_score");
+        }
+        return limited;
+    }
+
+    private List<Map<String, Object>> buildRelevantValuePatterns(SemanticModel model, SemanticEntity selectedEntity) {
+        if (model == null || model.valuePatterns() == null || model.valuePatterns().isEmpty()
+                || selectedEntity == null || selectedEntity.fields() == null) {
+            return List.of();
+        }
+        Set<String> fieldNames = selectedEntity.fields().keySet();
+        List<Map<String, Object>> out = new ArrayList<>();
+        model.valuePatterns().forEach(vp -> {
+            if (vp == null) {
+                return;
+            }
+            boolean related = fieldNames.contains(vp.fromField()) || fieldNames.contains(vp.toField());
+            if (!related) {
+                return;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("from_field", vp.fromField());
+            row.put("to_field", vp.toField());
+            row.put("value_starts_with", vp.valueStartsWith());
+            out.add(row);
+        });
+        return out;
+    }
+
+    private List<Map<String, Object>> buildRelevantRelationships(SemanticModel model, List<String> entityTables) {
+        if (model == null || model.relationships() == null || model.relationships().isEmpty() || entityTables == null || entityTables.isEmpty()) {
+            return List.of();
+        }
+        Set<String> tableSet = new LinkedHashSet<>(entityTables);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (SemanticRelationship rel : model.relationships()) {
+            if (rel == null || rel.from() == null || rel.to() == null) {
+                continue;
+            }
+            String fromTable = rel.from().table();
+            String toTable = rel.to().table();
+            if (!tableSet.contains(fromTable) && !tableSet.contains(toTable)) {
+                continue;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("name", rel.name());
+            row.put("type", rel.type());
+            Map<String, Object> from = new LinkedHashMap<>();
+            from.put("table", fromTable);
+            from.put("column", rel.from().column());
+            Map<String, Object> to = new LinkedHashMap<>();
+            to.put("table", toTable);
+            to.put("column", rel.to().column());
+            row.put("from", from);
+            row.put("to", to);
+            out.add(row);
+        }
+        return out;
+    }
+
+    private Map<String, List<String>> buildRelevantJoinHints(SemanticModel model, List<String> entityTables) {
+        if (model == null || model.joinHints() == null || model.joinHints().isEmpty() || entityTables == null || entityTables.isEmpty()) {
+            return Map.of();
+        }
+        Set<String> tableSet = new LinkedHashSet<>(entityTables);
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        model.joinHints().forEach((table, hint) -> {
+            if (table == null || hint == null || hint.commonlyJoinedWith() == null) {
+                return;
+            }
+            if (!tableSet.contains(table)) {
+                return;
+            }
+            List<String> filtered = hint.commonlyJoinedWith().stream()
+                    .filter(t -> t != null && !t.isBlank())
+                    .limit(8)
+                    .toList();
+            if (!filtered.isEmpty()) {
+                out.put(table, filtered);
+            }
+        });
+        return out;
+    }
+
+    private Map<String, List<String>> buildRelevantSynonyms(String question, SemanticModel model) {
+        if (question == null || question.isBlank() || model == null || model.synonyms() == null || model.synonyms().isEmpty()) {
+            return Map.of();
+        }
+        Set<String> tokens = tokenize(question);
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        model.synonyms().forEach((key, values) -> {
+            if (key == null || values == null || values.isEmpty()) {
+                return;
+            }
+            boolean matched = tokens.contains(key.toLowerCase())
+                    || values.stream().filter(v -> v != null).map(String::toLowerCase).anyMatch(tokens::contains);
+            if (matched) {
+                out.put(key, values);
+            }
+        });
+        return out;
+    }
+
+    private Map<String, Object> buildRelevantRules(SemanticModel model, List<String> entityTables) {
+        if (model == null || model.rules() == null) {
+            return Map.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (model.rules().maxResultLimit() != null) {
+            out.put("max_result_limit", model.rules().maxResultLimit());
+        }
+        if (model.rules().denyOperations() != null && !model.rules().denyOperations().isEmpty()) {
+            out.put("deny_operations", model.rules().denyOperations());
+        }
+        if (model.rules().allowedTables() != null && !model.rules().allowedTables().isEmpty()) {
+            Set<String> set = entityTables == null ? Set.of() : new LinkedHashSet<>(entityTables);
+            List<String> filtered = model.rules().allowedTables().stream()
+                    .filter(t -> set.isEmpty() || set.contains(t))
+                    .toList();
+            out.put("allowed_tables", filtered.isEmpty() ? model.rules().allowedTables().stream().limit(10).toList() : filtered);
+        }
+        return out;
+    }
+
+    private boolean containsAll(String questionLower, List<String> requiredTokens) {
+        if (requiredTokens == null || requiredTokens.isEmpty()) {
+            return true;
+        }
+        for (String token : requiredTokens) {
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            if (!questionLower.contains(token.toLowerCase())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private int matchScore(String questionLower, List<String> matchAny) {
+        if (matchAny == null || matchAny.isEmpty()) {
+            return 0;
+        }
+        int score = 0;
+        for (String token : matchAny) {
+            if (token != null && !token.isBlank() && questionLower.contains(token.toLowerCase())) {
+                score++;
+            }
+        }
+        return score;
+    }
+
+    private Set<String> tokenize(String input) {
+        if (input == null || input.isBlank()) {
+            return Set.of();
+        }
+        String[] raw = input.toLowerCase().split("[^a-z0-9_]+");
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (String token : raw) {
+            if (!token.isBlank()) {
+                out.add(token);
+            }
+        }
+        return out;
     }
 
     private RepairSuggestion inferRepairTarget(SemanticQueryAstV1 ast, String selectedEntity, SemanticModel model) {
