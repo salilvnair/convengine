@@ -553,7 +553,7 @@ intent_rules:
       - failureReason
 
   billbank_gap_details:
-    description: force billbank-gap "details" asks into request+order detail mode with deterministic missing-linkage filter
+    description: force billbank-gap "details" asks into request+order detail mode with deterministic missing-billbank linkage filter
     match_any:
       - billbank gap
       - billbank gaps
@@ -577,8 +577,15 @@ intent_rules:
       - teamNotes
     enforce_where:
       - field: disconnectId
-        op: IS_NULL
+        op: IS_NOT_NULL
         value: null
+    enforce_exists:
+      - entity: BillingRecord
+        not_exists: true
+        where:
+          - field: disconnectId
+            op: EQ
+            value: $disconnectId
 
 rules:
   allowed_tables:

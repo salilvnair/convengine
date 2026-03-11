@@ -23,6 +23,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -98,6 +99,7 @@ public class DefaultAstValidator implements AstSemanticValidator {
 
             validateFilterGroup(errors, ast.where(), fieldNames, entity.fields(), knownMetrics, false);
             validateFilterGroup(errors, ast.having(), fieldNames, entity.fields(), knownMetrics, true);
+            validateNullCorrelatedExistsContradictions(errors, ast.where(), ast.existsBlocks());
 
             if (!ast.metrics().isEmpty() && !ast.projections().isEmpty() && ast.groupBy().isEmpty()) {
                 errors.add("non-grouped selected field with metrics is not allowed");
@@ -141,6 +143,81 @@ public class DefaultAstValidator implements AstSemanticValidator {
             }
             throw ex;
         }
+    }
+
+    private void validateNullCorrelatedExistsContradictions(List<String> errors,
+                                                            CanonicalFilterGroup where,
+                                                            List<CanonicalExistsBlock> existsBlocks) {
+        if (where == null || existsBlocks == null || existsBlocks.isEmpty()) {
+            return;
+        }
+        Set<String> nullConstrainedFields = collectNullConstrainedFields(where);
+        if (nullConstrainedFields.isEmpty()) {
+            return;
+        }
+        for (CanonicalExistsBlock block : existsBlocks) {
+            if (block == null || block.where() == null) {
+                continue;
+            }
+            if (referencesNullConstrainedField(block.where(), nullConstrainedFields)) {
+                errors.add("exists block contains correlated comparison on null-constrained outer field");
+            }
+        }
+    }
+
+    private Set<String> collectNullConstrainedFields(CanonicalFilterGroup group) {
+        Set<String> out = new LinkedHashSet<>();
+        collectNullConstrainedFields(group, out);
+        return out;
+    }
+
+    private void collectNullConstrainedFields(CanonicalFilterGroup group, Set<String> out) {
+        if (group == null) {
+            return;
+        }
+        if (group.conditions() != null) {
+            for (CanonicalFilter filter : group.conditions()) {
+                if (filter == null || filter.field() == null || filter.field().isBlank()) {
+                    continue;
+                }
+                if (filter.operator() == AstOperator.IS_NULL) {
+                    out.add(filter.field());
+                }
+            }
+        }
+        if (group.groups() != null) {
+            for (CanonicalFilterGroup child : group.groups()) {
+                collectNullConstrainedFields(child, out);
+            }
+        }
+    }
+
+    private boolean referencesNullConstrainedField(CanonicalFilterGroup group, Set<String> nullConstrainedFields) {
+        if (group == null || nullConstrainedFields == null || nullConstrainedFields.isEmpty()) {
+            return false;
+        }
+        if (group.conditions() != null) {
+            for (CanonicalFilter filter : group.conditions()) {
+                if (filter == null || !(filter.value() instanceof String valueRef)) {
+                    continue;
+                }
+                if (!valueRef.startsWith("$") || valueRef.length() <= 1) {
+                    continue;
+                }
+                String refField = valueRef.substring(1);
+                if (nullConstrainedFields.contains(refField)) {
+                    return true;
+                }
+            }
+        }
+        if (group.groups() != null) {
+            for (CanonicalFilterGroup child : group.groups()) {
+                if (referencesNullConstrainedField(child, nullConstrainedFields)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void validateExistsBlocks(List<String> errors, List<CanonicalExistsBlock> existsBlocks, SemanticModel model) {

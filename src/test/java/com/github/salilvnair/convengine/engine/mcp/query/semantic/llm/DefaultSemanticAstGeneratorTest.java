@@ -153,6 +153,17 @@ class DefaultSemanticAstGeneratorTest {
         assertEquals(Boolean.TRUE, meta.get("llmInvoked"));
         assertEquals(Boolean.TRUE, meta.get("astParsed"));
         assertEquals(Boolean.TRUE, meta.get("astPrepared"));
+
+        ArgumentCaptor<Map<String, Object>> inputCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService, atLeastOnce()).audit(eq("AST_INPUT"), eq(session.getConversationId()), inputCaptor.capture());
+        Map<String, Object> inputPayload = inputCaptor.getValue();
+        assertTrue(inputPayload.containsKey("relevant_metrics"));
+        assertTrue(inputPayload.containsKey("matched_intent_rules"));
+        assertTrue(inputPayload.containsKey("relevant_value_patterns"));
+        assertTrue(inputPayload.containsKey("relevant_relationships"));
+        assertTrue(inputPayload.containsKey("relevant_join_hints"));
+        assertTrue(inputPayload.containsKey("relevant_synonyms"));
+        assertTrue(inputPayload.containsKey("relevant_rules"));
     }
 
     @Test

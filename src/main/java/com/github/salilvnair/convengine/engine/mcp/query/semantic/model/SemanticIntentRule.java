@@ -13,6 +13,7 @@ public record SemanticIntentRule(
         @JsonProperty("force_mode_even_with_metrics") Boolean forceModeEvenWithMetrics,
         @JsonProperty("force_select") List<String> forceSelect,
         @JsonProperty("enforce_where") List<SemanticIntentFilter> enforceWhere,
+        @JsonProperty("enforce_exists") List<SemanticIntentExists> enforceExists,
         @JsonProperty("field_remaps") List<SemanticIntentFieldRemap> fieldRemaps
 ) {
     public SemanticIntentRule {
@@ -20,6 +21,7 @@ public record SemanticIntentRule(
         mustContain = mustContain == null ? List.of() : List.copyOf(mustContain);
         forceSelect = forceSelect == null ? List.of() : List.copyOf(forceSelect);
         enforceWhere = enforceWhere == null ? List.of() : List.copyOf(enforceWhere);
+        enforceExists = enforceExists == null ? List.of() : List.copyOf(enforceExists);
         fieldRemaps = fieldRemaps == null ? List.of() : List.copyOf(fieldRemaps);
     }
 }

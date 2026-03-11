@@ -33,6 +33,12 @@ public class ConvEngineMcpConfig {
         private KnowledgeGraph knowledgeGraph = new KnowledgeGraph();
         private Semantic semantic = new Semantic();
         private String sqlGuardrailTable = "ce_mcp_sql_guardrail";
+        /**
+         * Optional schema-introspection allow-list.
+         * Supports exact table names (e.g. ce_config) and wildcard patterns (e.g. ce_*).
+         * When set, only matching tables are introspected.
+         */
+        private List<String> introspectTables = new ArrayList<>();
 
         public Knowledge semanticCatalogConfig() {
             return semanticCatalog == null ? new Knowledge() : semanticCatalog;

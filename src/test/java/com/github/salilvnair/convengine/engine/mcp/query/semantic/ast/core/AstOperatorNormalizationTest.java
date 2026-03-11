@@ -12,6 +12,8 @@ class AstOperatorNormalizationTest {
         assertEquals(AstOperator.GTE, new AstFilter("x", "SUM_GTE", 1).operatorEnum());
         assertEquals(AstOperator.NOT_IN, new AstFilter("x", "COUNT_NOT_IN", java.util.List.of("a")).operatorEnum());
         assertEquals(AstOperator.IS_NOT_NULL, new AstFilter("x", "COUNT_NOTNULL", null).operatorEnum());
+        assertEquals(AstOperator.WITHIN_LAST, new AstFilter("x", "within last", "24h").operatorEnum());
+        assertEquals(AstOperator.WITHIN_LAST, new AstFilter("x", "SUM_WITHIN_LAST", "24h").operatorEnum());
     }
 
     @Test
@@ -21,4 +23,3 @@ class AstOperatorNormalizationTest {
         assertEquals(AstOperator.IS_NULL, new AstSubqueryFilter("x", "MAX_NULL", subquery).operatorEnum());
     }
 }
-

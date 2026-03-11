@@ -220,13 +220,21 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 ? "{}"
                 : JsonUtil.toJson(buildSelectedEntityAllowedValues(selectedEntityModel));
         List<String> entityTables = entityTables(selectedEntityModel);
-        String relevantMetricsJson = JsonUtil.toJson(buildRelevantMetrics(question, model, entityTables));
-        String matchedIntentRulesJson = JsonUtil.toJson(resolveMatchedIntentRules(question, model, 2));
-        String relevantValuePatternsJson = JsonUtil.toJson(buildRelevantValuePatterns(model, selectedEntityModel));
-        String relevantRelationshipsJson = JsonUtil.toJson(buildRelevantRelationships(model, entityTables));
-        String relevantJoinHintsJson = JsonUtil.toJson(buildRelevantJoinHints(model, entityTables));
-        String relevantSynonymsJson = JsonUtil.toJson(buildRelevantSynonyms(question, model));
-        String relevantRulesJson = JsonUtil.toJson(buildRelevantRules(model, entityTables));
+        List<Map<String, Object>> relevantMetrics = buildRelevantMetrics(question, model, entityTables);
+        List<Map<String, Object>> matchedIntentRules = resolveMatchedIntentRules(question, model, 2);
+        List<Map<String, Object>> relevantValuePatterns = buildRelevantValuePatterns(model, selectedEntityModel);
+        List<Map<String, Object>> relevantRelationships = buildRelevantRelationships(model, entityTables);
+        Map<String, List<String>> relevantJoinHints = buildRelevantJoinHints(model, entityTables);
+        Map<String, List<String>> relevantSynonyms = buildRelevantSynonyms(question, model);
+        Map<String, Object> relevantRules = buildRelevantRules(model, entityTables);
+
+        String relevantMetricsJson = JsonUtil.toJson(relevantMetrics);
+        String matchedIntentRulesJson = JsonUtil.toJson(matchedIntentRules);
+        String relevantValuePatternsJson = JsonUtil.toJson(relevantValuePatterns);
+        String relevantRelationshipsJson = JsonUtil.toJson(relevantRelationships);
+        String relevantJoinHintsJson = JsonUtil.toJson(relevantJoinHints);
+        String relevantSynonymsJson = JsonUtil.toJson(relevantSynonyms);
+        String relevantRulesJson = JsonUtil.toJson(relevantRules);
         String supportedFilterOperatorsJson = JsonUtil.toJson(supportedFilterOperators());
         String supportedFilterOperatorsUsage = supportedFilterOperatorsUsage();
 
@@ -277,11 +285,18 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         String llmPrompt = systemPrompt + "\n\n" + userPrompt;
         Map<String, Object> llmInputPayload = new LinkedHashMap<>();
         llmInputPayload.put("attempt", attempt);
-        llmInputPayload.put("systemPrompt", abbreviate(systemPrompt, 800));
-        llmInputPayload.put("userPrompt", abbreviate(userPrompt, 1400));
-        llmInputPayload.put("hint", abbreviate(llmPrompt, 500));
-        llmInputPayload.put("jsonSchemaPreview", abbreviate(jsonSchema, 500));
-        llmInputPayload.put("contextPreview", abbreviate(ctxJson, 1200));
+        llmInputPayload.put("systemPrompt", systemPrompt);
+        llmInputPayload.put("userPrompt", userPrompt);
+        llmInputPayload.put("hint", llmPrompt);
+        llmInputPayload.put("jsonSchemaPreview", jsonSchema);
+        llmInputPayload.put("contextPreview", ctxJson);
+        llmInputPayload.put("relevant_metrics", relevantMetrics);
+        llmInputPayload.put("matched_intent_rules", matchedIntentRules);
+        llmInputPayload.put("relevant_value_patterns", relevantValuePatterns);
+        llmInputPayload.put("relevant_relationships", relevantRelationships);
+        llmInputPayload.put("relevant_join_hints", relevantJoinHints);
+        llmInputPayload.put("relevant_synonyms", relevantSynonyms);
+        llmInputPayload.put("relevant_rules", relevantRules);
         llmInputPayload.put("_meta", meta(question, selectedEntity, false, false, false));
         publishLlmEvent(ConvEngineAuditStage.AST_INPUT.name(), session, false, llmInputPayload);
 
@@ -292,7 +307,7 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
 
             Map<String, Object> llmOutputPayload = new LinkedHashMap<>();
             llmOutputPayload.put("attempt", attempt);
-            llmOutputPayload.put("rawJsonPreview", abbreviate(raw, 1200));
+            llmOutputPayload.put("rawJsonPreview", raw);
             llmOutputPayload.put("entity", ast == null ? null : ast.entity());
             llmOutputPayload.put("selectCount", ast == null || ast.select() == null ? 0 : ast.select().size());
             llmOutputPayload.put("filterCount", ast == null || ast.filters() == null ? 0 : ast.filters().size());
@@ -1393,21 +1408,10 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         }
         opNode.removeAll();
         opNode.put("type", "string");
-        opNode.put("description", "Use known operators whenever possible. If needed, derive a new UPPER_SNAKE_CASE operator.");
-        ArrayNode oneOf = mapper.createArrayNode();
-        ObjectNode knownNode = mapper.createObjectNode();
-        knownNode.put("type", "string");
-        ArrayNode knownEnum = mapper.createArrayNode();
-        for (String operator : supportedFilterOperators()) {
-            knownEnum.add(operator);
-        }
-        knownNode.set("enum", knownEnum);
-        oneOf.add(knownNode);
-        ObjectNode derivedNode = mapper.createObjectNode();
-        derivedNode.put("type", "string");
-        derivedNode.put("pattern", "^[A-Z][A-Z0-9_]{1,63}$");
-        oneOf.add(derivedNode);
-        opNode.set("oneOf", oneOf);
+        opNode.put("description",
+                "Known operators: " + String.join(", ", supportedFilterOperators()) +
+                        ". If needed, derive a new UPPER_SNAKE_CASE operator.");
+        opNode.put("pattern", "^[A-Z][A-Z0-9_]{1,63}$");
     }
 
     private List<String> supportedFilterOperators() {

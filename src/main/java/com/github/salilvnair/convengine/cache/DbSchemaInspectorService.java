@@ -1,6 +1,8 @@
 package com.github.salilvnair.convengine.cache;
 
+import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.config.ConvEngineSchemaConfig;
+import com.github.salilvnair.convengine.util.TableIntrospectionMatcher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,6 +13,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 @Service
@@ -20,26 +23,45 @@ public class DbSchemaInspectorService {
 
     private final JdbcTemplate jdbcTemplate;
     private final ConvEngineSchemaConfig schemaConfig;
+    private final ConvEngineMcpConfig mcpConfig;
 
     public Map<String, Object> inspect(String schemaName, String tablePrefix) {
+        return inspect(schemaName, tablePrefix, "REGEX");
+    }
+
+    public Map<String, Object> inspect(String schemaName, String tableFilter, String matchMode) {
         long startedAt = System.currentTimeMillis();
         String requestedSchema = (schemaName == null || schemaName.isBlank())
                 ? requireActiveSchema()
                 : schemaName.trim();
         String schema = resolveSchemaName(requestedSchema);
-        String prefix = (tablePrefix == null) ? "" : tablePrefix.trim();
-        String likePattern = prefix + "%";
+        String filter = (tableFilter == null) ? "" : tableFilter.trim();
+        String mode = (matchMode == null || matchMode.isBlank()) ? "REGEX" : matchMode.trim().toUpperCase(Locale.ROOT);
+        List<String> introspectPatterns = TableIntrospectionMatcher.normalizePatterns(
+                mcpConfig.getDb() == null ? List.of() : mcpConfig.getDb().getIntrospectTables()
+        );
 
         long t0 = System.currentTimeMillis();
-        List<Map<String, Object>> tables = jdbcTemplate.queryForList("""
+        List<Map<String, Object>> allSchemaTables = jdbcTemplate.queryForList("""
                 SELECT t.table_name
                 FROM information_schema.tables t
                 WHERE t.table_schema = ?
                   AND t.table_type IN ('BASE TABLE', 'VIEW', 'FOREIGN TABLE')
-                  AND t.table_name LIKE ?
                 ORDER BY t.table_name
-                """, schema, likePattern);
+                """, schema);
         long tableQueryMs = System.currentTimeMillis() - t0;
+
+        List<Map<String, Object>> tables = new ArrayList<>();
+        for (Map<String, Object> row : allSchemaTables) {
+            String tableName = String.valueOf(row.get("table_name"));
+            if (!TableIntrospectionMatcher.matches(tableName, introspectPatterns)) {
+                continue;
+            }
+            if (!TableIntrospectionMatcher.matchesQuery(tableName, filter, mode)) {
+                continue;
+            }
+            tables.add(row);
+        }
 
         List<String> tableNames = tables.stream()
                 .map(r -> String.valueOf(r.get("table_name")))
@@ -49,8 +71,8 @@ public class DbSchemaInspectorService {
         long zpCount = tableNames.stream().filter(n -> n != null && n.toLowerCase().startsWith("zp_")).count();
         List<String> preview = tableNames.stream().limit(20).collect(Collectors.toList());
         log.info(
-                "DB schema inspect: requestedSchema='{}', resolvedSchema='{}', prefix='{}', tableCount={}, ceCount={}, zpCount={}, preview={}",
-                requestedSchema, schema, prefix, tableNames.size(), ceCount, zpCount, preview
+                "DB schema inspect: requestedSchema='{}', resolvedSchema='{}', filter='{}', mode='{}', introspectPatterns={}, tableCount={}, ceCount={}, zpCount={}, preview={}",
+                requestedSchema, schema, filter, mode, introspectPatterns, tableNames.size(), ceCount, zpCount, preview
         );
 
         List<Map<String, Object>> columns = new ArrayList<>();
@@ -60,6 +82,11 @@ public class DbSchemaInspectorService {
         List<Map<String, Object>> triggers = new ArrayList<>();
 
         if (!tableNames.isEmpty()) {
+            String tableInClause = inClause(tableNames.size());
+            List<Object> paramsWithSchemaAndTables = new ArrayList<>();
+            paramsWithSchemaAndTables.add(schema);
+            paramsWithSchemaAndTables.addAll(tableNames);
+
             t0 = System.currentTimeMillis();
             columns = jdbcTemplate.queryForList("""
                     SELECT
@@ -79,7 +106,7 @@ public class DbSchemaInspectorService {
                        AND tc.table_schema = ku.table_schema
                       WHERE tc.constraint_type = 'PRIMARY KEY'
                         AND tc.table_schema = ?
-                        AND ku.table_name LIKE ?
+                        AND ku.table_name IN (%s)
                     ) pk
                       ON pk.table_name = c.table_name
                      AND pk.column_name = c.column_name
@@ -91,14 +118,15 @@ public class DbSchemaInspectorService {
                        AND tc.table_schema = ku.table_schema
                       WHERE tc.constraint_type = 'FOREIGN KEY'
                         AND tc.table_schema = ?
-                        AND ku.table_name LIKE ?
+                        AND ku.table_name IN (%s)
                     ) fk
                       ON fk.table_name = c.table_name
                      AND fk.column_name = c.column_name
                     WHERE c.table_schema = ?
-                      AND c.table_name LIKE ?
+                      AND c.table_name IN (%s)
                     ORDER BY c.table_name, c.ordinal_position
-                    """, schema, likePattern, schema, likePattern, schema, likePattern);
+                    """.formatted(tableInClause, tableInClause, tableInClause),
+                    buildColumnParams(schema, tableNames).toArray());
             long columnQueryMs = System.currentTimeMillis() - t0;
 
             t0 = System.currentTimeMillis();
@@ -118,9 +146,10 @@ public class DbSchemaInspectorService {
                      AND tc.table_schema = ccu.table_schema
                     WHERE tc.constraint_type = 'FOREIGN KEY'
                       AND tc.table_schema = ?
-                      AND (tc.table_name LIKE ? OR ccu.table_name LIKE ?)
+                      AND (tc.table_name IN (%s) OR ccu.table_name IN (%s))
                     ORDER BY tc.table_name, tc.constraint_name
-                    """, schema, likePattern, likePattern);
+                    """.formatted(tableInClause, tableInClause),
+                    buildJoinParams(schema, tableNames).toArray());
             long joinQueryMs = System.currentTimeMillis() - t0;
 
             t0 = System.currentTimeMillis();
@@ -131,9 +160,9 @@ public class DbSchemaInspectorService {
                       i.indexdef AS index_def
                     FROM pg_indexes i
                     WHERE i.schemaname = ?
-                      AND i.tablename LIKE ?
+                      AND i.tablename IN (%s)
                     ORDER BY i.tablename, i.indexname
-                    """, schema, likePattern);
+                    """.formatted(tableInClause), paramsWithSchemaAndTables.toArray());
             long indexQueryMs = System.currentTimeMillis() - t0;
 
             t0 = System.currentTimeMillis();
@@ -155,9 +184,9 @@ public class DbSchemaInspectorService {
                       ON n.oid = t.relnamespace
                     WHERE s.relkind = 'S'
                       AND n.nspname = ?
-                      AND t.relname LIKE ?
+                      AND t.relname IN (%s)
                     ORDER BY t.relname, a.attname, s.relname
-                    """, schema, likePattern);
+                    """.formatted(tableInClause), paramsWithSchemaAndTables.toArray());
             long sequenceQueryMs = System.currentTimeMillis() - t0;
 
             t0 = System.currentTimeMillis();
@@ -170,26 +199,28 @@ public class DbSchemaInspectorService {
                       t.action_statement
                     FROM information_schema.triggers t
                     WHERE t.trigger_schema = ?
-                      AND t.event_object_table LIKE ?
+                      AND t.event_object_table IN (%s)
                     ORDER BY t.event_object_table, t.trigger_name
-                    """, schema, likePattern);
+                    """.formatted(tableInClause), paramsWithSchemaAndTables.toArray());
             long triggerQueryMs = System.currentTimeMillis() - t0;
 
             log.info(
-                    "DB schema inspect timings: schema='{}', prefix='{}', tables={}, tableQueryMs={}, columnQueryMs={}, joinQueryMs={}, indexQueryMs={}, sequenceQueryMs={}, triggerQueryMs={}, totalMs={}",
-                    schema, prefix, tableNames.size(), tableQueryMs, columnQueryMs, joinQueryMs, indexQueryMs, sequenceQueryMs,
+                    "DB schema inspect timings: schema='{}', filter='{}', mode='{}', tables={}, tableQueryMs={}, columnQueryMs={}, joinQueryMs={}, indexQueryMs={}, sequenceQueryMs={}, triggerQueryMs={}, totalMs={}",
+                    schema, filter, mode, tableNames.size(), tableQueryMs, columnQueryMs, joinQueryMs, indexQueryMs, sequenceQueryMs,
                     triggerQueryMs, System.currentTimeMillis() - startedAt
             );
         } else {
             log.info(
-                    "DB schema inspect timings: schema='{}', prefix='{}', tables=0, tableQueryMs={}, totalMs={}",
-                    schema, prefix, tableQueryMs, System.currentTimeMillis() - startedAt
+                    "DB schema inspect timings: schema='{}', filter='{}', mode='{}', tables=0, tableQueryMs={}, totalMs={}",
+                    schema, filter, mode, tableQueryMs, System.currentTimeMillis() - startedAt
             );
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("schema", schema);
-        out.put("prefix", prefix);
+        out.put("prefix", filter);
+        out.put("matchMode", mode);
+        out.put("introspectTables", introspectPatterns);
         out.put("tableCount", tableNames.size());
         out.put("tables", tables);
         out.put("columns", columns);
@@ -198,6 +229,32 @@ public class DbSchemaInspectorService {
         out.put("sequences", sequences);
         out.put("triggers", triggers);
         return out;
+    }
+
+    private List<Object> buildColumnParams(String schema, List<String> tableNames) {
+        List<Object> params = new ArrayList<>();
+        params.add(schema);
+        params.addAll(tableNames);
+        params.add(schema);
+        params.addAll(tableNames);
+        params.add(schema);
+        params.addAll(tableNames);
+        return params;
+    }
+
+    private List<Object> buildJoinParams(String schema, List<String> tableNames) {
+        List<Object> params = new ArrayList<>();
+        params.add(schema);
+        params.addAll(tableNames);
+        params.addAll(tableNames);
+        return params;
+    }
+
+    private String inClause(int count) {
+        if (count <= 0) {
+            return "''";
+        }
+        return String.join(", ", Collections.nCopies(count, "?"));
     }
 
     private String requireActiveSchema() {

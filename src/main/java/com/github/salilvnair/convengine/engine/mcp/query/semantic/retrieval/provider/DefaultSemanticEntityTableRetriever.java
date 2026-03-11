@@ -143,8 +143,16 @@ public class DefaultSemanticEntityTableRetriever implements SemanticEntityTableR
             double total = rc.getDeterministicBlendWeight() * clamp01(deterministic)
                     + rc.getVectorBlendWeight() * clamp01(vector)
                     + FEEDBACK_VECTOR_ENTITY_WEIGHT * clamp01(feedbackBoost);
+            Map<String, Double> signalScores = new LinkedHashMap<>();
+            signalScores.put("synonym", round(synonym));
+            signalScores.put("field", round(fields));
+            signalScores.put("idPattern", round(idPattern));
+            signalScores.put("lexical", round(lexical));
+            signalScores.put("fieldOwnership", round(fieldOwnership));
+            signalScores.put("feedbackBoost", round(feedbackBoost));
+
             CandidateEntity candidate = new CandidateEntity(entityName, round(total), round(deterministic), round(vector),
-                    reasons(synonym, fields, idPattern, lexical, fieldOwnership, vector, feedbackBoost));
+                    reasons(synonym, fields, idPattern, lexical, fieldOwnership, vector, feedbackBoost), signalScores);
             scoredEntities.add(candidate);
 
             if (total >= rc.getMinEntityScore()) {

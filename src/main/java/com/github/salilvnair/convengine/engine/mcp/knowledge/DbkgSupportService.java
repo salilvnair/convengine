@@ -54,6 +54,10 @@ public class DbkgSupportService {
         return mcpConfig.getDb().getKnowledgeGraph();
     }
 
+    public ConvEngineMcpConfig mcpConfig() {
+        return mcpConfig;
+    }
+
     public String extractQuestion(Map<String, Object> args, EngineSession session) {
         if (args != null) {
             for (String key : DbkgConstants.QUESTION_ARG_KEYS) {

@@ -4,6 +4,7 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.*;
 
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticEntity;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticField;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticIntentExists;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticIntentFieldRemap;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticIntentFilter;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticIntentRule;
@@ -138,7 +139,7 @@ public class DefaultAstNormalizer implements AstNormalizer {
                     ast.distinct(),
                     ast.joinHints()
             );
-            normalized = applyIntentRule(normalized, entity, metricNames, rule);
+            normalized = applyIntentRule(normalized, model, entity, metricNames, rule);
             assertNormalizationDidNotDropCriticalIntent(ast, normalized, targetEntity);
             for (AstNormalizeInterceptor interceptor : interceptors) {
                 if (interceptor != null && interceptor.supports(session)) {
@@ -397,6 +398,7 @@ public class DefaultAstNormalizer implements AstNormalizer {
     }
 
     private SemanticQueryAstV1 applyIntentRule(SemanticQueryAstV1 ast,
+                                               SemanticModel model,
                                                SemanticEntity entity,
                                                Set<String> metricNames,
                                                SemanticIntentRule rule) {
@@ -450,6 +452,17 @@ public class DefaultAstNormalizer implements AstNormalizer {
                 filters = appendFlatFilters(filters, injected);
             }
         }
+        List<AstExistsBlock> existsBlocks = ast.existsBlocks() == null ? List.of() : ast.existsBlocks();
+        if (rule != null && rule.enforceExists() != null && !rule.enforceExists().isEmpty() && model != null
+                && model.entities() != null && !model.entities().isEmpty()) {
+            List<AstExistsBlock> injectedExists = rule.enforceExists().stream()
+                    .map(intentExists -> toAstExistsBlock(intentExists, model))
+                    .filter(Objects::nonNull)
+                    .toList();
+            existsBlocks = appendExistsBlocks(existsBlocks, injectedExists);
+        }
+        Set<String> nullConstrainedFields = collectNullConstrainedFields(where);
+        existsBlocks = pruneExistsBlocksByNullCorrelation(existsBlocks, nullConstrainedFields);
 
         return new SemanticQueryAstV1(
                 ast.astVersion(),
@@ -459,7 +472,7 @@ public class DefaultAstNormalizer implements AstNormalizer {
                 filters,
                 where,
                 ast.timeRange(),
-                ast.existsBlocks(),
+                existsBlocks,
                 ast.subqueryFilters(),
                 groupBy,
                 metrics,
@@ -471,6 +484,121 @@ public class DefaultAstNormalizer implements AstNormalizer {
                 ast.distinct(),
                 ast.joinHints()
         );
+    }
+
+    private AstExistsBlock toAstExistsBlock(SemanticIntentExists intentExists, SemanticModel model) {
+        if (intentExists == null || intentExists.entity() == null || intentExists.entity().isBlank()
+                || model == null || model.entities() == null) {
+            return null;
+        }
+        SemanticEntity subEntity = model.entities().get(intentExists.entity());
+        if (subEntity == null || subEntity.fields() == null || subEntity.fields().isEmpty()) {
+            return null;
+        }
+        List<AstFilter> conditions = intentExists.where().stream()
+                .filter(Objects::nonNull)
+                .filter(f -> f.field() != null && subEntity.fields().containsKey(f.field()))
+                .map(f -> new AstFilter(f.field(), f.op(), f.value()))
+                .toList();
+        if (conditions.isEmpty()) {
+            return null;
+        }
+        return new AstExistsBlock(
+                intentExists.entity(),
+                new AstFilterGroup("AND", conditions, List.of()),
+                Boolean.TRUE.equals(intentExists.notExists())
+        );
+    }
+
+    private List<AstExistsBlock> appendExistsBlocks(List<AstExistsBlock> base, List<AstExistsBlock> extra) {
+        List<AstExistsBlock> out = new java.util.ArrayList<>(base == null ? List.of() : base);
+        for (AstExistsBlock block : extra) {
+            boolean exists = out.stream().anyMatch(e -> sameExistsBlock(e, block));
+            if (!exists) {
+                out.add(block);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private boolean sameExistsBlock(AstExistsBlock a, AstExistsBlock b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return Objects.equals(a.entity(), b.entity())
+                && Objects.equals(Boolean.TRUE.equals(a.notExists()), Boolean.TRUE.equals(b.notExists()))
+                && Objects.equals(a.where(), b.where());
+    }
+
+    private Set<String> collectNullConstrainedFields(AstFilterGroup group) {
+        Set<String> out = new LinkedHashSet<>();
+        collectNullConstrainedFields(group, out);
+        return out;
+    }
+
+    private void collectNullConstrainedFields(AstFilterGroup group, Set<String> out) {
+        if (group == null) {
+            return;
+        }
+        if (group.conditions() != null) {
+            for (AstFilter filter : group.conditions()) {
+                if (filter == null || filter.field() == null || filter.field().isBlank()) {
+                    continue;
+                }
+                if (filter.operatorEnum() == com.github.salilvnair.convengine.engine.mcp.query.semantic.ast.core.AstOperator.IS_NULL) {
+                    out.add(filter.field());
+                }
+            }
+        }
+        if (group.groups() != null) {
+            for (AstFilterGroup child : group.groups()) {
+                collectNullConstrainedFields(child, out);
+            }
+        }
+    }
+
+    private List<AstExistsBlock> pruneExistsBlocksByNullCorrelation(List<AstExistsBlock> existsBlocks, Set<String> nullFields) {
+        if (existsBlocks == null || existsBlocks.isEmpty() || nullFields == null || nullFields.isEmpty()) {
+            return existsBlocks == null ? List.of() : existsBlocks;
+        }
+        return existsBlocks.stream()
+                .filter(block -> !referencesAnyNullConstrainedOuterField(block, nullFields))
+                .toList();
+    }
+
+    private boolean referencesAnyNullConstrainedOuterField(AstExistsBlock block, Set<String> nullFields) {
+        if (block == null || block.where() == null || nullFields == null || nullFields.isEmpty()) {
+            return false;
+        }
+        return referencesAnyNullConstrainedOuterField(block.where(), nullFields);
+    }
+
+    private boolean referencesAnyNullConstrainedOuterField(AstFilterGroup group, Set<String> nullFields) {
+        if (group == null) {
+            return false;
+        }
+        if (group.conditions() != null) {
+            for (AstFilter filter : group.conditions()) {
+                if (filter == null || !(filter.value() instanceof String valueRef)) {
+                    continue;
+                }
+                if (!valueRef.startsWith("$") || valueRef.length() <= 1) {
+                    continue;
+                }
+                String refField = valueRef.substring(1);
+                if (nullFields.contains(refField)) {
+                    return true;
+                }
+            }
+        }
+        if (group.groups() != null) {
+            for (AstFilterGroup child : group.groups()) {
+                if (referencesAnyNullConstrainedOuterField(child, nullFields)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private List<AstFilter> appendFlatFilters(List<AstFilter> base, List<AstFilter> extra) {

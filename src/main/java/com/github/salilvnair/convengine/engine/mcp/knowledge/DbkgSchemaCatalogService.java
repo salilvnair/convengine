@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp.knowledge;
 
 import lombok.RequiredArgsConstructor;
+import com.github.salilvnair.convengine.util.TableIntrospectionMatcher;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
@@ -33,6 +34,9 @@ public class DbkgSchemaCatalogService {
         List<Map<String, Object>> objects = new ArrayList<>();
         List<Map<String, Object>> columns = new ArrayList<>();
         List<Map<String, Object>> joins = new ArrayList<>();
+        List<String> introspectPatterns = TableIntrospectionMatcher.normalizePatterns(
+                support.mcpConfig().getDb() == null ? List.of() : support.mcpConfig().getDb().getIntrospectTables()
+        );
 
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
@@ -40,59 +44,75 @@ public class DbkgSchemaCatalogService {
             Set<String> included = support.normalizeSchemaNames(support.cfg().getIncludedSchemas());
             Set<String> excluded = support.normalizeSchemaNames(support.cfg().getExcludedSchemas());
             int objectCount = 0;
-
-            try (ResultSet tables = metaData.getTables(catalog, null, "%", new String[]{"TABLE", "VIEW"})) {
-                while (tables.next() && objectCount < Math.max(1, support.cfg().getSchemaObjectLimit())) {
-                    String schemaName = support.safeSchema(tables.getString("TABLE_SCHEM"));
-                    if (!support.isAllowedSchema(schemaName, included, excluded)) {
-                        continue;
-                    }
-                    String tableName = tables.getString("TABLE_NAME");
-                    String tableType = tables.getString("TABLE_TYPE");
-                    Map<String, Object> object = new LinkedHashMap<>();
-                    object.put("objectName", tableName);
-                    object.put("schemaName", schemaName);
-                    object.put("objectType", tableType);
-                    object.put("accessMode", "READ_ONLY");
-                    applyObjectOverlay(object, objectOverlays.get(support.normalizeKey(tableName)));
-                    objects.add(object);
-                    objectCount++;
-
-                    Set<String> primaryKeys = readPrimaryKeys(metaData, catalog, schemaName, tableName);
-                    try (ResultSet cols = metaData.getColumns(catalog, schemaName, tableName, "%")) {
-                        while (cols.next()) {
-                            String columnName = cols.getString("COLUMN_NAME");
-                            Map<String, Object> column = new LinkedHashMap<>();
-                            column.put("objectName", tableName);
-                            column.put("schemaName", schemaName);
-                            column.put("columnName", columnName);
-                            column.put("semanticName", support.toLowerSnake(columnName));
-                            column.put("dataType", cols.getString("TYPE_NAME"));
-                            column.put("nullableFlag", DatabaseMetaData.columnNullable == cols.getInt("NULLABLE"));
-                            column.put("keyType", primaryKeys.contains(columnName.toLowerCase()) ? "PRIMARY" : "NONE");
-                            applyColumnOverlay(column, columnOverlays.get(support.normalizeColumnKey(tableName, columnName)));
-                            columns.add(column);
+            List<String> metadataPatterns = TableIntrospectionMatcher.hasPatterns(introspectPatterns)
+                    ? introspectPatterns.stream().map(TableIntrospectionMatcher::toMetadataPattern).toList()
+                    : List.of("%");
+            Set<String> visited = new LinkedHashSet<>();
+            for (String tablePattern : metadataPatterns) {
+                try (ResultSet tables = metaData.getTables(catalog, null, tablePattern, new String[]{"TABLE", "VIEW"})) {
+                    while (tables.next() && objectCount < Math.max(1, support.cfg().getSchemaObjectLimit())) {
+                        String schemaName = support.safeSchema(tables.getString("TABLE_SCHEM"));
+                        if (!support.isAllowedSchema(schemaName, included, excluded)) {
+                            continue;
                         }
-                    }
+                        String tableName = tables.getString("TABLE_NAME");
+                        if (!TableIntrospectionMatcher.matches(tableName, introspectPatterns)) {
+                            continue;
+                        }
+                        String tableKey = support.normalizeKey(schemaName + "." + tableName);
+                        if (!visited.add(tableKey)) {
+                            continue;
+                        }
+                        String tableType = tables.getString("TABLE_TYPE");
+                        Map<String, Object> object = new LinkedHashMap<>();
+                        object.put("objectName", tableName);
+                        object.put("schemaName", schemaName);
+                        object.put("objectType", tableType);
+                        object.put("accessMode", "READ_ONLY");
+                        applyObjectOverlay(object, objectOverlays.get(support.normalizeKey(tableName)));
+                        objects.add(object);
+                        objectCount++;
 
-                    try (ResultSet imported = metaData.getImportedKeys(catalog, schemaName, tableName)) {
-                        while (imported.next()) {
-                            String pkTable = imported.getString("PKTABLE_NAME");
-                            String fkTable = imported.getString("FKTABLE_NAME");
-                            String pkColumn = imported.getString("PKCOLUMN_NAME");
-                            String fkColumn = imported.getString("FKCOLUMN_NAME");
-                            if (pkTable == null || fkTable == null || pkColumn == null || fkColumn == null) {
-                                continue;
+                        Set<String> primaryKeys = readPrimaryKeys(metaData, catalog, schemaName, tableName);
+                        try (ResultSet cols = metaData.getColumns(catalog, schemaName, tableName, "%")) {
+                            while (cols.next()) {
+                                String columnName = cols.getString("COLUMN_NAME");
+                                Map<String, Object> column = new LinkedHashMap<>();
+                                column.put("objectName", tableName);
+                                column.put("schemaName", schemaName);
+                                column.put("columnName", columnName);
+                                column.put("semanticName", support.toLowerSnake(columnName));
+                                column.put("dataType", cols.getString("TYPE_NAME"));
+                                column.put("nullableFlag", DatabaseMetaData.columnNullable == cols.getInt("NULLABLE"));
+                                column.put("keyType", primaryKeys.contains(columnName.toLowerCase()) ? "PRIMARY" : "NONE");
+                                applyColumnOverlay(column, columnOverlays.get(support.normalizeColumnKey(tableName, columnName)));
+                                columns.add(column);
                             }
-                            Map<String, Object> join = new LinkedHashMap<>();
-                            join.put("joinName", pkTable + "_to_" + fkTable + "_" + fkColumn);
-                            join.put("leftObjectName", pkTable);
-                            join.put("rightObjectName", fkTable);
-                            join.put("joinType", "INNER");
-                            join.put("joinSqlFragment", pkTable + "." + pkColumn + " = " + fkTable + "." + fkColumn);
-                            join.put("businessReason", "Auto-discovered foreign key join via JDBC metadata.");
-                            join.put("confidenceScore", 1.0d);
-                            joins.add(join);
+                        }
+
+                        try (ResultSet imported = metaData.getImportedKeys(catalog, schemaName, tableName)) {
+                            while (imported.next()) {
+                                String pkTable = imported.getString("PKTABLE_NAME");
+                                String fkTable = imported.getString("FKTABLE_NAME");
+                                String pkColumn = imported.getString("PKCOLUMN_NAME");
+                                String fkColumn = imported.getString("FKCOLUMN_NAME");
+                                if (pkTable == null || fkTable == null || pkColumn == null || fkColumn == null) {
+                                    continue;
+                                }
+                                if (!TableIntrospectionMatcher.matches(pkTable, introspectPatterns)
+                                        && !TableIntrospectionMatcher.matches(fkTable, introspectPatterns)) {
+                                    continue;
+                                }
+                                Map<String, Object> join = new LinkedHashMap<>();
+                                join.put("joinName", pkTable + "_to_" + fkTable + "_" + fkColumn);
+                                join.put("leftObjectName", pkTable);
+                                join.put("rightObjectName", fkTable);
+                                join.put("joinType", "INNER");
+                                join.put("joinSqlFragment", pkTable + "." + pkColumn + " = " + fkTable + "." + fkColumn);
+                                join.put("businessReason", "Auto-discovered foreign key join via JDBC metadata.");
+                                join.put("confidenceScore", 1.0d);
+                                joins.add(join);
+                            }
                         }
                     }
                 }
@@ -103,7 +123,9 @@ public class DbkgSchemaCatalogService {
 
         for (Map<String, Object> overlay : objectOverlays.values()) {
             String objectName = support.asText(overlay.get("object_name"));
-            if (objectName.isBlank() || containsObject(objects, objectName)) {
+            if (objectName.isBlank()
+                    || !TableIntrospectionMatcher.matches(objectName, introspectPatterns)
+                    || containsObject(objects, objectName)) {
                 continue;
             }
             Map<String, Object> object = new LinkedHashMap<>();

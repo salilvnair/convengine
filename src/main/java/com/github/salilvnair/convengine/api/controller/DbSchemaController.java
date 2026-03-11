@@ -49,9 +49,10 @@ public class DbSchemaController {
     @GetMapping("/inspect-schema")
     public ResponseEntity<Map<String, Object>> inspectSchema(
             @RequestParam(name = "prefix", required = false) String prefix,
-            @RequestParam(name = "schema", required = false) String schema
+            @RequestParam(name = "schema", required = false) String schema,
+            @RequestParam(name = "matchMode", required = false) String matchMode
     ) {
-        return ResponseEntity.ok(dbSchemaInspectorService.inspect(schema, prefix));
+        return ResponseEntity.ok(dbSchemaInspectorService.inspect(schema, prefix, matchMode));
     }
 
     @PostMapping("/agent")
@@ -117,11 +118,21 @@ public class DbSchemaController {
 
     @GetMapping(value = "/semantic-query/debug-analyze/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter debugAnalyzeSemanticQuerySse(
-            @RequestParam(name = "question", required = false) String question
+            @RequestParam(name = "question", required = false) String question,
+            @RequestParam(name = "includeRetrieval", required = false) Boolean includeRetrieval,
+            @RequestParam(name = "includeJsonPath", required = false) Boolean includeJsonPath,
+            @RequestParam(name = "includeAst", required = false) Boolean includeAst,
+            @RequestParam(name = "includeSqlGeneration", required = false) Boolean includeSqlGeneration,
+            @RequestParam(name = "includeSqlExecution", required = false) Boolean includeSqlExecution
     ) {
         SseEmitter emitter = new SseEmitter(120_000L);
         SemanticQueryDebugRequest request = new SemanticQueryDebugRequest();
         request.setQuestion(question);
+        request.setIncludeRetrieval(includeRetrieval);
+        request.setIncludeJsonPath(includeJsonPath);
+        request.setIncludeAst(includeAst);
+        request.setIncludeSqlGeneration(includeSqlGeneration);
+        request.setIncludeSqlExecution(includeSqlExecution);
         CompletableFuture.runAsync(() -> {
             try {
                 SemanticQueryDebugResponse response = semanticQueryDebugService.analyze(request, event -> {
@@ -141,7 +152,7 @@ public class DbSchemaController {
                     emitter.send(SseEmitter.event().name("DEBUG_ERROR").data(errorPayload));
                 } catch (IOException ignored) {
                 }
-                emitter.completeWithError(ex);
+                emitter.complete();
             }
         });
         return emitter;
