@@ -162,7 +162,9 @@ public class SemanticResolveService {
                 confidence,
                 needsClarification,
                 clarificationQuestion,
-                ambiguities
+                ambiguities,
+                false,
+                null
         );
 
         return new SemanticResolveResponse(meta, plan, unresolved);

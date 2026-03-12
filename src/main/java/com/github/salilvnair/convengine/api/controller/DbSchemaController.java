@@ -13,6 +13,8 @@ import com.github.salilvnair.convengine.api.dto.SemanticModelValidateRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticModelValidateResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticQueryDebugRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticQueryDebugResponse;
 import com.github.salilvnair.convengine.api.service.SemanticQueryDebugService;
@@ -70,6 +72,15 @@ public class DbSchemaController {
         SemanticEmbeddingRebuildRequest safeRequest =
                 request == null ? new SemanticEmbeddingRebuildRequest() : request;
         return ResponseEntity.ok(semanticEmbeddingService.rebuildFromSemanticModel(safeRequest));
+    }
+
+    @PostMapping("/semantic/embeddings/catalog/rebuild")
+    public ResponseEntity<SemanticEmbeddingCatalogRebuildResponse> rebuildSemanticEmbeddingCatalog(
+            @RequestBody(required = false) SemanticEmbeddingCatalogRebuildRequest request
+    ) {
+        SemanticEmbeddingCatalogRebuildRequest safeRequest =
+                request == null ? new SemanticEmbeddingCatalogRebuildRequest() : request;
+        return ResponseEntity.ok(semanticEmbeddingService.rebuildEmbeddingCatalog(safeRequest));
     }
 
     @PostMapping("/semantic-query/generate-model")

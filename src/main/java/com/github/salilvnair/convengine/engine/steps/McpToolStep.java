@@ -348,6 +348,25 @@ public class McpToolStep implements EngineStep {
                     break;
                 }
 
+                String unsupportedMessage = semanticUnsupportedMessageFromObservation(toolCode, rowsJson);
+                if (unsupportedMessage != null && !unsupportedMessage.isBlank()) {
+                    clearPendingClarificationFromContext(session);
+                    writeSemanticUnsupported(session, toolCode, unsupportedMessage);
+                    writeFinalAnswerToContext(session, unsupportedMessage);
+                    finalAnswerDetermined = true;
+                    writeMcpExecutionFlagsToContext(session, true, false, maxLoops);
+                    session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, unsupportedMessage);
+                    session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_ANSWER);
+                    writeLifecycleToContext(session, McpConstants.STATUS_ANSWER, McpConstants.OUTCOME_ANSWERED,
+                            true, false, false, McpConstants.ACTION_ANSWER, toolCode, toolGroup, args, null);
+                    verbosePublisher.publish(session, "McpToolStep", "MCP_FINAL_ANSWER", null, toolCode, false,
+                            mapOf("answer", unsupportedMessage, "reason", "SEMANTIC_UNSUPPORTED"));
+                    audit.audit(ConvEngineAuditStage.MCP_FINAL_ANSWER, session.getConversationId(),
+                            mapOf("answer", unsupportedMessage, "reason", "SEMANTIC_UNSUPPORTED",
+                                    "tool_code", toolCode));
+                    break;
+                }
+
             } catch (Exception e) {
                 Map<String, Object> errorDetails = buildErrorDetails(e);
                 Map<String, Object> toolErrorPayload = mapOf(
@@ -932,6 +951,11 @@ public class McpToolStep implements EngineStep {
         }
         try {
             JsonNode root = mapper.readTree(observationJson);
+            boolean unsupported = root.path("unsupported").asBoolean(false)
+                    || root.path("meta").path("unsupported").asBoolean(false);
+            if (unsupported) {
+                return null;
+            }
             boolean needsClarification = root.path("needsClarification").asBoolean(false)
                     || root.path("meta").path("needsClarification").asBoolean(false);
             if (!needsClarification) {
@@ -942,6 +966,45 @@ public class McpToolStep implements EngineStep {
                 question = root.path("meta").path("clarificationQuestion").asText("");
             }
             return question == null || question.isBlank() ? null : question;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String semanticUnsupportedMessageFromObservation(String toolCode, String observationJson) {
+        if (toolCode == null || toolCode.isBlank() || observationJson == null || observationJson.isBlank()) {
+            return null;
+        }
+        String normalized = normalize(toolCode);
+        if (!normalize(TOOL_DB_SEMANTIC_INTERPRET).equals(normalized)
+                && !normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(normalized)) {
+            return null;
+        }
+        try {
+            JsonNode root = mapper.readTree(observationJson);
+            boolean unsupported = root.path("unsupported").asBoolean(false)
+                    || root.path("meta").path("unsupported").asBoolean(false);
+            if (unsupported) {
+                String message = textAt(root, "unsupportedMessage", "meta.unsupportedMessage");
+                if (message != null && !message.isBlank()) {
+                    return message;
+                }
+            }
+            JsonNode ambiguities = root.path("ambiguities");
+            if (!ambiguities.isArray() || ambiguities.isEmpty()) {
+                ambiguities = root.path("meta").path("ambiguities");
+            }
+            if (!ambiguities.isArray()) {
+                return null;
+            }
+            for (JsonNode item : ambiguities) {
+                String code = item.path("code").asText("");
+                if (code != null && code.toUpperCase(Locale.ROOT).contains("UNSUPPORTED")) {
+                    String msg = item.path("message").asText("");
+                    return msg == null || msg.isBlank() ? "This operation is not supported for current filters." : msg;
+                }
+            }
+            return null;
         } catch (Exception ignored) {
             return null;
         }
@@ -1016,7 +1079,30 @@ public class McpToolStep implements EngineStep {
             clarification.put("sourceTool", toolCode == null ? "" : toolCode);
             clarification.put("signal", "CLARIFICATION_REQUIRED");
             semantic.put("semanticClarificationRequired", true);
+            semantic.put("semanticUnsupported", false);
             semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, true);
+            session.setContextJson(mapper.writeValueAsString(root));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void writeSemanticUnsupported(EngineSession session, String toolCode, String message) {
+        try {
+            ObjectNode root = ensureContextObject(session);
+            ObjectNode mcp = root.withObject(McpConstants.CONTEXT_KEY_MCP);
+            ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
+            ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
+            clarification.put("required", false);
+            clarification.put("resolved", false);
+            clarification.put("reason", "SEMANTIC_UNSUPPORTED");
+            clarification.put("question", "");
+            clarification.put("sourceTool", toolCode == null ? "" : toolCode);
+            clarification.put("signal", "UNSUPPORTED");
+            semantic.put("semanticClarificationRequired", false);
+            semantic.put("semanticUnsupported", true);
+            semantic.put("unsupported", true);
+            semantic.put("unsupportedMessage", message == null ? "" : message);
+            semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, false);
             session.setContextJson(mapper.writeValueAsString(root));
         } catch (Exception ignored) {
         }
@@ -1118,6 +1204,12 @@ public class McpToolStep implements EngineStep {
             }
             boolean needsClarification = boolAt(rootObs, "needsClarification", "meta.needsClarification");
             toolNode.put("needsClarification", needsClarification);
+            boolean unsupported = boolAt(rootObs, "unsupported", "meta.unsupported");
+            toolNode.put("unsupported", unsupported);
+            String unsupportedMessage = textAt(rootObs, "unsupportedMessage", "meta.unsupportedMessage");
+            if (unsupportedMessage != null && !unsupportedMessage.isBlank()) {
+                toolNode.put("unsupportedMessage", unsupportedMessage);
+            }
             String clarificationQuestion = textAt(rootObs, "clarificationQuestion", "meta.clarificationQuestion");
             if (clarificationQuestion != null && !clarificationQuestion.isBlank()) {
                 toolNode.put("clarificationQuestion", clarificationQuestion);
@@ -1139,7 +1231,15 @@ public class McpToolStep implements EngineStep {
                 toolNode.put("ambiguityCount", ambiguities);
             }
 
-            if (needsClarification) {
+            if (unsupported) {
+                semantic.put("semanticClarificationRequired", false);
+                semantic.put("semanticUnsupported", true);
+                semantic.put("unsupported", true);
+                if (unsupportedMessage != null && !unsupportedMessage.isBlank()) {
+                    semantic.put("unsupportedMessage", unsupportedMessage);
+                }
+                semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, false);
+            } else if (needsClarification) {
                 ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
                 clarification.put("required", true);
                 clarification.put("resolved", false);
@@ -1148,8 +1248,10 @@ public class McpToolStep implements EngineStep {
                 clarification.put("sourceTool", toolCode);
                 clarification.put("signal", "CLARIFICATION_REQUIRED");
                 semantic.put("semanticClarificationRequired", true);
+                semantic.put("semanticUnsupported", false);
                 semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, true);
             } else {
+                semantic.put("semanticUnsupported", false);
                 semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, false);
             }
 

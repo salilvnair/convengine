@@ -120,12 +120,13 @@ CREATE TABLE ce_output_schema (
   schema_id INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_code TEXT NOT NULL,
   state_code TEXT NOT NULL,
+  schema_type TEXT NOT NULL DEFAULT 'SCHEMA_JSON',
   json_schema TEXT NOT NULL,
   description TEXT,
   enabled BOOLEAN DEFAULT 1,
   priority INTEGER NOT NULL
 );
-CREATE INDEX idx_ce_output_schema_lookup ON ce_output_schema (intent_code, state_code, enabled, priority);
+CREATE INDEX idx_ce_output_schema_lookup ON ce_output_schema (intent_code, state_code, schema_type, enabled, priority);
 
 CREATE TABLE ce_policy (
   policy_id INTEGER PRIMARY KEY AUTOINCREMENT,

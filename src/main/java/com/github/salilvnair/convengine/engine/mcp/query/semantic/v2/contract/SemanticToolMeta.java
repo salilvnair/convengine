@@ -8,9 +8,15 @@ public record SemanticToolMeta(
         Double confidence,
         Boolean needsClarification,
         String clarificationQuestion,
-        List<SemanticAmbiguity> ambiguities
+        List<SemanticAmbiguity> ambiguities,
+        Boolean unsupported,
+        String unsupportedMessage
 ) {
     public SemanticToolMeta {
         ambiguities = ambiguities == null ? List.of() : List.copyOf(ambiguities);
+        unsupported = Boolean.TRUE.equals(unsupported);
+        if (!unsupported) {
+            unsupportedMessage = null;
+        }
     }
 }

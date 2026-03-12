@@ -41,7 +41,19 @@ public class ConvEngineCacheAnalyzer {
             "ce_mcp_db_tool",
             "ce_mcp_planner",
             "ce_policy",
-            "ce_verbose"
+            "ce_verbose",
+            "ce_semantic_ambiguity_option",
+            "ce_semantic_concept",
+            "ce_semantic_concept_embedding",
+            "ce_semantic_entity_override",
+            "ce_semantic_join_hint",
+            "ce_semantic_join_path",
+            "ce_semantic_mapping",
+            "ce_semantic_query_class",
+            "ce_semantic_relationship_override",
+            "ce_semantic_synonym",
+            "ce_semantic_value_pattern",
+            "ce_user_query_knowledge"
     );
 
     private static final List<String> RUNTIME_CACHES = List.of(
@@ -191,6 +203,18 @@ public class ConvEngineCacheAnalyzer {
         metrics.put("ce_mcp_planner", measure(() -> staticCacheService.getAllMcpPlanners()));
         metrics.put("ce_policy", measure(() -> staticCacheService.getAllPolicies()));
         metrics.put("ce_verbose", measure(() -> staticCacheService.getAllVerboses()));
+        metrics.put("ce_semantic_ambiguity_option", measure(() -> staticCacheService.getAllSemanticAmbiguityOptions()));
+        metrics.put("ce_semantic_concept", measure(() -> staticCacheService.getAllSemanticConcepts()));
+        metrics.put("ce_semantic_concept_embedding", measure(() -> staticCacheService.getAllSemanticEmbeddingCatalog()));
+        metrics.put("ce_semantic_entity_override", measure(() -> staticCacheService.getAllSemanticEntityOverrides()));
+        metrics.put("ce_semantic_join_hint", measure(() -> staticCacheService.getAllSemanticJoinHints()));
+        metrics.put("ce_semantic_join_path", measure(() -> staticCacheService.getAllSemanticJoinPaths()));
+        metrics.put("ce_semantic_mapping", measure(() -> staticCacheService.getAllSemanticMappings()));
+        metrics.put("ce_semantic_query_class", measure(() -> staticCacheService.getAllSemanticQueryClasses()));
+        metrics.put("ce_semantic_relationship_override", measure(() -> staticCacheService.getAllSemanticRelationshipOverrides()));
+        metrics.put("ce_semantic_synonym", measure(() -> staticCacheService.getAllSemanticSynonyms()));
+        metrics.put("ce_semantic_value_pattern", measure(() -> staticCacheService.getAllSemanticValuePatterns()));
+        metrics.put("ce_user_query_knowledge", measure(() -> staticCacheService.getAllUserQueryKnowledge()));
         return metrics;
     }
 

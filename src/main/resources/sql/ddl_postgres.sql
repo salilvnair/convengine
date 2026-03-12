@@ -141,13 +141,14 @@ CREATE TABLE ce_output_schema (
                                   schema_id bigserial NOT NULL,
                                   intent_code text NOT NULL,
                                   state_code text NOT NULL,
+                                  schema_type text DEFAULT 'SCHEMA_JSON' NOT NULL,
                                   json_schema jsonb NOT NULL,
                                   description text NULL,
                                   enabled bool DEFAULT true NULL,
                                   priority int4 NOT NULL,
                                   CONSTRAINT ce_output_schema_pkey PRIMARY KEY (schema_id)
 );
-CREATE INDEX idx_ce_output_schema_lookup ON public.ce_output_schema USING btree (intent_code, state_code, enabled, priority);
+CREATE INDEX idx_ce_output_schema_lookup ON public.ce_output_schema USING btree (intent_code, state_code, schema_type, enabled, priority);
 
 CREATE TABLE ce_policy (
                            policy_id bigserial NOT NULL,

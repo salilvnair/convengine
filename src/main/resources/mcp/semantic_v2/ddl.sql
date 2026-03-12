@@ -87,6 +87,22 @@ CREATE TABLE IF NOT EXISTS ce_semantic_synonym (
 CREATE INDEX IF NOT EXISTS idx_ce_semantic_synonym_lookup
     ON public.ce_semantic_synonym USING btree (enabled, synonym_text, concept_key, priority);
 
+CREATE TABLE IF NOT EXISTS ce_semantic_concept_embedding (
+    id BIGSERIAL PRIMARY KEY,
+    concept_key VARCHAR(255) NOT NULL,
+    source_text TEXT NOT NULL,
+    embedding_text jsonb,
+    embedding_model VARCHAR(255),
+    embedding_version VARCHAR(100),
+    confidence_score NUMERIC(5,4) DEFAULT 1.0000 NOT NULL,
+    enabled BOOLEAN DEFAULT true NOT NULL,
+    priority INTEGER DEFAULT 100 NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    CONSTRAINT uq_ce_semantic_concept_embedding UNIQUE (concept_key, priority)
+);
+CREATE INDEX IF NOT EXISTS idx_ce_semantic_concept_embedding_lookup
+    ON public.ce_semantic_concept_embedding USING btree (enabled, concept_key, priority);
+
 CREATE TABLE IF NOT EXISTS ce_semantic_mapping (
     id BIGSERIAL PRIMARY KEY,
     concept_key VARCHAR(255) NOT NULL,

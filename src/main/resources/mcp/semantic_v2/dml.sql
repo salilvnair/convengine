@@ -1,5 +1,230 @@
 -- Semantic V2 bootstrap data for electricity disconnect flow.
 
+DELETE FROM ce_output_schema
+WHERE intent_code = 'SEMANTIC_QUERY'
+  AND state_code IN ('ANALYZE', 'ANY');
+
+INSERT INTO ce_output_schema (intent_code, state_code, schema_type, json_schema, description, enabled, priority)
+VALUES
+(
+  'SEMANTIC_QUERY',
+  'ANALYZE',
+  'SEMANTIC_INTERPRET',
+  '{
+    "type":"object",
+    "required":["canonicalIntent","confidence","needsClarification","clarificationQuestion","placeholderValue","clarificationResolved","selectedOptionKey","clarificationAnswerText","ambiguities","trace"],
+    "properties":{
+      "canonicalIntent":{
+        "type":"object",
+        "required":["intent","entity","queryClass","filters","timeRange","sort","limit"],
+        "properties":{
+          "intent":{"type":"string"},
+          "entity":{"type":"string"},
+          "queryClass":{"type":"string"},
+          "filters":{
+            "type":"array",
+            "items":{
+              "type":"object",
+              "required":["field","op","value"],
+              "properties":{
+                "field":{"type":"string"},
+                "op":{"type":"string"},
+                "value":{"type":["string","number","boolean","null"]}
+              },
+              "additionalProperties":false
+            }
+          },
+          "timeRange":{
+            "type":"object",
+            "required":["kind","value","timezone","from","to"],
+            "properties":{
+              "kind":{"type":["string","null"]},
+              "value":{"type":["string","null"]},
+              "timezone":{"type":["string","null"]},
+              "from":{"type":["string","null"]},
+              "to":{"type":["string","null"]}
+            },
+            "additionalProperties":false
+          },
+          "sort":{
+            "type":"array",
+            "items":{
+              "type":"object",
+              "required":["field","direction"],
+              "properties":{
+                "field":{"type":"string"},
+                "direction":{"type":"string"}
+              },
+              "additionalProperties":false
+            }
+          },
+          "limit":{"type":["integer","null"]}
+        },
+        "additionalProperties":false
+      },
+      "confidence":{"type":"number"},
+      "needsClarification":{"type":"boolean"},
+      "clarificationQuestion":{"type":["string","null"]},
+      "placeholderValue":{"type":["string","null"]},
+      "clarificationResolved":{"type":"boolean"},
+      "selectedOptionKey":{"type":["string","null"]},
+      "clarificationAnswerText":{"type":["string","null"]},
+      "ambiguities":{
+        "type":"array",
+        "items":{
+          "type":"object",
+          "required":["type","code","message","required","options"],
+          "properties":{
+            "type":{"type":"string"},
+            "code":{"type":"string"},
+            "message":{"type":"string"},
+            "required":{"type":"boolean"},
+            "options":{
+              "type":"array",
+              "items":{
+                "type":"object",
+                "required":["key","label","confidence"],
+                "properties":{
+                  "key":{"type":"string"},
+                  "label":{"type":"string"},
+                  "confidence":{"type":"number"}
+                },
+                "additionalProperties":false
+              }
+            }
+          },
+          "additionalProperties":false
+        }
+      },
+      "trace":{
+        "type":"object",
+        "required":["normalizations","parser","sanitized","question","clarificationThreshold"],
+        "properties":{
+          "normalizations":{"type":"array","items":{"type":"string"}},
+          "parser":{"type":["string","null"]},
+          "sanitized":{"type":["boolean","null"]},
+          "question":{"type":["string","null"]},
+          "clarificationThreshold":{"type":["number","null"]}
+        },
+        "additionalProperties":false
+      }
+    },
+    "additionalProperties":false
+  }',
+  'Output schema for db.semantic.interpret (ANALYZE)',
+  true,
+  10
+),
+(
+  'SEMANTIC_QUERY',
+  'ANY',
+  'SEMANTIC_INTERPRET',
+  '{
+    "type":"object",
+    "required":["canonicalIntent","confidence","needsClarification","clarificationQuestion","placeholderValue","clarificationResolved","selectedOptionKey","clarificationAnswerText","ambiguities","trace"],
+    "properties":{
+      "canonicalIntent":{
+        "type":"object",
+        "required":["intent","entity","queryClass","filters","timeRange","sort","limit"],
+        "properties":{
+          "intent":{"type":"string"},
+          "entity":{"type":"string"},
+          "queryClass":{"type":"string"},
+          "filters":{
+            "type":"array",
+            "items":{
+              "type":"object",
+              "required":["field","op","value"],
+              "properties":{
+                "field":{"type":"string"},
+                "op":{"type":"string"},
+                "value":{"type":["string","number","boolean","null"]}
+              },
+              "additionalProperties":false
+            }
+          },
+          "timeRange":{
+            "type":"object",
+            "required":["kind","value","timezone","from","to"],
+            "properties":{
+              "kind":{"type":["string","null"]},
+              "value":{"type":["string","null"]},
+              "timezone":{"type":["string","null"]},
+              "from":{"type":["string","null"]},
+              "to":{"type":["string","null"]}
+            },
+            "additionalProperties":false
+          },
+          "sort":{
+            "type":"array",
+            "items":{
+              "type":"object",
+              "required":["field","direction"],
+              "properties":{
+                "field":{"type":"string"},
+                "direction":{"type":"string"}
+              },
+              "additionalProperties":false
+            }
+          },
+          "limit":{"type":["integer","null"]}
+        },
+        "additionalProperties":false
+      },
+      "confidence":{"type":"number"},
+      "needsClarification":{"type":"boolean"},
+      "clarificationQuestion":{"type":["string","null"]},
+      "placeholderValue":{"type":["string","null"]},
+      "clarificationResolved":{"type":"boolean"},
+      "selectedOptionKey":{"type":["string","null"]},
+      "clarificationAnswerText":{"type":["string","null"]},
+      "ambiguities":{
+        "type":"array",
+        "items":{
+          "type":"object",
+          "required":["type","code","message","required","options"],
+          "properties":{
+            "type":{"type":"string"},
+            "code":{"type":"string"},
+            "message":{"type":"string"},
+            "required":{"type":"boolean"},
+            "options":{
+              "type":"array",
+              "items":{
+                "type":"object",
+                "required":["key","label","confidence"],
+                "properties":{
+                  "key":{"type":"string"},
+                  "label":{"type":"string"},
+                  "confidence":{"type":"number"}
+                },
+                "additionalProperties":false
+              }
+            }
+          },
+          "additionalProperties":false
+        }
+      },
+      "trace":{
+        "type":"object",
+        "required":["normalizations","parser","sanitized","question","clarificationThreshold"],
+        "properties":{
+          "normalizations":{"type":"array","items":{"type":"string"}},
+          "parser":{"type":["string","null"]},
+          "sanitized":{"type":["boolean","null"]},
+          "question":{"type":["string","null"]},
+          "clarificationThreshold":{"type":["number","null"]}
+        },
+        "additionalProperties":false
+      }
+    },
+    "additionalProperties":false
+  }',
+  'Output schema for db.semantic.interpret (ANY)',
+  true,
+  20
+);
+
 INSERT INTO ce_semantic_join_hint (base_table, join_table, priority, enabled)
 VALUES
   ('zp_disco_request', 'zp_inventory_data', 100, true),
@@ -27,10 +252,52 @@ ON CONFLICT (concept_key) DO NOTHING;
 INSERT INTO ce_semantic_synonym (synonym_text, concept_key, domain_key, confidence_score, enabled, priority)
 VALUES
   ('disconnect electricity', 'DISCONNECT_REQUEST', 'demo_electricity', 1.0, true, 100),
+  ('disconnect request', 'DISCONNECT_REQUEST', 'demo_electricity', 0.99, true, 101),
+  ('customer', 'DISCONNECT_REQUEST', 'demo_electricity', 0.95, true, 102),
+  ('customer name', 'DISCONNECT_REQUEST', 'demo_electricity', 0.95, true, 103),
   ('team1 queue', 'STATUS_TEAM1_QUEUE', 'demo_electricity', 0.95, true, 100),
   ('team2 queue', 'STATUS_TEAM2_QUEUE', 'demo_electricity', 0.95, true, 100),
   ('team2 self assigned', 'STATUS_TEAM2_SELF', 'demo_electricity', 0.95, true, 100),
   ('approve and submit', 'STATUS_APPROVE_SUBMIT', 'demo_electricity', 1.0, true, 100)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO ce_semantic_concept_embedding (
+  concept_key, source_text, embedding_text, embedding_model, embedding_version, confidence_score, enabled, priority
+) SELECT
+  c.concept_key,
+  trim(both ' ' from concat_ws(' ',
+    lower(coalesce(c.description, '')),
+    lower(coalesce(c.tags, '')),
+    lower(coalesce(ss.synonyms, '')),
+    lower(coalesce(mm.entities, '')),
+    lower(coalesce(mm.fields, '')),
+    lower(coalesce(mm.query_classes, ''))
+  )),
+  null,
+  null,
+  null,
+  coalesce(ss.max_confidence, 1.0),
+  true,
+  coalesce(c.priority, 100)
+FROM ce_semantic_concept c
+LEFT JOIN (
+  SELECT concept_key,
+         string_agg(distinct synonym_text, ' ') AS synonyms,
+         max(confidence_score) AS max_confidence
+  FROM ce_semantic_synonym
+  WHERE enabled = true
+  GROUP BY concept_key
+) ss ON ss.concept_key = c.concept_key
+LEFT JOIN (
+  SELECT concept_key,
+         string_agg(distinct entity_key, ' ') AS entities,
+         string_agg(distinct field_key, ' ') AS fields,
+         string_agg(distinct coalesce(query_class_key, ''), ' ') AS query_classes
+  FROM ce_semantic_mapping
+  WHERE enabled = true
+  GROUP BY concept_key
+) mm ON mm.concept_key = c.concept_key
+WHERE c.enabled = true
 ON CONFLICT DO NOTHING;
 
 INSERT INTO ce_semantic_mapping (concept_key, entity_key, field_key, mapped_table, mapped_column, operator_type, value_map_json, query_class_key, enabled, priority)
@@ -113,3 +380,11 @@ INSERT INTO ce_semantic_ambiguity_option (
   ('DISCONNECT_REQUEST', 'AGGREGATE', 'team', 'TEAM_SELF_STATUS', 'Self-assigned status = {{value}}', '{"field":"status","op":"EQ","value":"{{value}}"}'::jsonb, false, 110, true),
   ('DISCONNECT_REQUEST', 'AGGREGATE', 'team', 'ASSIGNED_TEAM', 'Assigned team = {{value}}', '{"field":"assignedTeam","op":"EQ","value":"{{value}}"}'::jsonb, false, 120, true)
 ON CONFLICT DO NOTHING;
+
+-- Ensure semantic interpret prompt includes LLM-driven placeholder resolution.
+UPDATE ce_prompt_template
+SET system_prompt = system_prompt || E'\n- Ambiguity option labels/mapped filters may contain {{value}} placeholder.\n- Infer placeholderValue from user text and return it in JSON.\n- If needsClarification=true, replace {{value}} in clarificationQuestion/options using placeholderValue.',
+    user_prompt = user_prompt || E'\n\nAlso return:\n"placeholderValue": "<inferred token or null>"\n\nWhen ambiguity_options contain {{value}}, use placeholderValue to render user-facing options (do not leave {{value}} unresolved).'
+WHERE intent_code = 'SEMANTIC_QUERY'
+  AND response_type = 'SEMANTIC_INTERPRET'
+  AND enabled = true;

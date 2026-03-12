@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -39,6 +40,8 @@ public class StaticConfigurationCacheService {
     private final PolicyRepository policyRepo;
     private final VerboseRepository verboseRepo;
     private final CeConfigRepository ceConfigRepo;
+    private final UserQueryKnowledgeRepository userQueryKnowledgeRepository;
+    private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
     @Autowired
     private ObjectProvider<StaticConfigurationCacheService> selfProvider;
 
@@ -129,10 +132,83 @@ public class StaticConfigurationCacheService {
         return verboseRepo.findAll();
     }
 
+    @Cacheable("ce_user_query_knowledge")
+    public List<CeUserQueryKnowledge> getAllUserQueryKnowledge() {
+        return userQueryKnowledgeRepository.findAll();
+    }
+
+    @Cacheable("ce_semantic_ambiguity_option")
+    public List<Map<String, Object>> getAllSemanticAmbiguityOptions() {
+        return loadSemanticTable("ce_semantic_ambiguity_option");
+    }
+
+    @Cacheable("ce_semantic_concept")
+    public List<Map<String, Object>> getAllSemanticConcepts() {
+        return loadSemanticTable("ce_semantic_concept");
+    }
+
+    @Cacheable("ce_semantic_concept_embedding")
+    public List<Map<String, Object>> getAllSemanticEmbeddingCatalog() {
+        return loadSemanticTable("ce_semantic_concept_embedding");
+    }
+
+    @Cacheable("ce_semantic_entity_override")
+    public List<Map<String, Object>> getAllSemanticEntityOverrides() {
+        return loadSemanticTable("ce_semantic_entity_override");
+    }
+
+    @Cacheable("ce_semantic_join_hint")
+    public List<Map<String, Object>> getAllSemanticJoinHints() {
+        return loadSemanticTable("ce_semantic_join_hint");
+    }
+
+    @Cacheable("ce_semantic_join_path")
+    public List<Map<String, Object>> getAllSemanticJoinPaths() {
+        return loadSemanticTable("ce_semantic_join_path");
+    }
+
+    @Cacheable("ce_semantic_mapping")
+    public List<Map<String, Object>> getAllSemanticMappings() {
+        return loadSemanticTable("ce_semantic_mapping");
+    }
+
+    @Cacheable("ce_semantic_query_class")
+    public List<Map<String, Object>> getAllSemanticQueryClasses() {
+        return loadSemanticTable("ce_semantic_query_class");
+    }
+
+    @Cacheable("ce_semantic_relationship_override")
+    public List<Map<String, Object>> getAllSemanticRelationshipOverrides() {
+        return loadSemanticTable("ce_semantic_relationship_override");
+    }
+
+    @Cacheable("ce_semantic_synonym")
+    public List<Map<String, Object>> getAllSemanticSynonyms() {
+        return loadSemanticTable("ce_semantic_synonym");
+    }
+
+    @Cacheable("ce_semantic_value_pattern")
+    public List<Map<String, Object>> getAllSemanticValuePatterns() {
+        return loadSemanticTable("ce_semantic_value_pattern");
+    }
+
     // --- Helper Filter Methods ---
 
     private StaticConfigurationCacheService self() {
         return selfProvider.getObject();
+    }
+
+    private List<Map<String, Object>> loadSemanticTable(String tableName) {
+        NamedParameterJdbcTemplate jdbc = jdbcTemplateProvider.getIfAvailable();
+        if (jdbc == null || tableName == null || tableName.isBlank()) {
+            return List.of();
+        }
+        try {
+            return jdbc.queryForList("SELECT * FROM " + tableName, Map.of());
+        } catch (Exception ex) {
+            log.debug("Static semantic cache load skipped for table={} cause={}", tableName, ex.getMessage());
+            return List.of();
+        }
     }
 
     public List<CeConfig> findConfigParams(String type, String configKey) {
@@ -221,6 +297,16 @@ public class StaticConfigurationCacheService {
                 .filter(CeOutputSchema::isEnabled)
                 .filter(s -> s.getIntentCode() != null && s.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(s -> s.getStateCode() != null && s.getStateCode().equalsIgnoreCase(stateCode))
+                .min(Comparator.comparing(CeOutputSchema::getPriority));
+    }
+
+    public Optional<CeOutputSchema> findFirstOutputSchema(String intentCode, String stateCode, String schemaType) {
+        String expected = normalizeSchemaType(schemaType);
+        return self().getAllOutputSchemas().stream()
+                .filter(CeOutputSchema::isEnabled)
+                .filter(s -> s.getIntentCode() != null && s.getIntentCode().equalsIgnoreCase(intentCode))
+                .filter(s -> s.getStateCode() != null && s.getStateCode().equalsIgnoreCase(stateCode))
+                .filter(s -> normalizeSchemaType(s.getSchemaType()).equalsIgnoreCase(expected))
                 .min(Comparator.comparing(CeOutputSchema::getPriority));
     }
 
@@ -500,5 +586,12 @@ public class StaticConfigurationCacheService {
             return ConvEngineValue.ANY;
         }
         return value.trim().toUpperCase();
+    }
+
+    private String normalizeSchemaType(String value) {
+        if (value == null || value.isBlank()) {
+            return "SCHEMA_JSON";
+        }
+        return value.trim().toUpperCase(Locale.ROOT);
     }
 }

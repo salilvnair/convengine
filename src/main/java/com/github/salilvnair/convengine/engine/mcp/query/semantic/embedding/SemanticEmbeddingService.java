@@ -2,6 +2,8 @@ package com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding;
 
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildResponse;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.*;
 import com.github.salilvnair.convengine.entity.CeUserQueryKnowledge;
@@ -114,6 +116,105 @@ public class SemanticEmbeddingService {
             log.debug("user-query embedding index failed. cause={}", ex.getMessage());
             return false;
         }
+    }
+
+    public SemanticEmbeddingCatalogRebuildResponse rebuildEmbeddingCatalog(SemanticEmbeddingCatalogRebuildRequest request) {
+        SemanticEmbeddingCatalogRebuildRequest safeRequest =
+                request == null ? new SemanticEmbeddingCatalogRebuildRequest() : request;
+
+        int limit = safeRequest.getLimit() == null ? 200 : Math.max(1, Math.min(2000, safeRequest.getLimit()));
+        boolean onlyMissing = safeRequest.getOnlyMissing() == null || safeRequest.getOnlyMissing();
+        String queryClassKey = trimToNull(safeRequest.getQueryClassKey());
+        String entityKey = trimToNull(safeRequest.getEntityKey());
+        String embeddingModel = trimToNull(safeRequest.getEmbeddingModel());
+        String embeddingVersion = trimToNull(safeRequest.getEmbeddingVersion());
+
+        StringBuilder sql = new StringBuilder("""
+                SELECT e.id, e.source_text
+                FROM ce_semantic_concept_embedding e
+                WHERE e.enabled = true
+                """);
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (queryClassKey != null) {
+            sql.append("""
+                    AND EXISTS (
+                        SELECT 1
+                        FROM ce_semantic_mapping m
+                        WHERE m.enabled = true
+                          AND UPPER(m.concept_key) = UPPER(e.concept_key)
+                          AND (m.query_class_key IS NULL OR UPPER(m.query_class_key) = UPPER(:queryClassKey))
+                    )
+                    """);
+            params.put("queryClassKey", queryClassKey);
+        }
+        if (entityKey != null) {
+            sql.append("""
+                    AND EXISTS (
+                        SELECT 1
+                        FROM ce_semantic_mapping m
+                        WHERE m.enabled = true
+                          AND UPPER(m.concept_key) = UPPER(e.concept_key)
+                          AND UPPER(m.entity_key) = UPPER(:entityKey)
+                          AND (:queryClassKey IS NULL OR m.query_class_key IS NULL OR UPPER(m.query_class_key) = UPPER(:queryClassKey))
+                    )
+                    """);
+            params.put("entityKey", entityKey);
+        }
+        if (onlyMissing) {
+            sql.append(" AND (e.embedding_text IS NULL OR CAST(e.embedding_text AS text) = 'null' OR CAST(e.embedding_text AS text) = '[]')");
+        }
+        sql.append(" ORDER BY COALESCE(e.priority, 999999), e.id");
+        sql.append(" LIMIT :limit");
+        params.put("limit", limit);
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), params);
+        int indexed = 0;
+        int failed = 0;
+        int skipped = 0;
+
+        for (Map<String, Object> row : rows) {
+            Long id = asLong(row.get("id"));
+            String sourceText = row.get("source_text") == null ? null : String.valueOf(row.get("source_text"));
+            if (id == null || sourceText == null || sourceText.isBlank()) {
+                skipped++;
+                continue;
+            }
+            try {
+                float[] embedding = llmClient.generateEmbedding(null, sourceText);
+                if (embedding == null || embedding.length == 0) {
+                    failed++;
+                    continue;
+                }
+                String embeddingJson = JsonUtil.toJson(toNumberList(embedding));
+                Map<String, Object> updateParams = new LinkedHashMap<>();
+                updateParams.put("id", id);
+                updateParams.put("embeddingJson", embeddingJson);
+                updateParams.put("embeddingModel", embeddingModel);
+                updateParams.put("embeddingVersion", embeddingVersion);
+                jdbcTemplate.update("""
+                        UPDATE ce_semantic_concept_embedding
+                        SET embedding_text = CAST(:embeddingJson AS jsonb),
+                            embedding_model = COALESCE(:embeddingModel, embedding_model),
+                            embedding_version = COALESCE(:embeddingVersion, embedding_version)
+                        WHERE id = :id
+                        """, updateParams);
+                indexed++;
+            } catch (Exception ex) {
+                failed++;
+                log.debug("semantic embedding catalog refresh skip id={} cause={}", id, ex.getMessage());
+            }
+        }
+
+        return SemanticEmbeddingCatalogRebuildResponse.builder()
+                .success(failed == 0 || indexed > 0)
+                .candidateCount(rows.size())
+                .indexedCount(indexed)
+                .failedCount(failed)
+                .skippedCount(skipped)
+                .queryClassKey(queryClassKey)
+                .entityKey(entityKey)
+                .message("Semantic embedding catalog refresh completed.")
+                .build();
     }
 
     private List<EmbeddingDoc> buildModelDocs(SemanticEmbeddingRebuildRequest request) {
@@ -238,6 +339,39 @@ public class SemanticEmbeddingService {
             return "semantic-model:" + db.trim();
         }
         return "semantic-model:default";
+    }
+
+    private Long asLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(value).trim());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private List<Double> toNumberList(float[] values) {
+        if (values == null || values.length == 0) {
+            return List.of();
+        }
+        List<Double> out = new ArrayList<>(values.length);
+        for (float v : values) {
+            out.add((double) v);
+        }
+        return out;
     }
 
     private ConvEngineMcpConfig.Db.Semantic semanticConfig() {

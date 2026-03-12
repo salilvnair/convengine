@@ -42,6 +42,9 @@ public class DbSemanticInterpretToolHandler implements DbToolHandler {
 
         Map<String, Object> context = asMap(safeArgs.get("context"));
         Map<String, Object> hints = asMap(safeArgs.get("hints"));
+        if (context.isEmpty() && session != null) {
+            context = session.contextDict();
+        }
 
         String conversationId = asText(safeArgs.get("conversationId"));
         if ((conversationId == null || conversationId.isBlank()) && session != null && session.getConversationId() != null) {

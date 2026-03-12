@@ -82,7 +82,9 @@ public class SemanticQueryV2Service {
                     Boolean.TRUE.equals(guardrail.allowed()) ? 0.98d : 0.0d,
                     false,
                     null,
-                    List.of()
+                    List.of(),
+                    false,
+                    null
             );
 
             SemanticCompiledSql compiledSql = new SemanticCompiledSql(compiled.sql(), compiled.params());

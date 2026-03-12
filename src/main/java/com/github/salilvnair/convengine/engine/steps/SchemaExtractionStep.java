@@ -234,7 +234,12 @@ public class SchemaExtractionStep implements EngineStep {
 
     private java.util.Optional<CeOutputSchema> resolveSchema(EngineSession session) {
         if (session.getResolvedSchema() != null) {
-            return java.util.Optional.of(session.getResolvedSchema());
+            CeOutputSchema resolved = session.getResolvedSchema();
+            String schemaType = resolved.getSchemaType();
+            if (schemaType == null || schemaType.isBlank() || "SCHEMA_JSON".equalsIgnoreCase(schemaType)) {
+                return java.util.Optional.of(resolved);
+            }
+            return java.util.Optional.empty();
         }
         String intent = session.getIntent();
         String state = session.getState();
@@ -242,8 +247,8 @@ public class SchemaExtractionStep implements EngineStep {
             return java.util.Optional.empty();
         }
         return resolveSchemaByPersistedId(session)
-                .or(() -> staticCacheService.findFirstOutputSchema(intent, state))
-                .or(() -> staticCacheService.findFirstOutputSchema(intent, ConvEngineValue.ANY));
+                .or(() -> staticCacheService.findFirstOutputSchema(intent, state, "SCHEMA_JSON"))
+                .or(() -> staticCacheService.findFirstOutputSchema(intent, ConvEngineValue.ANY, "SCHEMA_JSON"));
     }
 
     private java.util.Optional<CeOutputSchema> resolveSchemaByPersistedId(EngineSession session) {
@@ -252,7 +257,10 @@ public class SchemaExtractionStep implements EngineStep {
         if (schemaId == null) {
             return java.util.Optional.empty();
         }
-        return staticCacheService.findOutputSchemaById(schemaId);
+        return staticCacheService.findOutputSchemaById(schemaId)
+                .filter(s -> s.getSchemaType() == null
+                        || s.getSchemaType().isBlank()
+                        || "SCHEMA_JSON".equalsIgnoreCase(s.getSchemaType()));
     }
 
     private Long toLong(Object value) {

@@ -28,21 +28,21 @@ class SemanticV2ContractDefaultsTest {
 
     @Test
     void toolMetaDefaultsAmbiguitiesToEmptyWhenNull() {
-        SemanticToolMeta meta = new SemanticToolMeta("db.semantic.interpret", "v2", 0.9d, false, null, null);
+        SemanticToolMeta meta = new SemanticToolMeta("db.semantic.interpret", "v2", 0.9d, false, null, null, false, null);
         assertTrue(meta.ambiguities().isEmpty());
     }
 
     @Test
     void resolveAndInterpretResponsesDefaultCollections() {
         SemanticInterpretResponse interpret = new SemanticInterpretResponse(
-                new SemanticToolMeta("db.semantic.interpret", "v2", 0.8d, false, null, null),
+                new SemanticToolMeta("db.semantic.interpret", "v2", 0.8d, false, null, null, false, null),
                 "q",
                 new CanonicalIntent("LIST_REQUESTS", "REQUEST", "LIST_REQUESTS", null, null, null, null),
                 null
         );
 
         SemanticResolveResponse resolve = new SemanticResolveResponse(
-                new SemanticToolMeta("db.semantic.resolve", "v2", 0.8d, false, null, null),
+                new SemanticToolMeta("db.semantic.resolve", "v2", 0.8d, false, null, null, false, null),
                 null,
                 null
         );
