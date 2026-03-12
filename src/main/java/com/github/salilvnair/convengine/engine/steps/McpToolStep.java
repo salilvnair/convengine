@@ -614,9 +614,6 @@ public class McpToolStep implements EngineStep {
         String nextTool = normalize(nextToolCode);
 
         if (normalize(TOOL_DB_SEMANTIC_INTERPRET).equals(lastTool)) {
-            return normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(nextTool);
-        }
-        if (normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(lastTool)) {
             return normalize(TOOL_DB_SEMANTIC_QUERY).equals(nextTool);
         }
         if (normalize(TOOL_DB_SEMANTIC_QUERY).equals(lastTool)) {
@@ -891,23 +888,13 @@ public class McpToolStep implements EngineStep {
         }
         String normalizedTool = normalize(toolCode);
 
-        if (normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(normalizedTool)
+        if (normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalizedTool)
                 && !args.containsKey("canonicalIntent")
                 && !args.containsKey("canonical_intent")) {
             JsonNode node = latestObservationNode(observations, TOOL_DB_SEMANTIC_INTERPRET);
             JsonNode canonicalIntent = node == null ? null : node.path("canonicalIntent");
             if (canonicalIntent != null && canonicalIntent.isObject()) {
                 args.put("canonicalIntent", mapper.convertValue(canonicalIntent, Map.class));
-            }
-        }
-
-        if (normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalizedTool)
-                && !args.containsKey("resolvedPlan")
-                && !args.containsKey("resolved_plan")) {
-            JsonNode node = latestObservationNode(observations, TOOL_DB_SEMANTIC_RESOLVE);
-            JsonNode resolvedPlan = node == null ? null : node.path("resolvedPlan");
-            if (resolvedPlan != null && resolvedPlan.isObject()) {
-                args.put("resolvedPlan", mapper.convertValue(resolvedPlan, Map.class));
             }
         }
 
@@ -946,6 +933,7 @@ public class McpToolStep implements EngineStep {
         }
         String normalized = normalize(toolCode);
         if (!normalize(TOOL_DB_SEMANTIC_INTERPRET).equals(normalized)
+                && !normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalized)
                 && !normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(normalized)) {
             return null;
         }
@@ -977,6 +965,7 @@ public class McpToolStep implements EngineStep {
         }
         String normalized = normalize(toolCode);
         if (!normalize(TOOL_DB_SEMANTIC_INTERPRET).equals(normalized)
+                && !normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalized)
                 && !normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(normalized)) {
             return null;
         }
@@ -1118,7 +1107,7 @@ public class McpToolStep implements EngineStep {
         ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
         ObjectNode pipeline = semantic.withObject(CONTEXT_KEY_SEMANTIC_PIPELINE);
         pipeline.put("enabled", true);
-        pipeline.put("chain", "db.semantic.interpret->db.semantic.resolve->db.semantic.query->postgres.query");
+        pipeline.put("chain", "db.semantic.interpret->db.semantic.query->postgres.query");
         pipeline.put("lastAction", lastAction == null ? "" : lastAction);
         pipeline.put("lastToolCode", lastToolCode == null ? "" : lastToolCode);
         pipeline.put("lastStatus", status == null ? "" : status);

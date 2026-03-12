@@ -7,6 +7,7 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.core.S
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.policy.SemanticSqlPolicyValidator;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureFeedbackService;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.contract.SemanticQueryResponseV2;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.service.SemanticLlmQueryService;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.service.SemanticQueryV2Service;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.audit.AuditService;
@@ -37,7 +38,12 @@ class DbSemanticQueryToolHandlerTest {
                 mock(VerboseMessagePublisher.class),
                 mock(SemanticFailureFeedbackService.class)
         );
-        DbSemanticQueryToolHandler handler = new DbSemanticQueryToolHandler(config, runtimeService, queryV2Service);
+        DbSemanticQueryToolHandler handler = new DbSemanticQueryToolHandler(
+                config,
+                runtimeService,
+                queryV2Service,
+                mock(SemanticLlmQueryService.class)
+        );
 
         Object out = handler.execute(null, Map.of("question", "show requests"), session("show requests"));
 
@@ -49,6 +55,7 @@ class DbSemanticQueryToolHandlerTest {
     @Test
     void usesV2WhenResolvedPlanProvided() {
         ConvEngineMcpConfig config = baseConfig(false);
+        config.getDb().getSemantic().setQueryMode("deterministic");
         StubRuntimeService runtimeService = new StubRuntimeService(config);
         SemanticQueryV2Service queryV2Service = new SemanticQueryV2Service(
                 emptyValidatorProvider(),
@@ -56,7 +63,12 @@ class DbSemanticQueryToolHandlerTest {
                 mock(VerboseMessagePublisher.class),
                 mock(SemanticFailureFeedbackService.class)
         );
-        DbSemanticQueryToolHandler handler = new DbSemanticQueryToolHandler(config, runtimeService, queryV2Service);
+        DbSemanticQueryToolHandler handler = new DbSemanticQueryToolHandler(
+                config,
+                runtimeService,
+                queryV2Service,
+                mock(SemanticLlmQueryService.class)
+        );
 
         Map<String, Object> args = Map.of(
                 "resolvedPlan", Map.of(
@@ -83,6 +95,7 @@ class DbSemanticQueryToolHandlerTest {
     @Test
     void strictModeToggleFromConfigAppliesToV2Path() {
         ConvEngineMcpConfig config = baseConfig(true);
+        config.getDb().getSemantic().setQueryMode("deterministic");
         StubRuntimeService runtimeService = new StubRuntimeService(config);
         SemanticQueryV2Service queryV2Service = new SemanticQueryV2Service(
                 emptyValidatorProvider(),
@@ -90,7 +103,12 @@ class DbSemanticQueryToolHandlerTest {
                 mock(VerboseMessagePublisher.class),
                 mock(SemanticFailureFeedbackService.class)
         );
-        DbSemanticQueryToolHandler handler = new DbSemanticQueryToolHandler(config, runtimeService, queryV2Service);
+        DbSemanticQueryToolHandler handler = new DbSemanticQueryToolHandler(
+                config,
+                runtimeService,
+                queryV2Service,
+                mock(SemanticLlmQueryService.class)
+        );
 
         Map<String, Object> args = Map.of(
                 "resolvedPlan", Map.of(

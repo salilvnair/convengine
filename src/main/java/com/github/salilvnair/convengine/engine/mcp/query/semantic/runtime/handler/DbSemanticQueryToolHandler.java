@@ -4,8 +4,10 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.core.*
 
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.DbToolHandler;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.contract.CanonicalIntent;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.contract.SemanticQueryRequestV2;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.contract.ResolvedSemanticPlan;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.service.SemanticLlmQueryService;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.service.SemanticQueryV2Service;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
@@ -40,6 +42,7 @@ public class DbSemanticQueryToolHandler implements DbToolHandler {
     private final ConvEngineMcpConfig mcpConfig;
     private final SemanticQueryRuntimeService runtimeService;
     private final SemanticQueryV2Service queryV2Service;
+    private final SemanticLlmQueryService llmQueryService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -50,7 +53,13 @@ public class DbSemanticQueryToolHandler implements DbToolHandler {
 
     @Override
     public Object execute(CeMcpTool tool, Map<String, Object> args, EngineSession session) {
-        if (hasResolvedPlan(args)) {
+        boolean deterministicMode = isDeterministicMode();
+        CanonicalIntent canonicalIntent = parseCanonicalIntent(args);
+        if (canonicalIntent != null) {
+            String question = extractQuestion(args, session);
+            return llmQueryService.query(canonicalIntent, question, session);
+        }
+        if (deterministicMode && hasResolvedPlan(args)) {
             SemanticQueryRequestV2 requestV2 = parseV2Request(args, session);
             return queryV2Service.query(requestV2, session);
         }
@@ -66,6 +75,41 @@ public class DbSemanticQueryToolHandler implements DbToolHandler {
             return false;
         }
         return args.containsKey("resolvedPlan") || args.containsKey("resolved_plan");
+    }
+
+    private CanonicalIntent parseCanonicalIntent(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) {
+            return null;
+        }
+        Object value = args.containsKey("canonicalIntent")
+                ? args.get("canonicalIntent")
+                : args.get("canonical_intent");
+        if (value == null) {
+            return null;
+        }
+        try {
+            if (value instanceof CanonicalIntent intent) {
+                return intent;
+            }
+            if (value instanceof Map<?, ?> map) {
+                Map<String, Object> normalized = new LinkedHashMap<>();
+                map.forEach((k, v) -> normalized.put(String.valueOf(k), v));
+                return mapper.convertValue(normalized, CanonicalIntent.class);
+            }
+            String raw = String.valueOf(value).trim();
+            if (raw.startsWith("{") && raw.endsWith("}")) {
+                return mapper.readValue(raw, CanonicalIntent.class);
+            }
+            return null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private boolean isDeterministicMode() {
+        ConvEngineMcpConfig.Db.Semantic cfg = mcpConfig.getDb() == null ? new ConvEngineMcpConfig.Db.Semantic() : mcpConfig.getDb().getSemantic();
+        String mode = cfg == null ? null : cfg.getQueryMode();
+        return mode != null && "deterministic".equalsIgnoreCase(mode.trim());
     }
 
     private SemanticQueryRequestV2 parseV2Request(Map<String, Object> args, EngineSession session) {

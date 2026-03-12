@@ -14,7 +14,7 @@ class McpPlannerSemanticV2ContractTest {
         String source = Files.readString(Path.of(
                 "src/main/java/com/github/salilvnair/convengine/engine/mcp/McpPlanner.java"));
 
-        assertTrue(source.contains("`db.semantic.interpret` -> `db.semantic.resolve` -> `db.semantic.query` -> `postgres.query`"));
+        assertTrue(source.contains("`db.semantic.interpret` -> `db.semantic.query` -> `postgres.query`"));
         assertTrue(source.contains("needsClarification=true"));
         assertTrue(source.contains("clarificationQuestion"));
     }

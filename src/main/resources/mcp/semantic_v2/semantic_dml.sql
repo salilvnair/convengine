@@ -28,7 +28,7 @@ DELETE FROM ce_mcp_tool WHERE tool_code IN (
 INSERT INTO ce_intent (intent_code, description, priority, enabled, display_name, llm_hint)
 VALUES (
   'SEMANTIC_QUERY',
-  'Semantic query pipeline with interpret -> resolve -> query -> postgres execution.',
+  'Semantic query pipeline with interpret -> query -> postgres execution.',
   45,
   true,
   'Semantic Query',
@@ -301,11 +301,11 @@ VALUES
   'SEMANTIC_QUERY',
   'ANALYZE',
   'DERIVED',
-  'You are an MCP planner for semantic querying.\nUse deterministic pipeline: db.semantic.interpret -> db.semantic.resolve -> db.semantic.query -> postgres.query.\nIf interpret/resolve reports needsClarification=true, answer with the clarification question and do not proceed.\nNever skip order. Never invent tool names. Return strict JSON only.\n`action` MUST be exactly CALL_TOOL or ANSWER.\nNever return clarification_required / needs_clarification / clarify.',
+  'You are an MCP planner for semantic querying.\nUse pipeline: db.semantic.interpret -> db.semantic.query -> postgres.query.\nIf interpret/query reports needsClarification=true, answer with the clarification question and do not proceed.\nNever skip order. Never invent tool names. Return strict JSON only.\n`action` MUST be exactly CALL_TOOL or ANSWER.\nNever return clarification_required / needs_clarification / clarify.',
   'User input: {{user_input}}\nStandalone query: {{standalone_query}}\nMCP: {{context.mcp}}\nAvailable tools: {{mcp_tools}}\nExisting observations: {{mcp_observations}}',
   0.00,
   'MCP',
-  '{"pipeline":["db.semantic.interpret","db.semantic.resolve","db.semantic.query","postgres.query"]}',
+  '{"pipeline":["db.semantic.interpret","db.semantic.query","postgres.query"]}',
   true
 );
 
@@ -396,8 +396,8 @@ VALUES
 INSERT INTO ce_mcp_tool (tool_id, tool_code, tool_group, intent_code, state_code, enabled, description)
 VALUES
 (9401, 'db.semantic.interpret', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Interpret user query into canonical business intent.'),
-(9402, 'db.semantic.resolve', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Resolve canonical intent to deterministic DB plan.'),
-(9403, 'db.semantic.query', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Compile resolved plan to SQL payload and guardrails.'),
+(9402, 'db.semantic.resolve', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Legacy resolve tool (not required in default two-agent semantic pipeline).'),
+(9403, 'db.semantic.query', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Agent-2 SQL builder from canonical intent (LLM-first; deterministic optional).'),
 (9404, 'postgres.query', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Execute read-only SQL with parameters.'),
 (9405, 'db.semantic.embed.refresh', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Refresh ce_semantic_concept_embedding vectors.');
 
@@ -407,7 +407,7 @@ VALUES
   5401,
   'SEMANTIC_QUERY',
   'ANALYZE',
-  'You are an MCP planning agent for semantic v2 DB querying.\nUse exact chain:\n1) db.semantic.interpret\n2) db.semantic.resolve\n3) db.semantic.query\n4) postgres.query\nIf interpret/resolve says needsClarification=true, stop and ANSWER with clarificationQuestion.\nDo not skip or reorder tools.\nReturn strict JSON only.\n`action` MUST be exactly CALL_TOOL or ANSWER.\nNever return clarification_required / needs_clarification / clarify.',
+  'You are an MCP planning agent for semantic v2 DB querying.\nUse exact chain:\n1) db.semantic.interpret\n2) db.semantic.query\n3) postgres.query\nIf interpret/query says needsClarification=true, stop and ANSWER with clarificationQuestion.\nDo not skip or reorder tools.\nReturn strict JSON only.\n`action` MUST be exactly CALL_TOOL or ANSWER.\nNever return clarification_required / needs_clarification / clarify.',
   'User input:\n{{user_input}}\n\nStandalone query:\n{{standalone_query}}\n\nMCP:\n{{context.mcp}}\n\nAvailable tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>",\n  "operation_tag":"<POLICY_RESTRICTED_OPERATION_or_null>"\n}\n`action` MUST be exactly CALL_TOOL or ANSWER. No other value is allowed.',
   true,
   now()
@@ -427,7 +427,8 @@ INSERT INTO ce_semantic_join_hint (base_table, join_table, priority, enabled)
 VALUES
   ('zp_disco_request', 'zp_inventory_data', 100, true),
   ('zp_disco_request', 'zp_disco_trans_data', 110, true),
-  ('zp_disco_trans_data', 'zp_action_status', 120, true)
+  ('zp_disco_trans_data', 'zp_action_status', 120, true),
+  ('zp_disco_request', 'zp_disco_request_log', 130, true)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO ce_semantic_value_pattern (from_field, to_field, value_starts_with, priority, enabled)
@@ -440,7 +441,9 @@ ON CONFLICT DO NOTHING;
 INSERT INTO ce_semantic_concept (concept_key, concept_kind, description, tags, enabled, priority)
 VALUES
   ('DISCONNECT_REQUEST', 'ENTITY', 'Enterprise electricity disconnect request', 'disconnect,request,electricity,enterprise', true, 100),
+  ('DISCONNECT_REQUEST_LOG', 'ENTITY', 'Historical disconnect request snapshots for status transition analysis', 'disconnect,request,history,log,status,transition', true, 100),
   ('ACTION_RULE', 'ENTITY', 'Action to status transition rule', 'action,status,transition,rule', true, 100),
+  ('STATUS_TRANSITION', 'INTENT', 'Status transitioned from one value to another', 'status,transition,from,to,history', true, 100),
   ('STATUS_TEAM1_QUEUE', 'STATUS', 'Assigned to Team1 queue', '700,team1 queue', true, 100),
   ('STATUS_TEAM2_QUEUE', 'STATUS', 'Assigned to Team2 queue', '800,team2 queue', true, 100),
   ('STATUS_TEAM2_SELF', 'STATUS', 'Team2 assigned to self', '810,team2 self', true, 100),
@@ -453,6 +456,12 @@ VALUES
   ('disconnect request', 'DISCONNECT_REQUEST', 'demo_electricity', 0.99, true, 101),
   ('customer', 'DISCONNECT_REQUEST', 'demo_electricity', 0.95, true, 102),
   ('customer name', 'DISCONNECT_REQUEST', 'demo_electricity', 0.95, true, 103),
+  ('status transition', 'STATUS_TRANSITION', 'demo_electricity', 1.0, true, 100),
+  ('went from', 'STATUS_TRANSITION', 'demo_electricity', 1.0, true, 101),
+  ('from status', 'STATUS_TRANSITION', 'demo_electricity', 0.98, true, 102),
+  ('to status', 'STATUS_TRANSITION', 'demo_electricity', 0.98, true, 103),
+  ('status changed from', 'STATUS_TRANSITION', 'demo_electricity', 0.98, true, 104),
+  ('status moved from', 'STATUS_TRANSITION', 'demo_electricity', 0.98, true, 105),
   ('team1 queue', 'STATUS_TEAM1_QUEUE', 'demo_electricity', 0.95, true, 100),
   ('team2 queue', 'STATUS_TEAM2_QUEUE', 'demo_electricity', 0.95, true, 100),
   ('team2 self assigned', 'STATUS_TEAM2_SELF', 'demo_electricity', 0.95, true, 100),
@@ -516,6 +525,8 @@ VALUES
   ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'updated_at', 'zp_disco_request', 'updated_at', 'EQ', NULL, 'LIST_REQUESTS', true, 103),
   ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'createdAt', 'zp_disco_request', 'created_at', 'EQ', NULL, 'LIST_REQUESTS', true, 104),
   ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'created_at', 'zp_disco_request', 'created_at', 'EQ', NULL, 'LIST_REQUESTS', true, 105),
+  ('STATUS_TRANSITION', 'DISCONNECT_REQUEST', 'fromStatus', 'zp_disco_request_log', 'status', 'EQ', NULL, 'LIST_REQUESTS', true, 106),
+  ('STATUS_TRANSITION', 'DISCONNECT_REQUEST', 'toStatus', 'zp_disco_request_log', 'status', 'EQ', NULL, 'LIST_REQUESTS', true, 107),
   ('STATUS_TEAM1_QUEUE', 'DISCONNECT_REQUEST', 'status', 'zp_disco_request', 'status', 'EQ', '{"STATUS_TEAM1_QUEUE":[700]}'::jsonb, 'LIST_REQUESTS', true, 100),
   ('STATUS_TEAM2_QUEUE', 'DISCONNECT_REQUEST', 'status', 'zp_disco_request', 'status', 'EQ', '{"STATUS_TEAM2_QUEUE":[800]}'::jsonb, 'LIST_REQUESTS', true, 100),
   ('STATUS_TEAM2_SELF', 'DISCONNECT_TRANS', 'status', 'zp_disco_trans_data', 'status', 'EQ', '{"STATUS_TEAM2_SELF":[810]}'::jsonb, 'LIST_REQUESTS', true, 100),
@@ -526,6 +537,7 @@ INSERT INTO ce_semantic_join_path (left_entity_key, right_entity_key, join_expre
 VALUES
   ('DISCONNECT_REQUEST', 'DISCO_TRANS_DATA', 'zp_disco_request.request_id = zp_disco_trans_data.request_id', 100, 1.0, true),
   ('DISCONNECT_REQUEST', 'INVENTORY_DATA', 'zp_disco_request.request_id = zp_inventory_data.request_id', 110, 1.0, true),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST_LOG', 'zp_disco_request.request_id = zp_disco_request_log.request_id', 115, 1.0, true),
   ('DISCO_TRANS_DATA', 'ACTION_RULE', 'zp_disco_trans_data.action_id = zp_action_status.action_id', 120, 1.0, true)
 ON CONFLICT DO NOTHING;
 
@@ -544,7 +556,7 @@ INSERT INTO ce_semantic_query_class (
   'List enterprise electricity disconnect requests',
   'zp_disco_request',
   '{"queryClass":"LIST_REQUESTS"}'::jsonb,
-  '["requestId","customerId","customerName","feederId","transformerConnectionId","status","actionId","disconnectOrderNo"]'::jsonb,
+  '["requestId","customerId","customerName","feederId","transformerConnectionId","status","actionId","disconnectOrderNo","fromStatus","toStatus"]'::jsonb,
   '["requestId","customerName","customerId","feederId","transformerConnectionId","status","updatedAt"]'::jsonb,
   '["updatedAt DESC"]'::jsonb,
   true,

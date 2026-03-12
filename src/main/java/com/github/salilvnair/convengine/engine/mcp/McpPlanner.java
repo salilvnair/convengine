@@ -64,10 +64,10 @@ public class McpPlanner {
                 - For postgres.query, choose identifiers only if schema observation confirms them.
                 - Keep args minimal.
                 - If user question is ambiguous, return ANSWER with an answer that asks ONE clarifying question.
-                - For semantic v2 flow, use this exact chain when tools are available:
-                  `db.semantic.interpret` -> `db.semantic.resolve` -> `db.semantic.query` -> `postgres.query`
-                - Do not skip steps in the semantic v2 chain.
-                - If `db.semantic.interpret` or `db.semantic.resolve` observation returns
+                - For semantic flow, use this exact chain when tools are available:
+                  `db.semantic.interpret` -> `db.semantic.query` -> `postgres.query`
+                - Do not skip steps in the semantic chain.
+                - If `db.semantic.interpret` or `db.semantic.query` observation returns
                   `needsClarification=true`, STOP tool calls and return ANSWER using `clarificationQuestion`.
                 - `action` MUST be exactly one of: CALL_TOOL or ANSWER.
                 - Never return values like clarification_required / needs_clarification / clarify.
@@ -91,8 +91,8 @@ public class McpPlanner {
             Existing MCP observations (if any):
             {{mcp_observations}}
 
-            If semantic v2 tools are available, follow:
-            `db.semantic.interpret` -> `db.semantic.resolve` -> `db.semantic.query` -> `postgres.query`.
+            If semantic tools are available, follow:
+            `db.semantic.interpret` -> `db.semantic.query` -> `postgres.query`.
             Stop and return ANSWER when `needsClarification=true`.
 
             Return JSON EXACTLY in this schema:
@@ -209,7 +209,8 @@ public class McpPlanner {
 
         try {
             McpPlan parsed = mapper.readValue(out, McpPlan.class);
-            return normalizePlan(parsed);
+            McpPlan normalized = normalizePlan(parsed);
+            return rewriteSemanticPlan(normalized, observations);
         } catch (Exception e) {
             return new McpPlan(McpConstants.ACTION_ANSWER, null, java.util.Map.of(),
                     McpConstants.FALLBACK_PLAN_ERROR, null);
@@ -328,6 +329,80 @@ public class McpPlanner {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private McpPlan rewriteSemanticPlan(McpPlan plan, List<McpObservation> observations) {
+        if (plan == null || !McpConstants.ACTION_CALL_TOOL.equalsIgnoreCase(trimToNull(plan.action()))) {
+            return plan;
+        }
+        String toolCode = trimToNull(plan.tool_code());
+        if (toolCode == null) {
+            return plan;
+        }
+        Map<String, Object> args = plan.args() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(plan.args());
+        if ("db.semantic.resolve".equalsIgnoreCase(toolCode)) {
+            Map<String, Object> canonicalIntent = extractCanonicalIntent(args, observations);
+            if (!canonicalIntent.isEmpty()) {
+                Map<String, Object> rewrittenArgs = new LinkedHashMap<>();
+                rewrittenArgs.put("canonicalIntent", canonicalIntent);
+                Object query = args.get("query");
+                if (query != null && !String.valueOf(query).isBlank()) {
+                    rewrittenArgs.put("query", String.valueOf(query));
+                }
+                return new McpPlan(McpConstants.ACTION_CALL_TOOL, "db.semantic.query", rewrittenArgs, null, plan.operation_tag());
+            }
+        }
+        if ("db.semantic.query".equalsIgnoreCase(toolCode) && !args.containsKey("canonicalIntent") && !args.containsKey("canonical_intent")) {
+            Map<String, Object> canonicalIntent = extractCanonicalIntent(args, observations);
+            if (!canonicalIntent.isEmpty()) {
+                args.put("canonicalIntent", canonicalIntent);
+                args.remove("resolvedPlan");
+                args.remove("resolved_plan");
+                return new McpPlan(McpConstants.ACTION_CALL_TOOL, "db.semantic.query", args, null, plan.operation_tag());
+            }
+        }
+        return plan;
+    }
+
+    private Map<String, Object> extractCanonicalIntent(Map<String, Object> args, List<McpObservation> observations) {
+        Map<String, Object> fromArgs = asMap(args.get("canonicalIntent"));
+        if (!fromArgs.isEmpty()) {
+            return fromArgs;
+        }
+        fromArgs = asMap(args.get("canonical_intent"));
+        if (!fromArgs.isEmpty()) {
+            return fromArgs;
+        }
+        if (observations == null || observations.isEmpty()) {
+            return Map.of();
+        }
+        for (int i = observations.size() - 1; i >= 0; i--) {
+            McpObservation observation = observations.get(i);
+            if (observation == null || observation.toolCode() == null
+                    || !"db.semantic.interpret".equalsIgnoreCase(observation.toolCode())) {
+                continue;
+            }
+            try {
+                JsonNode node = mapper.readTree(observation.json() == null ? "{}" : observation.json());
+                JsonNode canonicalIntent = node.path("canonicalIntent");
+                if (!canonicalIntent.isMissingNode() && canonicalIntent.isObject()) {
+                    return mapper.convertValue(canonicalIntent, new com.fasterxml.jackson.core.type.TypeReference<>() {
+                    });
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return Map.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            map.forEach((k, v) -> out.put(String.valueOf(k), v));
+            return out;
+        }
+        return Map.of();
     }
 
     private PlannerPromptSet resolvePlannerPromptSet(EngineSession session) {

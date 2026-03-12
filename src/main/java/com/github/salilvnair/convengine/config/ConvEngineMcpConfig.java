@@ -135,6 +135,11 @@ public class ConvEngineMcpConfig {
             private boolean enabled = false;
             private String toolCode = "db.semantic.query";
             /**
+             * Controls how db.semantic.query compiles SQL.
+             * Supported values: llm | deterministic
+             */
+            private String queryMode = "llm";
+            /**
              * When true, db.semantic.query v2 path (resolvedPlan input) fails fast
              * on incomplete/invalid resolved plans instead of attempting fallback.
              */
