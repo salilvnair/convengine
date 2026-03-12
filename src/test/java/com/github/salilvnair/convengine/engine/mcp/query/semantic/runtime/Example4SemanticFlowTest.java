@@ -132,7 +132,7 @@ class Example4SemanticFlowTest {
         mcpConfig.getDb().getSemantic().setToolCode("db.semantic.query");
 
         when(stageInterceptorsProvider.getIfAvailable(any())).thenReturn(List.of());
-        when(modelRegistry.getModel()).thenReturn(new SemanticModel(1, "zapper_ops", "example4", Map.of(), List.of(), Map.of(), Map.of(), Map.of()));
+        when(modelRegistry.getModel()).thenReturn(new SemanticModel(1, "demo_ops", "example4", Map.of(), List.of(), Map.of(), Map.of(), Map.of()));
 
         when(plannersProvider.getIfAvailable(any())).thenReturn(List.of(astPlanner));
         when(planningInterceptorsProvider.getIfAvailable(any())).thenReturn(List.of());
@@ -153,9 +153,9 @@ class Example4SemanticFlowTest {
         when(resultSummarizer.supports(any())).thenReturn(true);
 
         when(astPlanner.plan(any(), any())).thenAnswer(inv -> new JoinPathPlan(
-                "zp_request",
-                List.of(new SchemaEdge("zp_request", "account_id", "zp_account", "account_id", "FK", "INNER")),
-                List.of("zp_request", "zp_account"),
+                "zp_disco_request",
+                List.of(new SchemaEdge("zp_disco_request", "account_id", "zp_account", "account_id", "FK", "INNER")),
+                List.of("zp_disco_request", "zp_account"),
                 List.of(),
                 0.91
         ));
@@ -202,7 +202,7 @@ class Example4SemanticFlowTest {
                 List.of()
         ));
         when(astValidator.validate(any(), any(), any(), any())).thenReturn(new AstValidationResult(true, List.of()));
-        when(sqlCompiler.compile(any())).thenReturn(new CompiledSql("select zp_request_id as requestId, request_status as requestStatus from zp_request limit :limit", Map.of("limit", 100)));
+        when(sqlCompiler.compile(any())).thenReturn(new CompiledSql("select request_id as requestId, request_status as requestStatus from zp_disco_request limit :limit", Map.of("limit", 100)));
         when(sqlExecutor.execute(any(), any())).thenAnswer(inv -> new SemanticExecutionResult(2, List.of(
                 Map.of("requestId", "ZPR1003", "requestStatus", "SUBMITTED"),
                 Map.of("requestId", "ZPR1002", "requestStatus", "INVENTORY_ERROR")
@@ -214,8 +214,8 @@ class Example4SemanticFlowTest {
                         context.question(),
                         List.of(new CandidateEntity("DisconnectRequest", 0.95, 0.85, 0.10, List.of("keyword+entity"))),
                         List.of(
-                                new CandidateTable("zp_request", "DisconnectRequest", 0.93, 0.83, 0.10, List.of("request")),
-                                new CandidateTable("zp_disconnect_order", "DisconnectRequest", 0.90, 0.80, 0.10, List.of("disconnect"))
+                                new CandidateTable("zp_disco_request", "DisconnectRequest", 0.93, 0.83, 0.10, List.of("request")),
+                                new CandidateTable("zp_disco_trans_data", "DisconnectRequest", 0.90, 0.80, 0.10, List.of("disconnect"))
                         ),
                         "HIGH"
                 )));

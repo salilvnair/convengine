@@ -128,7 +128,9 @@ public class ExactTextResponseTypeResolver implements ResponseTypeResolver {
         String sanitized = rawTemplate
                 .replace("\"{${", "\"${")
                 .replace("'{${", "'${")
-                .replace("[[{${", "[[${");
+                .replace("[[{${", "[[${")
+                // Defensive repair for SQL-concatenation artifact seen in seeded exact templates.
+                .replace("$'||'{", "${");
         sanitized = MALFORMED_INLINE_EXPR_SUFFIX_BEFORE_CLOSE.matcher(sanitized).replaceAll("}]][/]");
         return sanitized;
     }

@@ -51,20 +51,20 @@ class SemanticAstSqlMatrixTest {
         config.getDb().getSemantic().setMaxLimit(500);
         model = new SemanticModel(
                 1,
-                "zapper_ops",
+                "demo_ops",
                 "test",
                 Map.of(
                         "DisconnectRequest",
                         new SemanticEntity(
                                 "Disconnect diagnostics",
                                 List.of(),
-                                new SemanticEntityTables("zp_request", List.of("zp_disconnect_order")),
+                                new SemanticEntityTables("zp_disco_request", List.of("zp_disco_trans_data")),
                                 Map.of(
-                                        "requestId", new SemanticField("zp_request.zp_request_id", "uuid", null, true, true, true),
-                                        "requestStatus", new SemanticField("zp_request.request_status", "string", null, true, true, false),
-                                        "requestedAt", new SemanticField("zp_request.requested_at", "timestamp", null, true, true, false),
-                                        "accountId", new SemanticField("zp_request.account_id", "string", null, true, true, false),
-                                        "teamNotes", new SemanticField("zp_ui_data.zp_asr_team_notes", "string", null, true, true, false)
+                                        "requestId", new SemanticField("zp_disco_request.request_id", "uuid", null, true, true, true),
+                                        "requestStatus", new SemanticField("zp_disco_request.request_status", "string", null, true, true, false),
+                                        "requestedAt", new SemanticField("zp_disco_request.requested_at", "timestamp", null, true, true, false),
+                                        "accountId", new SemanticField("zp_disco_request.account_id", "string", null, true, true, false),
+                                        "teamNotes", new SemanticField("zp_disco_trans_data.notes_text", "string", null, true, true, false)
                                 )
                         )
                 ),
@@ -72,15 +72,15 @@ class SemanticAstSqlMatrixTest {
                         new SemanticRelationship(
                                 "request-ui",
                                 "request to ui",
-                                new SemanticRelationshipEnd("zp_request", "zp_request_id"),
-                                new SemanticRelationshipEnd("zp_ui_data", "zp_request_id"),
+                                new SemanticRelationshipEnd("zp_disco_request", "request_id"),
+                                new SemanticRelationshipEnd("zp_disco_trans_data", "request_id"),
                                 "one_to_one"
                         )
                 ),
                 Map.of(),
                 Map.of(),
                 Map.of(
-                        "failed_count", new SemanticMetric("Failed count", "COUNT(CASE WHEN zp_request.request_status = 'FAILED' THEN 1 END)")
+                        "failed_count", new SemanticMetric("Failed count", "COUNT(CASE WHEN zp_disco_request.request_status = 'FAILED' THEN 1 END)")
                 )
         );
     }
@@ -151,7 +151,7 @@ class SemanticAstSqlMatrixTest {
         SemanticQueryContext context = new SemanticQueryContext("failed by account", null);
         context.canonicalAst(ast);
         context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
-                "zp_request", List.of(), List.of("zp_request"), List.of(), 1.0
+                "zp_disco_request", List.of(), List.of("zp_disco_request"), List.of(), 1.0
         ));
 
         CompiledSql sql = compiler.compile(context);
@@ -201,7 +201,7 @@ class SemanticAstSqlMatrixTest {
         SemanticQueryContext context = new SemanticQueryContext("nested", null);
         context.canonicalAst(ast);
         context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
-                "zp_request", List.of(), List.of("zp_request"), List.of(), 1.0
+                "zp_disco_request", List.of(), List.of("zp_disco_request"), List.of(), 1.0
         ));
 
         CompiledSql sql = compiler.compile(context);
@@ -240,7 +240,7 @@ class SemanticAstSqlMatrixTest {
         SemanticQueryContext context = new SemanticQueryContext("ilike", null);
         context.canonicalAst(ast);
         context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
-                "zp_request", List.of(), List.of("zp_request"), List.of(), 1.0
+                "zp_disco_request", List.of(), List.of("zp_disco_request"), List.of(), 1.0
         ));
 
         CompiledSql sql = compiler.compile(context);
@@ -280,7 +280,7 @@ class SemanticAstSqlMatrixTest {
         SemanticQueryContext context = new SemanticQueryContext("exists", null);
         context.canonicalAst(ast);
         context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
-                "zp_request", List.of(), List.of("zp_request"), List.of(), 1.0
+                "zp_disco_request", List.of(), List.of("zp_disco_request"), List.of(), 1.0
         ));
 
         CompiledSql sql = compiler.compile(context);
@@ -321,7 +321,7 @@ class SemanticAstSqlMatrixTest {
         SemanticQueryContext context = new SemanticQueryContext("window", null);
         context.canonicalAst(ast);
         context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
-                "zp_request", List.of(), List.of("zp_request"), List.of(), 1.0
+                "zp_disco_request", List.of(), List.of("zp_disco_request"), List.of(), 1.0
         ));
         CompiledSql sql = compiler.compile(context);
         assertTrue(sql.sql().toLowerCase().contains("row_number() over"));
@@ -357,14 +357,14 @@ class SemanticAstSqlMatrixTest {
         SemanticQueryContext context = new SemanticQueryContext("teamNotes by request", null);
         context.canonicalAst(ast);
         context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
-                "zp_ui_data", List.of(), List.of("zp_ui_data"), List.of(), 1.0
+                "zp_disco_trans_data", List.of(), List.of("zp_disco_trans_data"), List.of(), 1.0
         ));
 
         CompiledSql sql = compiler.compile(context);
         String lowered = sql.sql().toLowerCase();
-        assertTrue(lowered.contains("from \"zp_ui_data\""));
-        assertTrue(lowered.contains("join \"zp_request\""));
-        assertTrue(lowered.contains("\"t1\".\"zp_request_id\" = :p1"));
+        assertTrue(lowered.contains("from \"zp_disco_trans_data\""));
+        assertTrue(lowered.contains("join \"zp_disco_request\""));
+        assertTrue(lowered.contains("\"t1\".\"request_id\" = :p1"));
     }
 
     @Test
@@ -399,7 +399,7 @@ class SemanticAstSqlMatrixTest {
         SemanticQueryContext context = new SemanticQueryContext("grouped-window", null);
         context.canonicalAst(ast);
         context.joinPath(new com.github.salilvnair.convengine.engine.mcp.query.semantic.graph.core.JoinPathPlan(
-                "zp_request", List.of(), List.of("zp_request"), List.of(), 1.0
+                "zp_disco_request", List.of(), List.of("zp_disco_request"), List.of(), 1.0
         ));
         CompiledSql sql = compiler.compile(context);
         String lowered = sql.sql().toLowerCase();

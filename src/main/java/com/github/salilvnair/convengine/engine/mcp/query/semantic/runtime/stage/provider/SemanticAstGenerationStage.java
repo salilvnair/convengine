@@ -29,7 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Component
-@MustRunAfter(SemanticJoinPathStage.class)
+@MustRunAfter({SemanticJoinPathStage.class, SemanticClarificationStage.class})
 @RequiredArgsConstructor
 public class SemanticAstGenerationStage implements SemanticQueryStage {
 

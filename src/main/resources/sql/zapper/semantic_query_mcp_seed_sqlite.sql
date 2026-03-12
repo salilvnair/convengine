@@ -124,7 +124,8 @@ SELECT
 Return ONLY YAML text. No markdown.
 
 Output requirements:
-- include version, database, settings, entities, tables, relationships, metrics, value_patterns, intent_rules.
+- include version, database, settings, entities, tables, relationships, synonyms, rules.
+- exclude metrics, intent_rules, join_hints, value_patterns (DB-managed).
 - fields must use semantic names with table.column mapping.
 - include synonyms and example_questions where possible.
 - do not invent table/column names outside provided schema.
@@ -138,7 +139,8 @@ SET config_value = 'You are generating semantic-query model YAML for ConvEngine.
 Return ONLY YAML text. No markdown.
 
 Output requirements:
-- include version, database, settings, entities, tables, relationships, metrics, value_patterns, intent_rules.
+- include version, database, settings, entities, tables, relationships, synonyms, rules.
+- exclude metrics, intent_rules, join_hints, value_patterns (DB-managed).
 - fields must use semantic names with table.column mapping.
 - include synonyms and example_questions where possible.
 - do not invent table/column names outside provided schema.
@@ -381,27 +383,6 @@ VALUES
  'Classifier for semantic query over zapper domain');
 
 -- -----------------------------------------------------------------------------
--- Optional extraction schema
--- -----------------------------------------------------------------------------
-INSERT OR REPLACE INTO ce_output_schema (intent_code, state_code, json_schema, description, enabled, priority)
-VALUES
-(
-  'SEMANTIC_QUERY',
-  'ANALYZE',
-  '{
-    "type":"object",
-    "properties":{
-      "accountId":{"type":"string"},
-      "requestId":{"type":"string"},
-      "timeWindow":{"type":"string"}
-    }
-  }',
-  'Optional fields for semantic query prompts',
-  1,
-  1
-);
-
--- -----------------------------------------------------------------------------
 -- Prompt template
 -- -----------------------------------------------------------------------------
 INSERT OR REPLACE INTO ce_prompt_template
@@ -410,12 +391,23 @@ VALUES
 (
   'SEMANTIC_QUERY',
   'ANALYZE',
-  'SCHEMA_JSON',
-  'You extract structured fields for semantic DB querying. Return JSON only. Use only explicitly provided values from the latest user input.',
-  'Latest user input:\n{{resolved_user_input}}\n\nExtract only supported schema fields if explicitly present. If none are present, return {}. Do not infer missing identifiers.',
+  'SEMANTIC_INTERPRET',
+  'You are a semantic interpreter for business analytics.\nConvert user text into canonical business intent JSON.\n\nHard rules:\n- Return JSON only.\n- Never return SQL.\n- Never return table names, column names, or joins.\n- Use only business field names present in semantic_fields.\n- Never output physical DB names like customer_name, request_type, service_type, created_date.\n- If user asks with an unsupported field, do not invent. Remove that filter/sort and set needsClarification=true.\n- Keep confidence in range 0..1.\n- Set needsClarification=true when confidence is low or ambiguity exists.',
+  'Current date: {{current_date}}\nTimezone: {{current_timezone}}\n\nUser question:\n{{question}}\n\nHints:\n{{hints}}\n\nContext:\n{{semantic_context}}\n\nQuery class key:\n{{query_class_key}}\n\nQuery class defaults:\n{{query_class_config}}\n\nAllowed business fields (strict allowlist):\n{{semantic_fields}}\n\nAllowed values by field:\n{{semantic_allowed_values}}\n\nExpected shape:\n{\n  "canonicalIntent": {\n    "intent": "LIST_REQUESTS",\n    "entity": "REQUEST",\n    "queryClass": "LIST_REQUESTS",\n    "filters": [{"field":"status","op":"EQ","value":"REJECTED"}],\n    "timeRange": {"kind":"RELATIVE","value":"TODAY","timezone":"{{current_timezone}}"},\n    "sort": [{"field":"createdAt","direction":"DESC"}],\n    "limit": 100\n  },\n  "confidence": 0.0,\n  "needsClarification": false,\n  "clarificationQuestion": null,\n  "ambiguities": [],\n  "trace": {\n    "normalizations": []\n  }\n}',
   0.00,
-  'COLLECT',
-  '{"allows":["extract"],"expects":["structured_json"]}',
+  'MCP',
+  '{"stage":"semantic_interpret"}',
+  1
+),
+(
+  'SEMANTIC_QUERY',
+  'ANY',
+  'SEMANTIC_INTERPRET',
+  'You are a semantic interpreter for business analytics.\nConvert user text into canonical business intent JSON.\n\nHard rules:\n- Return JSON only.\n- Never return SQL.\n- Never return table names, column names, or joins.\n- Use only business field names present in semantic_fields.\n- Never output physical DB names like customer_name, request_type, service_type, created_date.\n- If user asks with an unsupported field, do not invent. Remove that filter/sort and set needsClarification=true.\n- Keep confidence in range 0..1.\n- Set needsClarification=true when confidence is low or ambiguity exists.',
+  'Current date: {{current_date}}\nTimezone: {{current_timezone}}\n\nUser question:\n{{question}}\n\nHints:\n{{hints}}\n\nContext:\n{{semantic_context}}\n\nQuery class key:\n{{query_class_key}}\n\nQuery class defaults:\n{{query_class_config}}\n\nAllowed business fields (strict allowlist):\n{{semantic_fields}}\n\nAllowed values by field:\n{{semantic_allowed_values}}\n\nExpected shape:\n{\n  "canonicalIntent": {\n    "intent": "LIST_REQUESTS",\n    "entity": "REQUEST",\n    "queryClass": "LIST_REQUESTS",\n    "filters": [{"field":"status","op":"EQ","value":"REJECTED"}],\n    "timeRange": {"kind":"RELATIVE","value":"TODAY","timezone":"{{current_timezone}}"},\n    "sort": [{"field":"createdAt","direction":"DESC"}],\n    "limit": 100\n  },\n  "confidence": 0.0,\n  "needsClarification": false,\n  "clarificationQuestion": null,\n  "ambiguities": [],\n  "trace": {\n    "normalizations": []\n  }\n}',
+  0.00,
+  'MCP',
+  '{"stage":"semantic_interpret"}',
   1
 ),
 (
@@ -592,8 +584,10 @@ Rules:
 4) Use ANSWER only for greetings/chitchat or when tool evidence is already sufficient.
 5) When action is ANSWER and observations include rows, format as concise markdown table (header + rows).
 6) If user asks destructive SQL/DML/DDL intent (delete/update/drop/alter/truncate/insert/create table/grant/revoke), keep action as CALL_TOOL only when needed but set operation_tag=POLICY_RESTRICTED_OPERATION.
-Return strict JSON only.',
-  'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>",\n  "operation_tag":"<POLICY_RESTRICTED_OPERATION_or_null>"\n}',
+Return strict JSON only.
+`action` MUST be exactly CALL_TOOL or ANSWER.
+Never return clarification_required / needs_clarification / clarify.',
+  'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nMCP Context:\n{{context.mcp}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>",\n  "operation_tag":"<POLICY_RESTRICTED_OPERATION_or_null>"\n}\n`action` MUST be exactly CALL_TOOL or ANSWER. No other value is allowed.',
   1,
   CURRENT_TIMESTAMP
 );

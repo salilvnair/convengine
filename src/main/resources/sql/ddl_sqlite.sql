@@ -1,5 +1,9 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool;
 DROP TABLE IF EXISTS ce_mcp_planner;
+DROP TABLE IF EXISTS ce_semantic_entity_override;
+DROP TABLE IF EXISTS ce_semantic_relationship_override;
+DROP TABLE IF EXISTS ce_semantic_join_hint;
+DROP TABLE IF EXISTS ce_semantic_value_pattern;
 DROP TABLE IF EXISTS ce_mcp_semantic_embedding;
 DROP TABLE IF EXISTS ce_user_query_knowledge;
 DROP TABLE IF EXISTS ce_mcp_user_feedback;
@@ -339,3 +343,53 @@ CREATE TABLE IF NOT EXISTS ce_mcp_semantic_embedding (
 );
 CREATE UNIQUE INDEX ux_ce_mcp_semantic_embedding_target ON ce_mcp_semantic_embedding (namespace, target_type, target_name);
 CREATE INDEX idx_ce_mcp_semantic_embedding_lookup ON ce_mcp_semantic_embedding (target_type, target_name);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_join_hint (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     base_table TEXT NOT NULL,
+                                                     join_table TEXT NOT NULL,
+                                                     priority INTEGER NOT NULL DEFAULT 100,
+                                                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_semantic_join_hint_lookup ON ce_semantic_join_hint (enabled, base_table, priority, join_table);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_entity_override (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     entity_name TEXT NOT NULL,
+                                                     description TEXT,
+                                                     primary_table TEXT,
+                                                     related_tables TEXT,
+                                                     synonyms TEXT,
+                                                     fields_json TEXT,
+                                                     priority INTEGER NOT NULL DEFAULT 100,
+                                                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_semantic_entity_override_lookup ON ce_semantic_entity_override (enabled, entity_name, priority);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_relationship_override (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     relationship_name TEXT NOT NULL,
+                                                     description TEXT,
+                                                     from_table TEXT NOT NULL,
+                                                     from_column TEXT NOT NULL,
+                                                     to_table TEXT NOT NULL,
+                                                     to_column TEXT NOT NULL,
+                                                     relation_type TEXT,
+                                                     priority INTEGER NOT NULL DEFAULT 100,
+                                                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_semantic_relationship_override_lookup ON ce_semantic_relationship_override (enabled, relationship_name, priority);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_value_pattern (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     from_field TEXT NOT NULL,
+                                                     to_field TEXT NOT NULL,
+                                                     value_starts_with TEXT NOT NULL,
+                                                     priority INTEGER NOT NULL DEFAULT 100,
+                                                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_semantic_value_pattern_lookup ON ce_semantic_value_pattern (enabled, from_field, to_field, priority);

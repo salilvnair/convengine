@@ -64,6 +64,14 @@ public class McpPlanner {
                 - For postgres.query, choose identifiers only if schema observation confirms them.
                 - Keep args minimal.
                 - If user question is ambiguous, return ANSWER with an answer that asks ONE clarifying question.
+                - For semantic v2 flow, use this exact chain when tools are available:
+                  `db.semantic.interpret` -> `db.semantic.resolve` -> `db.semantic.query` -> `postgres.query`
+                - Do not skip steps in the semantic v2 chain.
+                - If `db.semantic.interpret` or `db.semantic.resolve` observation returns
+                  `needsClarification=true`, STOP tool calls and return ANSWER using `clarificationQuestion`.
+                - `action` MUST be exactly one of: CALL_TOOL or ANSWER.
+                - Never return values like clarification_required / needs_clarification / clarify.
+                - Any non-contract action is invalid.
 
                 Return JSON ONLY.
 
@@ -74,14 +82,18 @@ public class McpPlanner {
             User input:
             {{user_input}}
 
-            Context JSON:
-            {{context}}
+            MCP Context:
+            {{context.mcp}}
 
             Available MCP tools:
             {{mcp_tools}}
 
             Existing MCP observations (if any):
             {{mcp_observations}}
+
+            If semantic v2 tools are available, follow:
+            `db.semantic.interpret` -> `db.semantic.resolve` -> `db.semantic.query` -> `postgres.query`.
+            Stop and return ANSWER when `needsClarification=true`.
 
             Return JSON EXACTLY in this schema:
             {
@@ -91,6 +103,7 @@ public class McpPlanner {
               "answer": "<text_or_null>",
               "operation_tag": "<POLICY_RESTRICTED_OPERATION_or_null>"
             }
+            `action` MUST be exactly CALL_TOOL or ANSWER. No other value is allowed.
 
             """;
 
@@ -121,6 +134,8 @@ public class McpPlanner {
         extraVars.remove("MCP_OBSERVATIONS");
         extraVars.put("dbkg_capsule", dbkgCapsuleJson);
         extraVars.put("DBKG_CAPSULE", dbkgCapsuleJson);
+        Map<String, Object> contextMap = session.contextDict();
+        extraVars.put("context", contextMap);
         PlannerTimeContext timeContext = resolvePlannerTimeContext();
         PromptTemplateContext ctx = PromptTemplateContext.builder()
                 .templateName("McpPlanner")
@@ -256,11 +271,25 @@ public class McpPlanner {
             return new McpPlan(McpConstants.ACTION_ANSWER, null, Map.of(), McpConstants.FALLBACK_PLAN_ERROR, null);
         }
 
+        String rawAction = trimToNull(plan.action());
+        if (rawAction != null) {
+            String upper = rawAction.toUpperCase(Locale.ROOT);
+            if (!McpConstants.ACTION_CALL_TOOL.equals(upper) && !McpConstants.ACTION_ANSWER.equals(upper)) {
+                return new McpPlan(
+                        McpConstants.ACTION_ANSWER,
+                        null,
+                        Map.of(),
+                        McpConstants.FALLBACK_PLAN_ERROR,
+                        null
+                );
+            }
+        }
+
         String toolCode = trimToNull(plan.tool_code());
         String answer = trimToNull(plan.answer());
         String operationTag = trimToNull(plan.operation_tag());
         Map<String, Object> args = plan.args() == null ? Map.of() : new LinkedHashMap<>(plan.args());
-        String action = normalizeAction(plan.action(), toolCode, answer);
+        String action = normalizeAction(rawAction, toolCode, answer);
 
         if (McpConstants.ACTION_CALL_TOOL.equals(action)) {
             if (toolCode == null) {

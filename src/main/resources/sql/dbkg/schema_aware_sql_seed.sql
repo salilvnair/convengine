@@ -87,7 +87,7 @@ INSERT INTO ce_mcp_planner(
             - Use epoch conversion only when the source column is numeric epoch milliseconds (BIGINT/NUMERIC), then use to_timestamp(epoch_ms/1000.0).
             - Never compare timestamp columns with numeric epoch expressions.
          6. Never invent table or column names. Use only columns present in DBKG capsule/schema knowledge/query knowledge.
-            For `zp_ui_data_history`, use `created_date` for time filters, not `zp_action_ts`.
+            For `zp_disco_trans_data`, use `created_date` for time filters, not `zp_action_ts`.
          7. DBKG capsule is preloaded from ce_mcp_* metadata tables for this flow. Do not call any dbkg.* tool codes in this dynamic_sql planner.
          8. For follow-up questions (for example: "above", "that one", "those rows", "same request"), resolve references using standalone query, conversation history, and MCP observations before asking for clarification.
 
@@ -159,17 +159,17 @@ DELETE FROM ce_mcp_schema_knowledge;
 INSERT INTO ce_mcp_schema_knowledge(
     id, table_name, column_name, description, tags, valid_values
 ) VALUES
-      (1, 'zp_request', NULL, 'Primary table storing customer provisioning requests', 'request, order, core', NULL),
-      (2, 'zp_request', 'zp_request_id', 'Unique request identifier. Used as the primary key and join key across all tables.', 'pk, join_key', NULL),
-      (3, 'zp_ui_data', NULL, 'Current state data for UI interactions. Holds the latest status or action code for the request.', 'state, status, latest', NULL),
-      (4, 'zp_ui_data_history', NULL, 'Historical log of UI state changes and assignments. Use this table for audits or finding when a request moved from one state to another (e.g. ASSIGNED to REJECTED). Compare different rows with the same zp_request_id but different action_ids over time.', 'history, audit, transition', NULL),
-      (5, 'zp_ui_data_history', 'history_id', 'Primary key for history row.', 'pk, history', NULL),
-      (6, 'zp_ui_data_history', 'zp_request_id', 'Request id associated with this status transition row.', 'join_key, request', NULL),
-      (7, 'zp_ui_data_history', 'zp_action_id', 'Action/status code at this transition point.', 'status, action', '200=ASSIGNED,400=REJECTED'),
-      (8, 'zp_ui_data_history', 'zp_asr_team_member_id', 'ASR team member id handling this action.', 'asr, owner, assignee', NULL),
-      (9, 'zp_ui_data_history', 'zp_asr_team_notes', 'ASR notes/comments for this transition.', 'asr, notes, comments', NULL),
-      (10, 'zp_ui_data_history', 'changed_by', 'Actor or system that changed this history row.', 'audit, actor', NULL),
-      (11, 'zp_ui_data_history', 'created_date', 'Transition timestamp (TIMESTAMPTZ). Use this for time filters such as yesterday.', 'timestamp, time, transition', NULL);
+      (1, 'zp_disco_request', NULL, 'Primary table storing customer provisioning requests', 'request, order, core', NULL),
+      (2, 'zp_disco_request', 'request_id', 'Unique request identifier. Used as the primary key and join key across all tables.', 'pk, join_key', NULL),
+      (3, 'zp_disco_trans_data', NULL, 'Current state data for UI interactions. Holds the latest status or action code for the request.', 'state, status, latest', NULL),
+      (4, 'zp_disco_trans_data', NULL, 'Historical log of UI state changes and assignments. Use this table for audits or finding when a request moved from one state to another (e.g. ASSIGNED to REJECTED). Compare different rows with the same request_id but different action_ids over time.', 'history, audit, transition', NULL),
+      (5, 'zp_disco_trans_data', 'history_id', 'Primary key for history row.', 'pk, history', NULL),
+      (6, 'zp_disco_trans_data', 'request_id', 'Request id associated with this status transition row.', 'join_key, request', NULL),
+      (7, 'zp_disco_trans_data', 'action_id', 'Action/status code at this transition point.', 'status, action', '200=ASSIGNED,400=REJECTED'),
+      (8, 'zp_disco_trans_data', 'logged_user_id', 'ASR team member id handling this action.', 'asr, owner, assignee', NULL),
+      (9, 'zp_disco_trans_data', 'notes_text', 'ASR notes/comments for this transition.', 'asr, notes, comments', NULL),
+      (10, 'zp_disco_trans_data', 'changed_by', 'Actor or system that changed this history row.', 'audit, actor', NULL),
+      (11, 'zp_disco_trans_data', 'created_date', 'Transition timestamp (TIMESTAMPTZ). Use this for time filters such as yesterday.', 'timestamp, time, transition', NULL);
 
 -- ==========================================
 -- 5. Seed Query Semantic Knowledge
@@ -180,12 +180,12 @@ INSERT INTO ce_mcp_query_knowledge(
     id, query_text, description, prepared_sql, tags, api_hints
 ) VALUES
     (1, 'Find Rejected Requests recently', 'Finds requests that transitioned from ASR assigned to rejected in the last 24 hours. Replace the action_ids with appropriate values based on the status dictionary if known.',
-     'SELECT h2.zp_request_id,
+     'SELECT h2.request_id,
              to_char(h1.created_date AT TIME ZONE ''UTC'', ''YYYY-MM-DD HH24:MI:SS'') AS assigned_at_utc,
              to_char(h2.created_date AT TIME ZONE ''UTC'', ''YYYY-MM-DD HH24:MI:SS'') AS rejected_at_utc
-      FROM zp_ui_data_history h1
-      JOIN zp_ui_data_history h2 ON h1.zp_request_id = h2.zp_request_id AND h1.created_date < h2.created_date
-      WHERE h1.zp_action_id = ''200'' AND h2.zp_action_id = ''400''
+      FROM zp_disco_trans_data h1
+      JOIN zp_disco_trans_data h2 ON h1.request_id = h2.request_id AND h1.created_date < h2.created_date
+      WHERE h1.action_id = ''200'' AND h2.action_id = ''400''
       AND h2.created_date >= date_trunc(''day'', now() - interval ''1 day'')
       AND h2.created_date <  date_trunc(''day'', now())
       ORDER BY h2.created_date DESC',

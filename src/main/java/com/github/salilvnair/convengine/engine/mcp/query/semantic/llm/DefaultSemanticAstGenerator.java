@@ -91,6 +91,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
                 Relevant join hints: {{relevant_join_hints_json}}
                 Relevant synonyms: {{relevant_synonyms_json}}
                 Relevant rules: {{relevant_rules_json}}
+                Global allowed values by entity/field: {{global_allowed_values_json}}
+                Available tables from semantic model (including overrides): {{available_tables_json}}
                 Allowed entities: {{allowed_entities}}
                 Candidate entities: {{candidate_entities_json}}
                 Candidate tables: {{candidate_tables_json}}
@@ -235,6 +237,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         String relevantJoinHintsJson = JsonUtil.toJson(relevantJoinHints);
         String relevantSynonymsJson = JsonUtil.toJson(relevantSynonyms);
         String relevantRulesJson = JsonUtil.toJson(relevantRules);
+        String globalAllowedValuesJson = JsonUtil.toJson(buildGlobalAllowedValues(model));
+        String availableTablesJson = JsonUtil.toJson(buildAvailableTables(model));
         String supportedFilterOperatorsJson = JsonUtil.toJson(supportedFilterOperators());
         String supportedFilterOperatorsUsage = supportedFilterOperatorsUsage();
 
@@ -249,6 +253,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         promptExtra.put("relevant_join_hints_json", relevantJoinHintsJson);
         promptExtra.put("relevant_synonyms_json", relevantSynonymsJson);
         promptExtra.put("relevant_rules_json", relevantRulesJson);
+        promptExtra.put("global_allowed_values_json", globalAllowedValuesJson);
+        promptExtra.put("available_tables_json", availableTablesJson);
         promptExtra.put("supported_filter_operators_json", supportedFilterOperatorsJson);
         promptExtra.put("supported_filter_operators_usage", supportedFilterOperatorsUsage);
 
@@ -297,6 +303,8 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
         llmInputPayload.put("relevant_join_hints", relevantJoinHints);
         llmInputPayload.put("relevant_synonyms", relevantSynonyms);
         llmInputPayload.put("relevant_rules", relevantRules);
+        llmInputPayload.put("global_allowed_values", buildGlobalAllowedValues(model));
+        llmInputPayload.put("available_tables", buildAvailableTables(model));
         llmInputPayload.put("_meta", meta(question, selectedEntity, false, false, false));
         publishLlmEvent(ConvEngineAuditStage.AST_INPUT.name(), session, false, llmInputPayload);
 
@@ -341,6 +349,56 @@ public class DefaultSemanticAstGenerator implements SemanticAstGenerator {
             }
         }
         return out;
+    }
+
+    private Map<String, Map<String, List<String>>> buildGlobalAllowedValues(SemanticModel model) {
+        if (model == null || model.entities() == null || model.entities().isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Map<String, List<String>>> out = new LinkedHashMap<>();
+        for (Map.Entry<String, SemanticEntity> entityEntry : model.entities().entrySet()) {
+            String entityKey = entityEntry.getKey();
+            SemanticEntity entity = entityEntry.getValue();
+            if (entity == null || entity.fields() == null || entity.fields().isEmpty()) {
+                continue;
+            }
+            Map<String, List<String>> fieldValues = new LinkedHashMap<>();
+            for (Map.Entry<String, SemanticField> fieldEntry : entity.fields().entrySet()) {
+                String fieldName = fieldEntry.getKey();
+                SemanticField field = fieldEntry.getValue();
+                if (fieldName == null || fieldName.isBlank() || field == null || field.allowedValues() == null || field.allowedValues().isEmpty()) {
+                    continue;
+                }
+                fieldValues.put(fieldName, field.allowedValues());
+            }
+            if (!fieldValues.isEmpty()) {
+                out.put(entityKey, fieldValues);
+            }
+        }
+        return out;
+    }
+
+    private List<String> buildAvailableTables(SemanticModel model) {
+        if (model == null || model.entities() == null || model.entities().isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> tables = new LinkedHashSet<>();
+        for (SemanticEntity entity : model.entities().values()) {
+            if (entity == null || entity.tables() == null) {
+                continue;
+            }
+            if (entity.tables().primary() != null && !entity.tables().primary().isBlank()) {
+                tables.add(entity.tables().primary());
+            }
+            if (entity.tables().related() != null) {
+                for (String related : entity.tables().related()) {
+                    if (related != null && !related.isBlank()) {
+                        tables.add(related);
+                    }
+                }
+            }
+        }
+        return List.copyOf(tables);
     }
 
     private List<String> entityTables(SemanticEntity entity) {

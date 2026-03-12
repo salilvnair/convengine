@@ -15,5 +15,6 @@ public class SemanticModelGenerateResponse {
     private String yaml;
     private List<SemanticModelIssue> diagnostics = new ArrayList<>();
     private String note;
+    private List<String> editableSections = new ArrayList<>();
+    private List<String> dbManagedSections = new ArrayList<>();
 }
-

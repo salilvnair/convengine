@@ -38,9 +38,7 @@ import java.util.regex.Pattern;
 public class DefaultSemanticEntityTableRetriever implements SemanticEntityTableRetriever {
 
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^a-z0-9_]+");
-    private static final Pattern REQUEST_ID = Pattern.compile("\\bZPR\\d+\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern DON_ID = Pattern.compile("\\bDON\\d+\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern DISCONNECT_ID = Pattern.compile("\\bZPDISC\\d+\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ID_LIKE_TOKEN = Pattern.compile("\\b[A-Z0-9_-]*\\d+[A-Z0-9_-]*\\b", Pattern.CASE_INSENSITIVE);
     private static final double FIELD_OWNERSHIP_WEIGHT = 0.45d;
     private static final double FEEDBACK_VECTOR_ENTITY_WEIGHT = 0.40d;
     private static final double FEEDBACK_VECTOR_TABLE_WEIGHT = 0.30d;
@@ -93,9 +91,7 @@ public class DefaultSemanticEntityTableRetriever implements SemanticEntityTableR
         ConvEngineMcpConfig.Db.Semantic.Retrieval rc = cfg.getRetrieval() == null ? new ConvEngineMcpConfig.Db.Semantic.Retrieval() : cfg.getRetrieval();
 
         Set<String> tokenSet = new LinkedHashSet<>(tokenize(question));
-        boolean hasRequestId = REQUEST_ID.matcher(question).find();
-        boolean hasDonId = DON_ID.matcher(question).find();
-        boolean hasDisconnectId = DISCONNECT_ID.matcher(question).find();
+        boolean hasIdLikeToken = hasIdLikeToken(question);
 
         float[] qVec = null;
         if (cfg.getVector() != null && cfg.getVector().isEnabled()) {
@@ -129,7 +125,7 @@ public class DefaultSemanticEntityTableRetriever implements SemanticEntityTableR
 
             double synonym = overlapScore(tokenSet, tokenize(String.join(" ", entity.synonyms())));
             double fields = fieldScore(tokenSet, entity.fields());
-            double idPattern = idPatternScore(entityName, hasRequestId, hasDonId, hasDisconnectId);
+            double idPattern = idPatternScore(entity, hasIdLikeToken);
             double lexical = overlapScore(tokenSet, tokenize(entity.description()));
             double fieldOwnership = strongFieldOwnershipScore(tokenSet, entity.fields());
 
@@ -259,19 +255,39 @@ public class DefaultSemanticEntityTableRetriever implements SemanticEntityTableR
         return overlapScore(queryTokens, doc);
     }
 
-    private double idPatternScore(String entityName, boolean requestId, boolean donId, boolean disconnectId) {
-        String lower = entityName == null ? "" : entityName.toLowerCase(Locale.ROOT);
-        double score = 0.0d;
-        if (requestId && lower.contains("request")) {
-            score += 1.0d;
+    private double idPatternScore(SemanticEntity entity, boolean hasIdLikeToken) {
+        if (!hasIdLikeToken || entity == null || entity.fields() == null || entity.fields().isEmpty()) {
+            return 0.0d;
         }
-        if (donId && (lower.contains("disconnect") || lower.contains("order"))) {
-            score += 1.0d;
+        boolean hasKeyIdField = false;
+        boolean hasAnyIdField = false;
+        for (Map.Entry<String, SemanticField> entry : entity.fields().entrySet()) {
+            String fieldName = entry.getKey() == null ? "" : entry.getKey().toLowerCase(Locale.ROOT);
+            SemanticField field = entry.getValue();
+            String column = field == null || field.column() == null ? "" : field.column().toLowerCase(Locale.ROOT);
+            boolean looksLikeId = fieldName.contains("id") || column.endsWith("_id") || column.contains(".id");
+            if (!looksLikeId) {
+                continue;
+            }
+            hasAnyIdField = true;
+            if (field != null && Boolean.TRUE.equals(field.key())) {
+                hasKeyIdField = true;
+            }
         }
-        if (disconnectId && (lower.contains("disconnect") || lower.contains("billing"))) {
-            score += 1.0d;
+        if (hasKeyIdField) {
+            return 1.0d;
         }
-        return Math.min(1.0d, score / 2.0d);
+        if (hasAnyIdField) {
+            return 0.7d;
+        }
+        return 0.0d;
+    }
+
+    private boolean hasIdLikeToken(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        return ID_LIKE_TOKEN.matcher(question).find();
     }
 
     private double overlapScore(Set<String> queryTokens, Set<String> docTokens) {

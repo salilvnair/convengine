@@ -177,7 +177,7 @@ CREATE INDEX IF NOT EXISTS idx_ce_mcp_system_relation_lookup
 -- ---------------------------------------------------------------------------
 -- Table: ce_mcp_db_object
 -- Purpose: optional semantic overrides for auto-discovered DB objects.
--- Examples: map zp_request to DISCONNECT_REQUEST, add a description to zp_ui_data_history.
+-- Examples: map zp_disco_request to DISCONNECT_REQUEST, add a description to zp_disco_trans_data.
 CREATE TABLE IF NOT EXISTS ce_mcp_db_object (
   object_id INTEGER PRIMARY KEY AUTOINCREMENT,
   object_name TEXT NOT NULL UNIQUE,
@@ -198,7 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_ce_mcp_db_object_lookup
 
 -- Table: ce_mcp_db_column
 -- Purpose: optional semantic overrides for auto-discovered columns.
--- Examples: annotate zp_ui_data.zp_action_id, add synonyms for legacy column names.
+-- Examples: annotate zp_disco_trans_data.action_id, add synonyms for legacy column names.
 CREATE TABLE IF NOT EXISTS ce_mcp_db_column (
   column_id INTEGER PRIMARY KEY AUTOINCREMENT,
   object_name TEXT NOT NULL,
@@ -255,7 +255,7 @@ CREATE INDEX IF NOT EXISTS idx_ce_mcp_status_dictionary_lookup
 
 -- Table: ce_mcp_id_lineage
 -- Purpose: ID propagation map across systems and objects.
--- Examples: zp_request_id to zp_ui_data, zpDisconnectId to BillBank.
+-- Examples: request_id to zp_disco_trans_data, zpDisconnectId to BillBank.
 CREATE TABLE IF NOT EXISTS ce_mcp_id_lineage (
   lineage_id INTEGER PRIMARY KEY AUTOINCREMENT,
   lineage_code TEXT NOT NULL UNIQUE,

@@ -14,6 +14,7 @@ import java.util.List;
 public class SemanticModelRegistry {
 
     private final SemanticModelLoader loader;
+    private final SemanticModelDynamicOverlayService dynamicOverlayService;
     private final SemanticModelValidator validator;
 
     @Getter
@@ -26,6 +27,7 @@ public class SemanticModelRegistry {
 
     public synchronized void refresh() {
         SemanticModel loaded = loader.loadOrEmpty();
+        loaded = dynamicOverlayService.apply(loaded);
         List<String> errors = validator.validate(loaded);
         if (!errors.isEmpty()) {
             log.warn("Semantic model validation errors: {}", errors);

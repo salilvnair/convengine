@@ -214,8 +214,8 @@ CREATE INDEX IF NOT EXISTS idx_ce_mcp_system_relation_lookup
 --   reads physical tables/views from JDBC metadata first, then overlays any
 --   matching rows from this table.
 -- Examples:
---   - Map zp_request to DISCONNECT_REQUEST
---   - Attach a description to zp_ui_data_history
+--   - Map zp_disco_request to DISCONNECT_REQUEST
+--   - Attach a description to zp_disco_trans_data
 CREATE TABLE IF NOT EXISTS ce_mcp_db_object (
                                                 object_id BIGSERIAL PRIMARY KEY,
                                                 object_name VARCHAR(255) NOT NULL UNIQUE,
@@ -238,7 +238,7 @@ CREATE INDEX IF NOT EXISTS idx_ce_mcp_db_object_lookup
 --   need to register every column manually; only enrich columns when business
 --   meaning is missing from the physical schema.
 -- Examples:
---   - Annotate zp_ui_data.zp_action_id with semantic name action_code
+--   - Annotate zp_disco_trans_data.action_id with semantic name action_code
 --   - Add synonyms for a confusing legacy column name
 CREATE TABLE IF NOT EXISTS ce_mcp_db_column (
                                                 column_id BIGSERIAL PRIMARY KEY,
@@ -285,8 +285,8 @@ CREATE INDEX IF NOT EXISTS idx_ce_mcp_db_join_path_lookup
 -- Purpose:
 --   Humanizes numeric/string statuses used in DB rows and APIs.
 -- Examples:
---   - ZP_UI_ACTION.zp_action_id 200 = ASSIGNED
---   - ZP_UI_ACTION.zp_action_id 400 = REJECTED
+--   - ZP_UI_ACTION.action_id 200 = ASSIGNED
+--   - ZP_UI_ACTION.action_id 400 = REJECTED
 CREATE TABLE IF NOT EXISTS ce_mcp_status_dictionary (
                                                         status_id BIGSERIAL PRIMARY KEY,
                                                         dictionary_name VARCHAR(100) NOT NULL,
@@ -305,7 +305,7 @@ CREATE INDEX IF NOT EXISTS idx_ce_mcp_status_dictionary_lookup
 -- Purpose:
 --   Stores ID propagation knowledge across systems and objects.
 -- Examples:
---   - zp_request_id flows from zp_request to zp_ui_data
+--   - request_id flows from zp_disco_request to zp_disco_trans_data
 --   - zpDisconnectId flows from ZapperOS to BillBank
 CREATE TABLE IF NOT EXISTS ce_mcp_id_lineage (
                                                  lineage_id BIGSERIAL PRIMARY KEY,

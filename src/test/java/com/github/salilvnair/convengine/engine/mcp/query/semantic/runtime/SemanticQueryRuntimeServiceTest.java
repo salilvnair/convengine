@@ -74,7 +74,7 @@ class SemanticQueryRuntimeServiceTest {
         mcpConfig.getDb().getSemantic().setToolCode("db.semantic.query");
 
         when(stageInterceptorsProvider.getIfAvailable(any())).thenReturn(List.of());
-        when(modelRegistry.getModel()).thenReturn(new SemanticModel(1, "zapper_ops", "test", Map.of(), List.of(), Map.of(), Map.of(), Map.of()));
+        when(modelRegistry.getModel()).thenReturn(new SemanticModel(1, "demo_ops", "test", Map.of(), List.of(), Map.of(), Map.of(), Map.of()));
 
         runtimeService = new SemanticQueryRuntimeService(
                 mcpConfig,
@@ -118,7 +118,7 @@ class SemanticQueryRuntimeServiceTest {
             );
             context.astGeneration(new AstGenerationResult(queryAst, "{\"entity\":\"DisconnectRequest\"}", false));
             context.astValidation(new AstValidationResult(true, List.of()));
-            context.compiledSql(new CompiledSql("select request_id from zp_request limit :limit", Map.of("limit", 50)));
+            context.compiledSql(new CompiledSql("select request_id from zp_disco_request limit :limit", Map.of("limit", 50)));
             context.executionResult(new SemanticExecutionResult(1, List.of(Map.of("request_id", "ZPR1003"))));
             context.summary("1 row found");
         });

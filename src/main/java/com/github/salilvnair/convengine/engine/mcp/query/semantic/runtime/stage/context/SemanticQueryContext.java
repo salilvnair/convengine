@@ -9,6 +9,8 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.sql.core.Compi
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.execute.SemanticExecutionResult;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 
+import java.util.Map;
+
 public class SemanticQueryContext {
 
     private final String question;
@@ -22,6 +24,11 @@ public class SemanticQueryContext {
     private CompiledSql compiledSql;
     private SemanticExecutionResult executionResult;
     private String summary;
+    private boolean clarificationRequired;
+    private String clarificationQuestion;
+    private String clarificationReason;
+    private Double clarificationConfidence;
+    private Map<String, Object> clarificationDiagnostics;
 
     public SemanticQueryContext(String question, EngineSession session) {
         this.question = question == null ? "" : question;
@@ -98,5 +105,45 @@ public class SemanticQueryContext {
 
     public void summary(String summary) {
         this.summary = summary;
+    }
+
+    public boolean clarificationRequired() {
+        return clarificationRequired;
+    }
+
+    public void clarificationRequired(boolean clarificationRequired) {
+        this.clarificationRequired = clarificationRequired;
+    }
+
+    public String clarificationQuestion() {
+        return clarificationQuestion;
+    }
+
+    public void clarificationQuestion(String clarificationQuestion) {
+        this.clarificationQuestion = clarificationQuestion;
+    }
+
+    public String clarificationReason() {
+        return clarificationReason;
+    }
+
+    public void clarificationReason(String clarificationReason) {
+        this.clarificationReason = clarificationReason;
+    }
+
+    public Double clarificationConfidence() {
+        return clarificationConfidence;
+    }
+
+    public void clarificationConfidence(Double clarificationConfidence) {
+        this.clarificationConfidence = clarificationConfidence;
+    }
+
+    public Map<String, Object> clarificationDiagnostics() {
+        return clarificationDiagnostics;
+    }
+
+    public void clarificationDiagnostics(Map<String, Object> clarificationDiagnostics) {
+        this.clarificationDiagnostics = clarificationDiagnostics;
     }
 }

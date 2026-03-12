@@ -12,6 +12,7 @@ import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
+import com.github.salilvnair.convengine.engine.constants.ClarificationConstants;
 import com.github.salilvnair.convengine.engine.constants.RoutingDecisionConstants;
 import com.github.salilvnair.convengine.engine.dialogue.DialogueAct;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
@@ -36,6 +37,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -57,6 +59,15 @@ public class McpToolStep implements EngineStep {
     private static final String GREETING_REGEX = "^(hi|hello|hey|greetings|good morning|good afternoon|good evening)\\b.*";
     private static final String OPERATION_TAG_POLICY_RESTRICTED_OPERATION = "POLICY_RESTRICTED_OPERATION";
     private static final String FALLBACK_POLICY_RESTRICTED = "This request is restricted by policy. Read-only operations are allowed.";
+    private static final String TOOL_DB_SEMANTIC_INTERPRET = "db.semantic.interpret";
+    private static final String TOOL_DB_SEMANTIC_RESOLVE = "db.semantic.resolve";
+    private static final String TOOL_DB_SEMANTIC_QUERY = "db.semantic.query";
+    private static final String TOOL_POSTGRES_QUERY = "postgres.query";
+    private static final String CONTEXT_KEY_SEMANTIC = "semantic";
+    private static final String CONTEXT_KEY_SEMANTIC_PIPELINE = "pipeline";
+    private static final String CONTEXT_KEY_SEMANTIC_TOOLS = "tools";
+    private static final String CONTEXT_KEY_SEMANTIC_CLARIFICATION = "clarification";
+    private static final String CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY = "semanticQueryAmbiguity";
 
     private final McpToolRegistry registry;
     private final McpPlanner planner;
@@ -98,10 +109,19 @@ public class McpToolStep implements EngineStep {
 
         DialogueAct dialogueAct = parseDialogueAct(session.inputParamAsString(ConvEngineInputParamKey.DIALOGUE_ACT));
         String routingDecision = session.inputParamAsString(ConvEngineInputParamKey.ROUTING_DECISION);
+        boolean clarificationReply = isSemanticClarificationReply(session, dialogueAct);
+        if (clarificationReply) {
+            // Clarification answer should continue semantic MCP flow.
+            session.clearClarification();
+            clearPendingClarificationFromContext(session);
+            dialogueAct = DialogueAct.ANSWER;
+            session.putInputParam(ConvEngineInputParamKey.DIALOGUE_ACT, DialogueAct.ANSWER.name());
+            markSemanticClarificationResolved(session);
+        }
         if (dialogueAct != null) {
             boolean confirmAccept = RoutingDecisionConstants.PROCEED_CONFIRMED.equalsIgnoreCase(routingDecision);
             boolean skipForDialogueAct = dialogueAct == DialogueAct.NEGATE
-                    || dialogueAct == DialogueAct.EDIT
+                    || (dialogueAct == DialogueAct.EDIT && !clarificationReply)
                     || dialogueAct == DialogueAct.RESET
                     || (dialogueAct == DialogueAct.AFFIRM && !confirmAccept);
             if (skipForDialogueAct) {
@@ -155,13 +175,14 @@ public class McpToolStep implements EngineStep {
 
             McpPlan plan = planner.plan(session, tools, observations);
             mcpTouched = true;
+            String toolCode = plan.tool_code();
+            Map<String, Object> args = enrichSemanticPipelineArgs(toolCode, plan.args(), observations);
             session.putInputParam(ConvEngineInputParamKey.MCP_ACTION, plan.action());
-            session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_CODE, plan.tool_code());
-            session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_ARGS, plan.args() == null ? Map.of() : plan.args());
+            session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_CODE, toolCode);
+            session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_ARGS, args);
             session.putInputParam("mcp_operation_tag", plan.operation_tag());
             writeLifecycleToContext(session, McpConstants.STATUS_TOOL_RESULT, McpConstants.OUTCOME_IN_PROGRESS,
-                    false, false, false, plan.action(), plan.tool_code(), null,
-                    plan.args() == null ? Map.of() : plan.args(), null);
+                    false, false, false, plan.action(), toolCode, null, args, null);
 
             if (McpConstants.ACTION_ANSWER.equalsIgnoreCase(plan.action())) {
                 // store final answer in contextJson; your ResponseResolutionStep can use it via
@@ -173,8 +194,7 @@ public class McpToolStep implements EngineStep {
                         plan.answer() == null ? "" : plan.answer());
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_ANSWER);
                 writeLifecycleToContext(session, McpConstants.STATUS_ANSWER, McpConstants.OUTCOME_ANSWERED,
-                        true, false, false, plan.action(), plan.tool_code(), null,
-                        plan.args() == null ? Map.of() : plan.args(), null);
+                        true, false, false, plan.action(), toolCode, null, args, null);
                 verbosePublisher.publish(session, "McpToolStep", "MCP_FINAL_ANSWER", null, null, false, mapOf("answer", plan.answer()));
                 audit.audit(
                         ConvEngineAuditStage.MCP_FINAL_ANSWER,
@@ -191,14 +211,10 @@ public class McpToolStep implements EngineStep {
                         McpConstants.FALLBACK_UNSAFE_NEXT_STEP);
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_FALLBACK);
                 writeLifecycleToContext(session, McpConstants.STATUS_FALLBACK, McpConstants.OUTCOME_FALLBACK,
-                        true, false, false, plan.action(), plan.tool_code(), null,
-                        plan.args() == null ? Map.of() : plan.args(), null);
+                        true, false, false, plan.action(), toolCode, null, args, null);
                 verbosePublisher.publish(session, "McpToolStep", "MCP_FINAL_ANSWER", null, null, true, mapOf("answer", McpConstants.FALLBACK_UNSAFE_NEXT_STEP));
                 break;
             }
-
-            String toolCode = plan.tool_code();
-            Map<String, Object> args = (plan.args() == null) ? Map.of() : plan.args();
             if (isPolicyRestrictedOperationTag(plan.operation_tag())) {
                 writeFinalAnswerToContext(session, FALLBACK_POLICY_RESTRICTED);
                 finalAnswerDetermined = true;
@@ -294,6 +310,7 @@ public class McpToolStep implements EngineStep {
                 observations.add(new McpObservation(toolCode, rowsJson));
                 executedToolSignatures.add(toolSignature);
                 writeObservationsToContext(session, observations);
+                writeSemanticToolObservation(session, toolCode, rowsJson);
                 session.putInputParam(ConvEngineInputParamKey.MCP_OBSERVATIONS, observations);
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_TOOL_RESULT);
                 writeLifecycleToContext(session, McpConstants.STATUS_TOOL_RESULT, McpConstants.OUTCOME_IN_PROGRESS,
@@ -304,6 +321,32 @@ public class McpToolStep implements EngineStep {
                         ConvEngineAuditStage.MCP_TOOL_RESULT,
                         session.getConversationId(),
                         mapOf("tool_code", toolCode, "tool_group", toolGroup, "rows", rowsJson));
+
+                if (TOOL_DB_SEMANTIC_INTERPRET.equalsIgnoreCase(toolCode)) {
+                    rulesStep.applyRules(session, "McpToolStep PostSemanticInterpret",
+                            RulePhase.POST_SEMANTIC_INTERPRET.name());
+                }
+
+                String clarificationQuestion = semanticClarificationQuestionFromObservation(toolCode, rowsJson);
+                if (clarificationQuestion != null && !clarificationQuestion.isBlank()) {
+                    session.setPendingClarificationQuestion(clarificationQuestion);
+                    session.setPendingClarificationReason("SEMANTIC_QUERY_AMBIGUITY");
+                    session.addClarificationHistory();
+                    writeSemanticClarificationRequired(session, toolCode, clarificationQuestion);
+                    writeFinalAnswerToContext(session, clarificationQuestion);
+                    finalAnswerDetermined = true;
+                    writeMcpExecutionFlagsToContext(session, true, false, maxLoops);
+                    session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, clarificationQuestion);
+                    session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_ANSWER);
+                    writeLifecycleToContext(session, McpConstants.STATUS_ANSWER, McpConstants.OUTCOME_ANSWERED,
+                            true, false, false, McpConstants.ACTION_ANSWER, toolCode, toolGroup, args, null);
+                    verbosePublisher.publish(session, "McpToolStep", "MCP_FINAL_ANSWER", null, toolCode, false,
+                            mapOf("answer", clarificationQuestion, "reason", "SEMANTIC_CLARIFICATION_REQUIRED"));
+                    audit.audit(ConvEngineAuditStage.MCP_FINAL_ANSWER, session.getConversationId(),
+                            mapOf("answer", clarificationQuestion, "reason", "SEMANTIC_CLARIFICATION_REQUIRED",
+                                    "tool_code", toolCode));
+                    break;
+                }
 
             } catch (Exception e) {
                 Map<String, Object> errorDetails = buildErrorDetails(e);
@@ -497,6 +540,7 @@ public class McpToolStep implements EngineStep {
                 ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTION_LIMIT);
                 ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_OBSERVATIONS);
                 ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(McpConstants.CONTEXT_KEY_LIFECYCLE);
+                ((ObjectNode) root.get(McpConstants.CONTEXT_KEY_MCP)).remove(CONTEXT_KEY_SEMANTIC);
             }
 
             session.setContextJson(mapper.writeValueAsString(root));
@@ -530,10 +574,37 @@ public class McpToolStep implements EngineStep {
         if (!isAllowedByDbkgValidationGuard(nextToolCode, observations)) {
             return "DBKG_VALIDATION_REQUIRED_BEFORE_EXECUTION";
         }
+        if (!isAllowedBySemanticPipelineGuard(nextToolCode, observations)) {
+            return "SEMANTIC_PIPELINE_SEQUENCE_GUARD_BLOCKED";
+        }
         if (!isAllowedByConfiguredNextToolGuardrail(nextToolCode, observations)) {
             return "NEXT_TOOL_GUARDRAIL_BLOCKED";
         }
         return null;
+    }
+
+    private boolean isAllowedBySemanticPipelineGuard(String nextToolCode, List<McpObservation> observations) {
+        if (nextToolCode == null || nextToolCode.isBlank() || observations == null || observations.isEmpty()) {
+            return true;
+        }
+        McpObservation last = observations.get(observations.size() - 1);
+        if (last == null || last.toolCode() == null || last.toolCode().isBlank()) {
+            return true;
+        }
+        String lastTool = normalize(last.toolCode());
+        String nextTool = normalize(nextToolCode);
+
+        if (normalize(TOOL_DB_SEMANTIC_INTERPRET).equals(lastTool)) {
+            return normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(nextTool);
+        }
+        if (normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(lastTool)) {
+            return normalize(TOOL_DB_SEMANTIC_QUERY).equals(nextTool);
+        }
+        if (normalize(TOOL_DB_SEMANTIC_QUERY).equals(lastTool)) {
+            return normalize(TOOL_POSTGRES_QUERY).equals(nextTool)
+                    || normalize(TOOL_DB_SEMANTIC_QUERY).equals(nextTool);
+        }
+        return true;
     }
 
     private boolean isPolicyRestrictedOperationTag(String operationTag) {
@@ -677,6 +748,7 @@ public class McpToolStep implements EngineStep {
             } else {
                 lifecycle.remove(McpConstants.CONTEXT_KEY_ERROR_MESSAGE);
             }
+            writeSemanticLifecycle(mcp, status, outcome, lastAction, lastToolCode, errorMessage);
 
             session.setContextJson(mapper.writeValueAsString(root));
         } catch (Exception ignored) {
@@ -783,6 +855,419 @@ public class McpToolStep implements EngineStep {
                     return summary;
                 }
             } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    private Map<String, Object> enrichSemanticPipelineArgs(String toolCode,
+                                                           Map<String, Object> originalArgs,
+                                                           List<McpObservation> observations) {
+        Map<String, Object> args = new LinkedHashMap<>();
+        if (originalArgs != null) {
+            args.putAll(originalArgs);
+        }
+        if (toolCode == null || toolCode.isBlank() || observations == null || observations.isEmpty()) {
+            return args;
+        }
+        String normalizedTool = normalize(toolCode);
+
+        if (normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(normalizedTool)
+                && !args.containsKey("canonicalIntent")
+                && !args.containsKey("canonical_intent")) {
+            JsonNode node = latestObservationNode(observations, TOOL_DB_SEMANTIC_INTERPRET);
+            JsonNode canonicalIntent = node == null ? null : node.path("canonicalIntent");
+            if (canonicalIntent != null && canonicalIntent.isObject()) {
+                args.put("canonicalIntent", mapper.convertValue(canonicalIntent, Map.class));
+            }
+        }
+
+        if (normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalizedTool)
+                && !args.containsKey("resolvedPlan")
+                && !args.containsKey("resolved_plan")) {
+            JsonNode node = latestObservationNode(observations, TOOL_DB_SEMANTIC_RESOLVE);
+            JsonNode resolvedPlan = node == null ? null : node.path("resolvedPlan");
+            if (resolvedPlan != null && resolvedPlan.isObject()) {
+                args.put("resolvedPlan", mapper.convertValue(resolvedPlan, Map.class));
+            }
+        }
+
+        if (normalize(TOOL_POSTGRES_QUERY).equals(normalizedTool)
+                && !args.containsKey("query")
+                && !args.containsKey("sql")) {
+            JsonNode node = latestObservationNode(observations, TOOL_DB_SEMANTIC_QUERY);
+            JsonNode compiledSql = node == null ? null : node.path("compiledSql");
+            if (compiledSql != null && compiledSql.isObject()) {
+                String sql = compiledSql.path("sql").asText("");
+                JsonNode params = compiledSql.path("params");
+                if (sql != null && !sql.isBlank()) {
+                    args.put("query", sql);
+                }
+                if (params != null && params.isObject()) {
+                    args.put("params", mapper.convertValue(params, Map.class));
+                }
+            } else if (node != null && node.isObject()) {
+                String sql = node.path("compiledSql").asText("");
+                JsonNode params = node.path("compiledSqlParams");
+                if (sql != null && !sql.isBlank()) {
+                    args.put("query", sql);
+                }
+                if (params != null && params.isObject()) {
+                    args.put("params", mapper.convertValue(params, Map.class));
+                }
+            }
+        }
+
+        return args;
+    }
+
+    private String semanticClarificationQuestionFromObservation(String toolCode, String observationJson) {
+        if (toolCode == null || toolCode.isBlank() || observationJson == null || observationJson.isBlank()) {
+            return null;
+        }
+        String normalized = normalize(toolCode);
+        if (!normalize(TOOL_DB_SEMANTIC_INTERPRET).equals(normalized)
+                && !normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(normalized)) {
+            return null;
+        }
+        try {
+            JsonNode root = mapper.readTree(observationJson);
+            boolean needsClarification = root.path("needsClarification").asBoolean(false)
+                    || root.path("meta").path("needsClarification").asBoolean(false);
+            if (!needsClarification) {
+                return null;
+            }
+            String question = root.path("clarificationQuestion").asText("");
+            if (question == null || question.isBlank()) {
+                question = root.path("meta").path("clarificationQuestion").asText("");
+            }
+            return question == null || question.isBlank() ? null : question;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private boolean isSemanticClarificationReply(EngineSession session, DialogueAct dialogueAct) {
+        if (session == null || !session.hasPendingClarification()) {
+            return false;
+        }
+        if (dialogueAct == null) {
+            return false;
+        }
+        boolean semanticByReason = ClarificationConstants.REASON_SEMANTIC_QUERY_AMBIGUITY
+                .equalsIgnoreCase(session.getPendingClarificationReason());
+        if (!semanticByReason && !isSemanticClarificationActiveInContext(session)) {
+            return false;
+        }
+        return dialogueAct == DialogueAct.ANSWER
+                || dialogueAct == DialogueAct.EDIT
+                || dialogueAct == DialogueAct.AFFIRM
+                || dialogueAct == DialogueAct.NEW_REQUEST;
+    }
+
+    private boolean isSemanticClarificationActiveInContext(EngineSession session) {
+        try {
+            JsonNode root = mapper.readTree(session.getContextJson() == null ? "{}" : session.getContextJson());
+            JsonNode clarification = root.path(McpConstants.CONTEXT_KEY_MCP)
+                    .path(CONTEXT_KEY_SEMANTIC)
+                    .path(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
+            boolean required = clarification.path("required").asBoolean(false);
+            String signal = clarification.path("signal").asText("");
+            return required || "CLARIFICATION_REQUIRED".equalsIgnoreCase(signal);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void markSemanticClarificationResolved(EngineSession session) {
+        try {
+            ObjectNode root = ensureContextObject(session);
+            ObjectNode mcp = root.withObject(McpConstants.CONTEXT_KEY_MCP);
+            ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
+            ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
+            clarification.put("resolved", true);
+            clarification.put("required", false);
+            clarification.put("signal", "NONE");
+            semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, false);
+            session.setContextJson(mapper.writeValueAsString(root));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void clearPendingClarificationFromContext(EngineSession session) {
+        try {
+            ObjectNode root = ensureContextObject(session);
+            root.remove("pending_clarification");
+            session.setContextJson(mapper.writeValueAsString(root));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void writeSemanticClarificationRequired(EngineSession session, String toolCode, String question) {
+        try {
+            ObjectNode root = ensureContextObject(session);
+            ObjectNode mcp = root.withObject(McpConstants.CONTEXT_KEY_MCP);
+            ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
+            ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
+            clarification.put("required", true);
+            clarification.put("resolved", false);
+            clarification.put("reason", ClarificationConstants.REASON_SEMANTIC_QUERY_AMBIGUITY);
+            clarification.put("question", question == null ? "" : question);
+            clarification.put("sourceTool", toolCode == null ? "" : toolCode);
+            clarification.put("signal", "CLARIFICATION_REQUIRED");
+            semantic.put("semanticClarificationRequired", true);
+            semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, true);
+            session.setContextJson(mapper.writeValueAsString(root));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void writeSemanticLifecycle(
+            ObjectNode mcp,
+            String status,
+            String outcome,
+            String lastAction,
+            String lastToolCode,
+            String errorMessage) {
+        ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
+        ObjectNode pipeline = semantic.withObject(CONTEXT_KEY_SEMANTIC_PIPELINE);
+        pipeline.put("enabled", true);
+        pipeline.put("chain", "db.semantic.interpret->db.semantic.resolve->db.semantic.query->postgres.query");
+        pipeline.put("lastAction", lastAction == null ? "" : lastAction);
+        pipeline.put("lastToolCode", lastToolCode == null ? "" : lastToolCode);
+        pipeline.put("lastStatus", status == null ? "" : status);
+        pipeline.put("lastOutcome", outcome == null ? "" : outcome);
+        pipeline.put("lastError", errorMessage == null ? "" : errorMessage);
+        pipeline.put("stage", semanticStage(lastToolCode));
+
+        if (lastToolCode != null && !lastToolCode.isBlank()) {
+            ObjectNode tools = semantic.withObject(CONTEXT_KEY_SEMANTIC_TOOLS);
+            ObjectNode toolNode = tools.withObject(semanticToolKey(lastToolCode));
+            toolNode.put("lastSeen", true);
+            toolNode.put("lastStatus", status == null ? "" : status);
+            toolNode.put("lastOutcome", outcome == null ? "" : outcome);
+            toolNode.put("error", errorMessage == null ? "" : errorMessage);
+            if (McpConstants.STATUS_TOOL_RESULT.equalsIgnoreCase(status)) {
+                toolNode.put("completed", true);
+            }
+        }
+
+        if (TOOL_DB_SEMANTIC_INTERPRET.equalsIgnoreCase(lastToolCode)
+                || TOOL_DB_SEMANTIC_RESOLVE.equalsIgnoreCase(lastToolCode)) {
+            // Keep a stable alias usable in ce_rule/response templates.
+            ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
+            if (!clarification.has("signal")) {
+                clarification.put("signal", "NONE");
+            }
+            semantic.put("semanticClarificationRequired",
+                    "CLARIFICATION_REQUIRED".equalsIgnoreCase(clarification.path("signal").asText("NONE")));
+        }
+    }
+
+    private String semanticStage(String toolCode) {
+        if (TOOL_DB_SEMANTIC_INTERPRET.equalsIgnoreCase(toolCode)) {
+            return "INTERPRET";
+        }
+        if (TOOL_DB_SEMANTIC_RESOLVE.equalsIgnoreCase(toolCode)) {
+            return "RESOLVE";
+        }
+        if (TOOL_DB_SEMANTIC_QUERY.equalsIgnoreCase(toolCode)) {
+            return "QUERY";
+        }
+        if (TOOL_POSTGRES_QUERY.equalsIgnoreCase(toolCode)) {
+            return "POSTGRES_EXECUTE";
+        }
+        return "UNKNOWN";
+    }
+
+    private String semanticToolKey(String toolCode) {
+        if (TOOL_DB_SEMANTIC_INTERPRET.equalsIgnoreCase(toolCode)) {
+            return "interpret";
+        }
+        if (TOOL_DB_SEMANTIC_RESOLVE.equalsIgnoreCase(toolCode)) {
+            return "resolve";
+        }
+        if (TOOL_DB_SEMANTIC_QUERY.equalsIgnoreCase(toolCode)) {
+            return "query";
+        }
+        if (TOOL_POSTGRES_QUERY.equalsIgnoreCase(toolCode)) {
+            return "postgres";
+        }
+        return "other";
+    }
+
+    private void writeSemanticToolObservation(EngineSession session, String toolCode, String rowsJson) {
+        if (session == null || toolCode == null || toolCode.isBlank() || rowsJson == null || rowsJson.isBlank()) {
+            return;
+        }
+        try {
+            JsonNode rootObs = mapper.readTree(rowsJson);
+            ObjectNode root = ensureContextObject(session);
+            ObjectNode mcp = root.withObject(McpConstants.CONTEXT_KEY_MCP);
+            ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
+            ObjectNode tools = semantic.withObject(CONTEXT_KEY_SEMANTIC_TOOLS);
+            ObjectNode toolNode = tools.withObject(semanticToolKey(toolCode));
+
+            toolNode.put("toolCode", toolCode);
+            toolNode.put("stage", semanticStage(toolCode));
+            toolNode.put("completed", true);
+
+            double confidence = numberAt(rootObs, "confidence", "meta.confidence");
+            if (confidence >= 0.0d) {
+                toolNode.put("confidence", confidence);
+            }
+            boolean needsClarification = boolAt(rootObs, "needsClarification", "meta.needsClarification");
+            toolNode.put("needsClarification", needsClarification);
+            String clarificationQuestion = textAt(rootObs, "clarificationQuestion", "meta.clarificationQuestion");
+            if (clarificationQuestion != null && !clarificationQuestion.isBlank()) {
+                toolNode.put("clarificationQuestion", clarificationQuestion);
+            }
+            int rowCount = intAt(rootObs, "rowCount", "meta.rowCount", "execution.rowCount");
+            if (rowCount >= 0) {
+                toolNode.put("rowCount", rowCount);
+            }
+            String sql = textAt(rootObs, "compiledSql.sql", "compiledSql", "sql");
+            if (sql != null && !sql.isBlank()) {
+                toolNode.put("compiledSql", sql);
+            }
+            int unresolved = countAt(rootObs, "unresolvedFields", "unresolved_fields");
+            if (unresolved >= 0) {
+                toolNode.put("unresolvedFieldCount", unresolved);
+            }
+            int ambiguities = countAt(rootObs, "ambiguities", "meta.ambiguities");
+            if (ambiguities >= 0) {
+                toolNode.put("ambiguityCount", ambiguities);
+            }
+
+            if (needsClarification) {
+                ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
+                clarification.put("required", true);
+                clarification.put("resolved", false);
+                clarification.put("reason", ClarificationConstants.REASON_SEMANTIC_QUERY_AMBIGUITY);
+                clarification.put("question", clarificationQuestion == null ? "" : clarificationQuestion);
+                clarification.put("sourceTool", toolCode);
+                clarification.put("signal", "CLARIFICATION_REQUIRED");
+                semantic.put("semanticClarificationRequired", true);
+                semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, true);
+            } else {
+                semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, false);
+            }
+
+            session.setContextJson(mapper.writeValueAsString(root));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private String textAt(JsonNode node, String... paths) {
+        if (node == null || paths == null) {
+            return null;
+        }
+        for (String path : paths) {
+            JsonNode value = node.at(toPointer(path));
+            if (!value.isMissingNode() && !value.isNull()) {
+                String text = value.asText("");
+                if (!text.isBlank()) {
+                    return text;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean boolAt(JsonNode node, String... paths) {
+        if (node == null || paths == null) {
+            return false;
+        }
+        for (String path : paths) {
+            JsonNode value = node.at(toPointer(path));
+            if (!value.isMissingNode() && !value.isNull()) {
+                if (value.isBoolean()) {
+                    return value.asBoolean(false);
+                }
+                String text = value.asText("");
+                if ("true".equalsIgnoreCase(text)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private double numberAt(JsonNode node, String... paths) {
+        if (node == null || paths == null) {
+            return -1.0d;
+        }
+        for (String path : paths) {
+            JsonNode value = node.at(toPointer(path));
+            if (!value.isMissingNode() && !value.isNull()) {
+                if (value.isNumber()) {
+                    return value.asDouble(-1.0d);
+                }
+                try {
+                    return Double.parseDouble(value.asText());
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return -1.0d;
+    }
+
+    private int intAt(JsonNode node, String... paths) {
+        if (node == null || paths == null) {
+            return -1;
+        }
+        for (String path : paths) {
+            JsonNode value = node.at(toPointer(path));
+            if (!value.isMissingNode() && !value.isNull()) {
+                if (value.isInt() || value.isLong()) {
+                    return value.asInt(-1);
+                }
+                try {
+                    return Integer.parseInt(value.asText());
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return -1;
+    }
+
+    private int countAt(JsonNode node, String... paths) {
+        if (node == null || paths == null) {
+            return -1;
+        }
+        for (String path : paths) {
+            JsonNode value = node.at(toPointer(path));
+            if (value.isArray()) {
+                return value.size();
+            }
+        }
+        return -1;
+    }
+
+    private String toPointer(String dottedPath) {
+        if (dottedPath == null || dottedPath.isBlank()) {
+            return "";
+        }
+        return "/" + dottedPath.trim().replace(".", "/");
+    }
+
+    private JsonNode latestObservationNode(List<McpObservation> observations, String toolCode) {
+        if (observations == null || observations.isEmpty() || toolCode == null || toolCode.isBlank()) {
+            return null;
+        }
+        String expected = normalize(toolCode);
+        for (int i = observations.size() - 1; i >= 0; i--) {
+            McpObservation observation = observations.get(i);
+            if (observation == null || observation.toolCode() == null) {
+                continue;
+            }
+            if (!expected.equals(normalize(observation.toolCode()))) {
+                continue;
+            }
+            try {
+                return mapper.readTree(observation.json());
+            } catch (Exception ignored) {
+                return null;
             }
         }
         return null;

@@ -8,6 +8,7 @@ import com.github.salilvnair.convengine.api.dto.SemanticModelReloadRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticModelReloadResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticModelSaveRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticModelSaveResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticModelStudioConfigResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticModelValidateRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticModelValidateResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildRequest;
@@ -106,6 +107,11 @@ public class DbSchemaController {
     @GetMapping("/semantic-query/current-model-yaml")
     public ResponseEntity<Map<String, String>> currentSemanticModelYaml() {
         return ResponseEntity.ok(Map.of("yaml", semanticQueryModelAdminService.currentModelYaml()));
+    }
+
+    @GetMapping("/semantic-query/studio-config")
+    public ResponseEntity<SemanticModelStudioConfigResponse> semanticQueryStudioConfig() {
+        return ResponseEntity.ok(semanticQueryModelAdminService.studioConfig());
     }
 
     @PostMapping("/semantic-query/debug-analyze")

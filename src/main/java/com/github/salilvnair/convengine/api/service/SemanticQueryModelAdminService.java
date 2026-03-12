@@ -9,6 +9,7 @@ import com.github.salilvnair.convengine.api.dto.SemanticModelReloadRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticModelReloadResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticModelSaveRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticModelSaveResponse;
+import com.github.salilvnair.convengine.api.dto.SemanticModelStudioConfigResponse;
 import com.github.salilvnair.convengine.api.dto.SemanticModelValidateRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticModelValidateResponse;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
@@ -52,12 +53,20 @@ public class SemanticQueryModelAdminService {
     private static final int PROMPT_MAX_JOINS = 40;
     private static final Pattern YAML_KEY_PATTERN = Pattern.compile("^\\s*([A-Za-z0-9_-]+):");
     private static final Pattern TABLE_COLUMN_REF_PATTERN = Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)");
+    private static final List<String> EDITABLE_MODEL_SECTIONS = List.of(
+            "version", "database", "description", "settings",
+            "entities", "tables", "relationships", "synonyms", "rules"
+    );
+    private static final List<String> DB_MANAGED_MODEL_SECTIONS = List.of(
+            "metrics", "intent_rules", "join_hints", "value_patterns"
+    );
     private static final String DEFAULT_SYSTEM_PROMPT = """
             You are generating semantic-query model YAML for ConvEngine.
             Return ONLY YAML text. No markdown.
 
             Output requirements:
-            - include version, database, settings, entities, tables, relationships, metrics, value_patterns, intent_rules.
+            - include version, database, settings, entities, tables, relationships, synonyms, rules.
+            - exclude metrics, intent_rules, join_hints, value_patterns (they are DB-managed).
             - fields must use semantic names with table.column mapping.
             - include synonyms and example_questions where possible.
             - do not invent table/column names outside provided schema.
@@ -128,12 +137,14 @@ public class SemanticQueryModelAdminService {
         diagnostics.addAll(validate.getErrors());
         diagnostics.addAll(validate.getWarnings());
 
-        return new SemanticModelGenerateResponse(
-                true,
-                llmYaml,
-                diagnostics,
-                llmYaml.equals(fallback) ? "Generated deterministic draft." : "Generated with LLM."
-        );
+        SemanticModelGenerateResponse response = new SemanticModelGenerateResponse();
+        response.setSuccess(true);
+        response.setYaml(llmYaml);
+        response.setDiagnostics(diagnostics);
+        response.setNote(llmYaml.equals(fallback) ? "Generated deterministic draft." : "Generated with LLM.");
+        response.setEditableSections(EDITABLE_MODEL_SECTIONS);
+        response.setDbManagedSections(DB_MANAGED_MODEL_SECTIONS);
+        return response;
     }
 
     private PromptTemplateContext buildPromptContext(SemanticModelGenerateRequest request) {
@@ -361,6 +372,27 @@ public class SemanticQueryModelAdminService {
             });
         }
 
+        if (model.metrics() != null && !model.metrics().isEmpty()) {
+            warnings.add(new SemanticModelIssue("WARNING",
+                    "metrics is DB-managed in semantic v2; keep it empty in semantic-layer.yml.",
+                    resolveLine(yaml, "metrics:"), null));
+        }
+        if (model.intentRules() != null && !model.intentRules().isEmpty()) {
+            warnings.add(new SemanticModelIssue("WARNING",
+                    "intent_rules is DB-managed in semantic v2; keep it empty in semantic-layer.yml.",
+                    resolveLine(yaml, "intent_rules:"), null));
+        }
+        if (model.joinHints() != null && !model.joinHints().isEmpty()) {
+            warnings.add(new SemanticModelIssue("WARNING",
+                    "join_hints is DB-managed in semantic v2; keep it empty in semantic-layer.yml.",
+                    resolveLine(yaml, "join_hints:"), null));
+        }
+        if (model.valuePatterns() != null && !model.valuePatterns().isEmpty()) {
+            warnings.add(new SemanticModelIssue("WARNING",
+                    "value_patterns is DB-managed in semantic v2; keep it empty in semantic-layer.yml.",
+                    resolveLine(yaml, "value_patterns:"), null));
+        }
+
         return new SemanticModelValidateResponse(errors.isEmpty(), errors, warnings);
     }
 
@@ -461,10 +493,19 @@ public class SemanticQueryModelAdminService {
         }
     }
 
+    public SemanticModelStudioConfigResponse studioConfig() {
+        return new SemanticModelStudioConfigResponse(
+                true,
+                EDITABLE_MODEL_SECTIONS,
+                DB_MANAGED_MODEL_SECTIONS,
+                "Builder palette should exclude DB-managed sections."
+        );
+    }
+
     private String deterministicDraft(SemanticModelGenerateRequest request) {
         String database = safe(request.getSchema());
         if (database.isBlank()) {
-            database = "zapper_ops";
+            database = "demo_ops";
         }
         Map<String, Set<String>> tableColumns = new LinkedHashMap<>();
         if (request.getRows() != null) {
@@ -497,7 +538,7 @@ public class SemanticQueryModelAdminService {
         yaml.append("\nentities:\n");
         for (Map.Entry<String, Set<String>> e : tableColumns.entrySet()) {
             String table = e.getKey();
-            String entity = toPascal(table.replaceFirst("^(zp_|ce_)", ""));
+            String entity = toPascal(table.replaceFirst("^(ce_)", ""));
             yaml.append("  ").append(entity).append(":\n");
             yaml.append("    description: Auto-generated from ").append(table).append("\n");
             yaml.append("    synonyms: []\n");
@@ -524,9 +565,6 @@ public class SemanticQueryModelAdminService {
             }
         }
         yaml.append("\nrelationships: []\n");
-        yaml.append("metrics: {}\n");
-        yaml.append("value_patterns: []\n");
-        yaml.append("intent_rules: {}\n");
         yaml.append("synonyms: {}\n");
         yaml.append("rules:\n");
         yaml.append("  allowed_tables:\n");

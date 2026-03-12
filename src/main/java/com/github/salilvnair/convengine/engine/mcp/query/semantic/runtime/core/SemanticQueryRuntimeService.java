@@ -52,6 +52,9 @@ public class SemanticQueryRuntimeService {
             SemanticQueryContext context = new SemanticQueryContext(safeQuestion, session);
             SemanticStagePipeline stagePipeline = stagePipelineFactory.create();
             for (SemanticQueryStage stage : stagePipeline.stages()) {
+                if (context.clarificationRequired()) {
+                    break;
+                }
                 if (stage == null || !stage.supports(context)) {
                     continue;
                 }
@@ -59,6 +62,9 @@ public class SemanticQueryRuntimeService {
                 try {
                     stage.execute(context);
                     publishAfter(stageInterceptors, stage.stageCode(), session, context);
+                    if (context.clarificationRequired()) {
+                        break;
+                    }
                 } catch (Exception stageError) {
                     publishStageError(stage, context, session, stageError);
                     throw stageError;
@@ -81,8 +87,13 @@ public class SemanticQueryRuntimeService {
             out.put("compiledSqlParams", context.compiledSql() == null ? null : sanitizeMap(context.compiledSql().params()));
             out.put("execution", context.executionResult());
             out.put("summary", context.summary());
+            out.put("needsClarification", context.clarificationRequired());
+            out.put("clarificationQuestion", context.clarificationQuestion());
+            out.put("clarificationReason", context.clarificationReason());
+            out.put("clarificationConfidence", context.clarificationConfidence());
+            out.put("clarificationDiagnostics", context.clarificationDiagnostics());
             out.put("_meta", buildMeta(context, "runtime", "COMPLETED"));
-            out.put("next", "completed");
+            out.put("next", context.clarificationRequired() ? "clarification_required" : "completed");
             return out;
         } catch (Exception ex) {
             publishRuntimeError(session, ex);
@@ -242,6 +253,7 @@ public class SemanticQueryRuntimeService {
         meta.put("sqlCompiled", context != null && context.compiledSql() != null && context.compiledSql().sql() != null && !context.compiledSql().sql().isBlank());
         meta.put("sqlExecuted", context != null && context.executionResult() != null);
         meta.put("summaryPrepared", context != null && context.summary() != null && !context.summary().isBlank());
+        meta.put("clarificationRequired", context != null && context.clarificationRequired());
         meta.put("astVersion", context == null || context.astGeneration() == null ? null : context.astGeneration().astVersion());
         return meta;
     }

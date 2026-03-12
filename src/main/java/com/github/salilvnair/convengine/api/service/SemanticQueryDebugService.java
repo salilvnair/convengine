@@ -62,9 +62,7 @@ import java.util.regex.Pattern;
 public class SemanticQueryDebugService {
 
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^a-z0-9_]+");
-    private static final Pattern REQUEST_ID = Pattern.compile("\\bZPR\\d+\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern DON_ID = Pattern.compile("\\bDON\\d+\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern DISCONNECT_ID = Pattern.compile("\\bZPDISC\\d+\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ID_LIKE_TOKEN = Pattern.compile("\\b[A-Z0-9_-]*\\d+[A-Z0-9_-]*\\b", Pattern.CASE_INSENSITIVE);
     private static final double FIELD_OWNERSHIP_WEIGHT = 0.45d;
     private static final double FEEDBACK_VECTOR_ENTITY_WEIGHT = 0.40d;
 
@@ -569,10 +567,10 @@ public class SemanticQueryDebugService {
 
         Map<String, Object> inputSignals = new LinkedHashMap<>();
         Set<String> queryTokens = tokenize(question);
+        List<String> idLikeTokens = extractIdLikeTokens(question);
         inputSignals.put("queryTokens", queryTokens);
-        inputSignals.put("hasRequestIdToken", REQUEST_ID.matcher(String.valueOf(question)).find());
-        inputSignals.put("hasDonToken", DON_ID.matcher(String.valueOf(question)).find());
-        inputSignals.put("hasDisconnectIdToken", DISCONNECT_ID.matcher(String.valueOf(question)).find());
+        inputSignals.put("hasIdLikeToken", !idLikeTokens.isEmpty());
+        inputSignals.put("idLikeTokens", idLikeTokens);
 
         Map<String, Object> weights = new LinkedHashMap<>();
         weights.put("synonymWeight", rc.getSynonymWeight());
@@ -758,6 +756,21 @@ public class SemanticQueryDebugService {
             return "";
         }
         return tableDotColumn.substring(0, dot);
+    }
+
+    private List<String> extractIdLikeTokens(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
+        var matcher = ID_LIKE_TOKEN.matcher(text);
+        while (matcher.find()) {
+            String token = matcher.group();
+            if (token != null && !token.isBlank()) {
+                tokens.add(token);
+            }
+        }
+        return List.copyOf(tokens);
     }
 
     private Set<String> tokenize(String text) {

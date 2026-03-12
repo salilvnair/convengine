@@ -168,9 +168,6 @@ public class DefaultAstNormalizer implements AstNormalizer {
                 String col = field.column();
                 String colName = col.contains(".") ? col.substring(col.lastIndexOf('.') + 1) : col;
                 putAlias(aliasToField, normalizeToken(colName), fieldName);
-                if (colName.startsWith("zp_")) {
-                    putAlias(aliasToField, normalizeToken(colName.substring(3)), fieldName);
-                }
             }
             if (field != null && field.aliases() != null && !field.aliases().isEmpty()) {
                 for (String alias : field.aliases()) {

@@ -5,6 +5,8 @@ import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.mcp.McpSqlGuardrail;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.DbToolHandler;
 import com.github.salilvnair.convengine.engine.mcp.executor.interceptor.PostgresQueryInterceptor;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureFeedbackService;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureRecord;
 import com.github.salilvnair.convengine.engine.mcp.util.McpSqlAuditHelper;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
@@ -18,7 +20,6 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @Slf4j
 @Component
@@ -30,6 +31,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
     private final AuditService auditService;
     private final VerboseMessagePublisher verbosePublisher;
     private final ObjectProvider<List<PostgresQueryInterceptor>> interceptorProvider;
+    private final SemanticFailureFeedbackService failureFeedbackService;
 
     @Override
     public String toolCode() {
@@ -38,17 +40,27 @@ public class PostgresQueryToolHandler implements DbToolHandler {
 
     @Override
     public Object execute(CeMcpTool tool, Map<String, Object> args, EngineSession session) {
-        if (args == null || !args.containsKey("query")) {
+        if (args == null) {
             throw new IllegalArgumentException("Missing required parameter: query");
         }
 
-        String sql = String.valueOf(args.get("query")).trim();
+        Object rawQuery = args.get("query");
+        if ((rawQuery == null || String.valueOf(rawQuery).isBlank()) && args.containsKey("sql")) {
+            rawQuery = args.get("sql");
+            args.put("query", rawQuery);
+        }
+        if (rawQuery == null || String.valueOf(rawQuery).isBlank()) {
+            throw new IllegalArgumentException("Missing required parameter: query");
+        }
+
+        String sql = String.valueOf(rawQuery).trim();
         if (sql.isBlank()) {
             throw new IllegalArgumentException("The provided SQL query is empty.");
         }
         String originalSql = sql;
         sql = applyInterceptors(sql, tool, args, session);
         args.put("query", sql);
+        Map<String, Object> queryParams = resolveQueryParams(args);
 
         // 1. Assert read-only safety using the shared guardrail validation.
         sqlGuardrail.assertReadOnly(sql, "postgres.query tool");
@@ -61,7 +73,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
 
         // 2. Execute the read-only query
         try {
-            rows = jdbcTemplate.queryForList(sql, Map.of());
+            rows = jdbcTemplate.queryForList(sql, queryParams);
 
             resultPayload.put("status", "SUCCESS");
             resultPayload.put("rowCount", rows.size());
@@ -79,6 +91,19 @@ public class PostgresQueryToolHandler implements DbToolHandler {
             log.error("Failed to execute dynamic LLM SQL query", e);
             resultPayload.put("status", "ERROR");
             resultPayload.put("error", e.getClass().getName() + ": " + e.getMessage());
+            failureFeedbackService.recordFailure(new SemanticFailureRecord(
+                    session == null ? null : session.getConversationId(),
+                    session == null ? null : session.getUserText(),
+                    sql,
+                    null,
+                    e.getClass().getSimpleName(),
+                    e.getMessage(),
+                    "POSTGRES_QUERY_EXECUTION",
+                    Map.of(
+                            "toolCode", toolCode(),
+                            "params", queryParams
+                    )
+            ));
         }
 
         // 3. Audit & Verbose
@@ -102,7 +127,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
                 ConvEngineAuditStage.DYNAMIC_SQL_EXECUTION_ERROR,
                 basePayload,
                 sql,
-                Map.of(),
+                queryParams,
                 rows,
                 executionError);
 
@@ -132,5 +157,19 @@ public class PostgresQueryToolHandler implements DbToolHandler {
             }
         }
         return current;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveQueryParams(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) {
+            return Map.of();
+        }
+        Object raw = args.get("params");
+        if (!(raw instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        map.forEach((k, v) -> out.put(String.valueOf(k), v));
+        return out;
     }
 }

@@ -11,10 +11,10 @@ class TableIntrospectionMatcherTest {
 
     @Test
     void matchesExactAndWildcardPatterns() {
-        List<String> rules = TableIntrospectionMatcher.normalizePatterns(List.of("ce_*", "zp_request", "  "));
+        List<String> rules = TableIntrospectionMatcher.normalizePatterns(List.of("ce_*", "zp_disco_request", "  "));
         assertTrue(TableIntrospectionMatcher.matches("ce_config", rules));
         assertTrue(TableIntrospectionMatcher.matches("ce_mcp_tool", rules));
-        assertTrue(TableIntrospectionMatcher.matches("zp_request", rules));
+        assertTrue(TableIntrospectionMatcher.matches("zp_disco_request", rules));
         assertFalse(TableIntrospectionMatcher.matches("zp_connection", rules));
     }
 

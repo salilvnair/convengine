@@ -10,6 +10,7 @@ import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
+import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
 import com.github.salilvnair.convengine.intent.CompositeIntentResolver;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
@@ -35,6 +36,7 @@ public class IntentResolutionStep implements EngineStep {
     private final StaticConfigurationCacheService staticCacheService;
     private final CeConfigResolver configResolver;
     private final VerboseMessagePublisher verbosePublisher;
+    private final RulesStep rulesStep;
 
     private static final Set<String> RESET_COMMANDS = Set.of(
             "reset",
@@ -125,6 +127,12 @@ public class IntentResolutionStep implements EngineStep {
         }
         session.getConversation().setIntentCode(session.getIntent());
         session.getConversation().setStateCode(session.getState());
+
+        if (result.source() == CompositeIntentResolver.IntentResolutionResult.Source.CLASSIFIER) {
+            rulesStep.applyRules(session, "IntentResolutionStep Classifier", RulePhase.POST_CLASSIFIER_INTENT.name());
+            session.getConversation().setIntentCode(session.getIntent());
+            session.getConversation().setStateCode(session.getState());
+        }
 
         audit.audit(
                 ConvEngineAuditStage.intentResolvedBy(result.source().name()),

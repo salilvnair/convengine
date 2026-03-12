@@ -115,7 +115,7 @@ class DefaultAstNormalizerIntentRuleTest {
     private SemanticModel modelWithoutIntentRule() {
         return new SemanticModel(
                 1,
-                "zapper_ops",
+                "demo_ops",
                 "test",
                 Map.of(
                         "DisconnectRequest", disconnectRequestEntity(),
@@ -147,7 +147,7 @@ class DefaultAstNormalizerIntentRuleTest {
         );
         return new SemanticModel(
                 1,
-                "zapper_ops",
+                "demo_ops",
                 "test",
                 Map.of(
                         "DisconnectRequest", disconnectRequestEntity(),
@@ -169,10 +169,10 @@ class DefaultAstNormalizerIntentRuleTest {
         return new SemanticEntity(
                 "Disconnect request",
                 List.of(),
-                new SemanticEntityTables("zp_request", List.of("zp_disconnect_order", "zp_ui_data")),
+                new SemanticEntityTables("zp_disco_request", List.of("zp_disco_trans_data", "zp_disco_trans_data")),
                 Map.of(
-                        "requestId", new SemanticField("zp_request.zp_request_id", "string", null, true, true, true),
-                        "disconnectId", new SemanticField("zp_disconnect_order.zp_disconnect_id", "string", null, true, true, false)
+                        "requestId", new SemanticField("zp_disco_request.request_id", "string", null, true, true, true),
+                        "disconnectId", new SemanticField("zp_disco_trans_data.zp_disconnect_id", "string", null, true, true, false)
                 )
         );
     }

@@ -134,7 +134,12 @@ public class ConvEngineMcpConfig {
         public static class Semantic {
             private boolean enabled = false;
             private String toolCode = "db.semantic.query";
-            private String modelPath = "classpath:/mcp/semantic-layer.yaml";
+            /**
+             * When true, db.semantic.query v2 path (resolvedPlan input) fails fast
+             * on incomplete/invalid resolved plans instead of attempting fallback.
+             */
+            private boolean strictMode = false;
+            private String modelPath = "classpath:/mcp/semantic-layer.yml";
             private int defaultLimit = 100;
             private int maxLimit = 500;
             private String sqlDialect = "postgres";
@@ -145,6 +150,7 @@ public class ConvEngineMcpConfig {
             private Retrieval retrieval = new Retrieval();
             private Vector vector = new Vector();
             private Graph graph = new Graph();
+            private Clarification clarification = new Clarification();
 
             @Getter
             @Setter
@@ -190,6 +196,35 @@ public class ConvEngineMcpConfig {
                  * Supported default: jgrapht
                  */
                 private String adapter = "jgrapht";
+            }
+
+            @Getter
+            @Setter
+            public static class Clarification {
+                /**
+                 * Enables clarification loop for semantic query ambiguity.
+                 */
+                private boolean enabled = true;
+                /**
+                 * Ask follow-up if calculated confidence is below this threshold.
+                 */
+                private double confidenceThreshold = 0.80d;
+                /**
+                 * Weight of retrieval confidence in overall confidence score.
+                 */
+                private double retrievalWeight = 0.60d;
+                /**
+                 * Weight of join-path confidence in overall confidence score.
+                 */
+                private double joinWeight = 0.40d;
+                /**
+                 * If top-2 entity candidates are too close, ask clarification.
+                 */
+                private double minTopEntityGap = 0.12d;
+                /**
+                 * Number of options to include in clarification question.
+                 */
+                private int maxEntityOptions = 2;
             }
 
         }

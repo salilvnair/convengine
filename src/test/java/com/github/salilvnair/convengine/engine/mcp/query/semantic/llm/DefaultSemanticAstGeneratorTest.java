@@ -77,7 +77,7 @@ class DefaultSemanticAstGeneratorTest {
         when(interceptorsProvider.getIfAvailable(any())).thenReturn(List.of());
         when(modelRegistry.getModel()).thenReturn(new SemanticModel(
                 1,
-                "zapper_ops",
+                "demo_ops",
                 "test model",
                 Map.of(),
                 List.of(),
@@ -109,13 +109,13 @@ class DefaultSemanticAstGeneratorTest {
         retrieval = new RetrievalResult(
                 "show failed disconnect requests",
                 List.of(new CandidateEntity("DisconnectRequest", 0.98, 0.80, 0.18, List.of("match"))),
-                List.of(new CandidateTable("zp_request", "DisconnectRequest", 0.95, 0.77, 0.18, List.of("match"))),
+                List.of(new CandidateTable("zp_disco_request", "DisconnectRequest", 0.95, 0.77, 0.18, List.of("match"))),
                 "HIGH"
         );
         joinPathPlan = new JoinPathPlan(
-                "zp_request",
-                List.of(new SchemaEdge("zp_request", "account_id", "zp_account", "account_id", "FK", "INNER")),
-                List.of("zp_request", "zp_account"),
+                "zp_disco_request",
+                List.of(new SchemaEdge("zp_disco_request", "account_id", "zp_account", "account_id", "FK", "INNER")),
+                List.of("zp_disco_request", "zp_account"),
                 List.of(),
                 0.9
         );

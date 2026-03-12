@@ -67,12 +67,10 @@ public class DbSchemaInspectorService {
                 .map(r -> String.valueOf(r.get("table_name")))
                 .toList();
 
-        long ceCount = tableNames.stream().filter(n -> n != null && n.toLowerCase().startsWith("ce_")).count();
-        long zpCount = tableNames.stream().filter(n -> n != null && n.toLowerCase().startsWith("zp_")).count();
         List<String> preview = tableNames.stream().limit(20).collect(Collectors.toList());
         log.info(
-                "DB schema inspect: requestedSchema='{}', resolvedSchema='{}', filter='{}', mode='{}', introspectPatterns={}, tableCount={}, ceCount={}, zpCount={}, preview={}",
-                requestedSchema, schema, filter, mode, introspectPatterns, tableNames.size(), ceCount, zpCount, preview
+                "DB schema inspect: requestedSchema='{}', resolvedSchema='{}', filter='{}', mode='{}', introspectPatterns={}, tableCount={}, preview={}",
+                requestedSchema, schema, filter, mode, introspectPatterns, tableNames.size(), preview
         );
 
         List<Map<String, Object>> columns = new ArrayList<>();

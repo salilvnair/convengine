@@ -4,8 +4,12 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.runtime.core.*
 
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.DbToolHandler;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.contract.SemanticQueryRequestV2;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.contract.ResolvedSemanticPlan;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.service.SemanticQueryV2Service;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -35,6 +39,8 @@ public class DbSemanticQueryToolHandler implements DbToolHandler {
 
     private final ConvEngineMcpConfig mcpConfig;
     private final SemanticQueryRuntimeService runtimeService;
+    private final SemanticQueryV2Service queryV2Service;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
     public String toolCode() {
@@ -44,11 +50,99 @@ public class DbSemanticQueryToolHandler implements DbToolHandler {
 
     @Override
     public Object execute(CeMcpTool tool, Map<String, Object> args, EngineSession session) {
+        if (hasResolvedPlan(args)) {
+            SemanticQueryRequestV2 requestV2 = parseV2Request(args, session);
+            return queryV2Service.query(requestV2, session);
+        }
         String question = extractQuestion(args, session);
         if (isNonReadOnlyQuestion(question)) {
             return blockedResponse(question);
         }
         return runtimeService.plan(question, session);
+    }
+
+    private boolean hasResolvedPlan(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) {
+            return false;
+        }
+        return args.containsKey("resolvedPlan") || args.containsKey("resolved_plan");
+    }
+
+    private SemanticQueryRequestV2 parseV2Request(Map<String, Object> args, EngineSession session) {
+        Map<String, Object> safeArgs = args == null ? Map.of() : args;
+        Object resolvedPlanObject = safeArgs.containsKey("resolvedPlan")
+                ? safeArgs.get("resolvedPlan")
+                : safeArgs.get("resolved_plan");
+        ResolvedSemanticPlan resolvedPlan = parseResolvedPlan(resolvedPlanObject);
+        boolean strictMode = parseStrictMode(safeArgs);
+        boolean dryRun = parseBoolean(safeArgs.get("dryRun"), false);
+        if (safeArgs.containsKey("dry_run")) {
+            dryRun = parseBoolean(safeArgs.get("dry_run"), dryRun);
+        }
+        String conversationId = safeArgs.get("conversationId") == null
+                ? null
+                : String.valueOf(safeArgs.get("conversationId"));
+        if ((conversationId == null || conversationId.isBlank()) && session != null && session.getConversationId() != null) {
+            conversationId = session.getConversationId().toString();
+        }
+
+        return new SemanticQueryRequestV2(resolvedPlan, strictMode, dryRun, conversationId);
+    }
+
+    private ResolvedSemanticPlan parseResolvedPlan(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            if (value instanceof ResolvedSemanticPlan plan) {
+                return plan;
+            }
+            if (value instanceof Map<?, ?> map) {
+                Map<String, Object> normalized = new LinkedHashMap<>();
+                map.forEach((k, v) -> normalized.put(String.valueOf(k), v));
+                return mapper.convertValue(normalized, ResolvedSemanticPlan.class);
+            }
+            String raw = String.valueOf(value).trim();
+            if (raw.startsWith("{") && raw.endsWith("}")) {
+                return mapper.readValue(raw, ResolvedSemanticPlan.class);
+            }
+            return null;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Invalid resolvedPlan payload for db.semantic.query v2: " + ex.getMessage(), ex);
+        }
+    }
+
+    private boolean parseStrictMode(Map<String, Object> args) {
+        boolean defaultValue = mcpConfig.getDb() != null
+                && mcpConfig.getDb().getSemantic() != null
+                && mcpConfig.getDb().getSemantic().isStrictMode();
+        if (args == null || args.isEmpty()) {
+            return defaultValue;
+        }
+        if (args.containsKey("strictMode")) {
+            return parseBoolean(args.get("strictMode"), defaultValue);
+        }
+        if (args.containsKey("strict_mode")) {
+            return parseBoolean(args.get("strict_mode"), defaultValue);
+        }
+        return defaultValue;
+    }
+
+    private boolean parseBoolean(Object value, boolean fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isBlank()) {
+            return fallback;
+        }
+        return "true".equalsIgnoreCase(text)
+                || "1".equals(text)
+                || "yes".equalsIgnoreCase(text)
+                || "y".equalsIgnoreCase(text);
     }
 
     private boolean isNonReadOnlyQuestion(String question) {

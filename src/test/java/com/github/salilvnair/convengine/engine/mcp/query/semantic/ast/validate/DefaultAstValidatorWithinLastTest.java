@@ -90,18 +90,18 @@ class DefaultAstValidatorWithinLastTest {
     private SemanticModel model() {
         return new SemanticModel(
                 1,
-                "zapper_ops",
+                "demo_ops",
                 "test",
                 Map.of(
                         "DisconnectRequest",
                         new SemanticEntity(
                                 "Disconnect diagnostics",
                                 List.of(),
-                                new SemanticEntityTables("zp_request", List.of()),
+                                new SemanticEntityTables("zp_disco_request", List.of()),
                                 Map.of(
-                                        "requestId", new SemanticField("zp_request.zp_request_id", "string", null, true, true, true),
-                                        "requestStatus", new SemanticField("zp_request.request_status", "string", null, true, true, false),
-                                        "requestedAt", new SemanticField("zp_request.requested_at", "timestamp", null, true, true, false)
+                                        "requestId", new SemanticField("zp_disco_request.request_id", "string", null, true, true, true),
+                                        "requestStatus", new SemanticField("zp_disco_request.request_status", "string", null, true, true, false),
+                                        "requestedAt", new SemanticField("zp_disco_request.requested_at", "timestamp", null, true, true, false)
                                 )
                         )
                 ),

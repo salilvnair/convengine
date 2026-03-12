@@ -9,6 +9,8 @@ import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.mcp.McpConstants;
 import com.github.salilvnair.convengine.engine.mcp.knowledge.SemanticCatalogConstants;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureFeedbackService;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureRecord;
 import com.github.salilvnair.convengine.entity.CeConversation;
 import com.github.salilvnair.convengine.entity.CeMcpUserFeedback;
 import com.github.salilvnair.convengine.entity.CeMcpUserQueryKnowledge;
@@ -40,6 +42,7 @@ public class ConversationFeedbackService {
     private final McpUserQueryKnowledgeRepository legacyUserQueryKnowledgeRepository;
     private final UserQueryKnowledgeRepository userQueryKnowledgeRepository;
     private final SemanticEmbeddingService semanticEmbeddingService;
+    private final SemanticFailureFeedbackService semanticFailureFeedbackService;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
 
@@ -69,6 +72,7 @@ public class ConversationFeedbackService {
                 .metadataJson(JsonUtil.toJson(request.getMetadata() == null ? Map.of() : request.getMetadata()))
                 .build();
         feedback = feedbackRepository.save(feedback);
+        captureSemanticFailureCorrection(conversation, feedback, request);
 
         persistLegacyUserQueryKnowledge(legacyCatalogQueryKnowledge);
 
@@ -125,6 +129,56 @@ public class ConversationFeedbackService {
                 .embeddedUserQueryKnowledgeCount(embeddedUserKnowledgeCount)
                 .message("Feedback saved.")
                 .build();
+    }
+
+    private void captureSemanticFailureCorrection(CeConversation conversation,
+                                                  CeMcpUserFeedback feedback,
+                                                  ConversationFeedbackRequest request) {
+        if (conversation == null || feedback == null) {
+            return;
+        }
+        if (!FEEDBACK_THUMBS_DOWN.equalsIgnoreCase(feedback.getFeedbackType())) {
+            return;
+        }
+        Map<String, Object> metadata = request == null || request.getMetadata() == null
+                ? Map.of()
+                : request.getMetadata();
+        String correctSql = firstNonBlank(
+                trimToNull(asText(metadata.get("correct_sql"))),
+                trimToNull(asText(metadata.get("correctSql")))
+        );
+        String generatedSql = firstNonBlank(
+                trimToNull(asText(metadata.get("wrong_sql"))),
+                trimToNull(asText(metadata.get("wrongSql"))),
+                latestObservedSql(conversation.getContextJson())
+        );
+        String rootCause = firstNonBlank(
+                trimToNull(asText(metadata.get("root_cause"))),
+                trimToNull(asText(metadata.get("rootCause"))),
+                "USER_FEEDBACK"
+        );
+        String reason = firstNonBlank(
+                trimToNull(asText(metadata.get("reason"))),
+                trimToNull(feedback.getAssistantResponse())
+        );
+        semanticFailureFeedbackService.recordFailure(new SemanticFailureRecord(
+                conversation.getConversationId(),
+                trimToNull(conversation.getLastUserText()),
+                generatedSql,
+                correctSql,
+                rootCause,
+                reason,
+                "MCP_USER_FEEDBACK",
+                failureMetadata(feedback)
+        ));
+    }
+
+    private Map<String, Object> failureMetadata(CeMcpUserFeedback feedback) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("feedbackId", feedback == null ? null : feedback.getFeedbackId());
+        metadata.put("feedbackType", feedback == null ? null : feedback.getFeedbackType());
+        metadata.put("messageId", feedback == null ? null : feedback.getMessageId());
+        return metadata;
     }
 
     private void persistLegacyUserQueryKnowledge(List<Map<String, Object>> queryKnowledgeRows) {
@@ -351,6 +405,33 @@ public class ConversationFeedbackService {
         }
     }
 
+    private String latestObservedSql(String contextJson) {
+        JsonNode observations = mcpObservations(contextJson);
+        if (observations == null || !observations.isArray() || observations.isEmpty()) {
+            return null;
+        }
+        for (int i = observations.size() - 1; i >= 0; i--) {
+            JsonNode node = observations.get(i);
+            String toolCode = trimToNull(node.path(McpConstants.CONTEXT_OBSERVATION_TOOL_CODE).asText(null));
+            if (toolCode == null) {
+                continue;
+            }
+            JsonNode payload = parseJson(node.path(McpConstants.CONTEXT_OBSERVATION_JSON).asText(""));
+            String sql = firstNonBlank(
+                    pathText(payload, "_db", "sql"),
+                    trimToNull(payload.path("compiledSql").path("sql").asText(null)),
+                    trimToNull(payload.path("compiledSql").asText(null)),
+                    trimToNull(payload.path("sql").asText(null)),
+                    trimToNull(payload.path("query").asText(null)),
+                    trimToNull(payload.path("preparedSql").asText(null))
+            );
+            if (sql != null) {
+                return sql;
+            }
+        }
+        return null;
+    }
+
     private JsonNode parseJson(String rawJson) {
         if (rawJson == null || rawJson.isBlank()) {
             return objectMapper.createObjectNode();
@@ -480,4 +561,3 @@ public class ConversationFeedbackService {
     ) {
     }
 }
-
