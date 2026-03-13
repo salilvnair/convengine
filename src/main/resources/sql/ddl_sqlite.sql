@@ -4,7 +4,6 @@ DROP TABLE IF EXISTS ce_semantic_entity_override;
 DROP TABLE IF EXISTS ce_semantic_relationship_override;
 DROP TABLE IF EXISTS ce_semantic_join_hint;
 DROP TABLE IF EXISTS ce_semantic_value_pattern;
-DROP TABLE IF EXISTS ce_mcp_semantic_embedding;
 DROP TABLE IF EXISTS ce_user_query_knowledge;
 DROP TABLE IF EXISTS ce_mcp_user_feedback;
 DROP TABLE IF EXISTS ce_mcp_user_query_knowledge;
@@ -264,23 +263,6 @@ CREATE TABLE ce_mcp_planner (
 );
 CREATE INDEX idx_ce_mcp_planner_scope ON ce_mcp_planner (enabled, intent_code, state_code, planner_id);
 
-CREATE TABLE IF NOT EXISTS ce_mcp_query_knowledge (
-                                                      id INTEGER PRIMARY KEY,
-                                                      query_text TEXT NOT NULL,
-                                                      description TEXT,
-                                                      prepared_sql TEXT,
-                                                      tags TEXT,
-                                                      api_hints TEXT
-);
-
-CREATE TABLE IF NOT EXISTS ce_mcp_schema_knowledge (
-                                                       id INTEGER PRIMARY KEY,
-                                                       table_name TEXT NOT NULL,
-                                                       column_name TEXT,
-                                                       valid_values TEXT,
-                                                       description TEXT,
-                                                       tags TEXT
-);
 
 CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
                                                           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -331,19 +313,6 @@ CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
 );
 CREATE INDEX idx_ce_user_query_knowledge_query_text ON ce_user_query_knowledge (query_text);
 CREATE INDEX idx_ce_user_query_knowledge_tool_code ON ce_user_query_knowledge (tool_code, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS ce_mcp_semantic_embedding (
-                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                                     namespace TEXT NOT NULL,
-                                                     target_type TEXT NOT NULL,
-                                                     target_name TEXT NOT NULL,
-                                                     embedding TEXT NOT NULL,
-                                                     metadata_json TEXT,
-                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
-                                                     updated_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
-);
-CREATE UNIQUE INDEX ux_ce_mcp_semantic_embedding_target ON ce_mcp_semantic_embedding (namespace, target_type, target_name);
-CREATE INDEX idx_ce_mcp_semantic_embedding_lookup ON ce_mcp_semantic_embedding (target_type, target_name);
 
 CREATE TABLE IF NOT EXISTS ce_semantic_join_hint (
                                                      id INTEGER PRIMARY KEY AUTOINCREMENT,

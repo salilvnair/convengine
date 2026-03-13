@@ -16,8 +16,8 @@ import java.util.regex.Pattern;
 
 /**
  * Shared SQL safety checks for MCP DB execution paths.
- * DB access remains read-only, while this guard can be enriched by the
- * ce_mcp_sql_guardrail table to allow or block specific SQL functions/keywords.
+ * DB access remains read-only, while this guard can optionally be enriched by
+ * a configured SQL guardrail table to allow or block specific functions/keywords.
  */
 @Component
 @RequiredArgsConstructor

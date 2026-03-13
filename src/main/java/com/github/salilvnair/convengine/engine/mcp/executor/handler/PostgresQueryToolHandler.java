@@ -5,8 +5,8 @@ import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.mcp.McpSqlGuardrail;
 import com.github.salilvnair.convengine.engine.mcp.executor.adapter.DbToolHandler;
 import com.github.salilvnair.convengine.engine.mcp.executor.interceptor.PostgresQueryInterceptor;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureFeedbackService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureRecord;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureFeedbackService;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureRecord;
 import com.github.salilvnair.convengine.engine.mcp.util.McpSqlAuditHelper;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeMcpTool;
@@ -17,6 +17,13 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.sql.Date;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,9 +81,20 @@ public class PostgresQueryToolHandler implements DbToolHandler {
         // 2. Execute the read-only query
         try {
             rows = jdbcTemplate.queryForList(sql, queryParams);
+            String semanticQuestion = semanticQuestion(session);
 
             resultPayload.put("status", "SUCCESS");
             resultPayload.put("rowCount", rows.size());
+            Map<String, Object> correctionMeta = new LinkedHashMap<>();
+            correctionMeta.put("toolCode", toolCode());
+            correctionMeta.put("params", queryParams);
+            correctionMeta.put("standalone_query", session == null ? null : session.getStandaloneQuery());
+            failureFeedbackService.recordCorrection(
+                    session == null ? null : session.getConversationId(),
+                    semanticQuestion,
+                    sql,
+                    correctionMeta
+            );
 
             // Limit the result set size returned to the LLM to prevent context bloat
             if (rows.size() > 100) {
@@ -91,9 +109,10 @@ public class PostgresQueryToolHandler implements DbToolHandler {
             log.error("Failed to execute dynamic LLM SQL query", e);
             resultPayload.put("status", "ERROR");
             resultPayload.put("error", e.getClass().getName() + ": " + e.getMessage());
+            String semanticQuestion = semanticQuestion(session);
             failureFeedbackService.recordFailure(new SemanticFailureRecord(
                     session == null ? null : session.getConversationId(),
-                    session == null ? null : session.getUserText(),
+                    semanticQuestion,
                     sql,
                     null,
                     e.getClass().getSimpleName(),
@@ -138,6 +157,18 @@ public class PostgresQueryToolHandler implements DbToolHandler {
         return resultPayload;
     }
 
+    private String semanticQuestion(EngineSession session) {
+        if (session == null) {
+            return null;
+        }
+        String standalone = session.getStandaloneQuery();
+        if (standalone != null && !standalone.isBlank()) {
+            return standalone.trim();
+        }
+        String userText = session.getUserText();
+        return userText == null || userText.isBlank() ? null : userText.trim();
+    }
+
     private String applyInterceptors(String sql, CeMcpTool tool, Map<String, Object> args, EngineSession session) {
         List<PostgresQueryInterceptor> interceptors = interceptorProvider.getIfAvailable(List::of);
         if (interceptors == null || interceptors.isEmpty()) {
@@ -169,7 +200,37 @@ public class PostgresQueryToolHandler implements DbToolHandler {
             return Map.of();
         }
         Map<String, Object> out = new LinkedHashMap<>();
-        map.forEach((k, v) -> out.put(String.valueOf(k), v));
+        map.forEach((k, v) -> out.put(String.valueOf(k), coerceQueryParam(v)));
         return out;
+    }
+
+    private Object coerceQueryParam(Object value) {
+        if (!(value instanceof String raw)) {
+            return value;
+        }
+        String text = raw.trim();
+        if (text.isBlank()) {
+            return value;
+        }
+        try {
+            return Timestamp.from(OffsetDateTime.parse(text).toInstant());
+        } catch (DateTimeParseException ignored) {
+            // continue
+        }
+        try {
+            return Timestamp.from(Instant.parse(text));
+        } catch (DateTimeParseException ignored) {
+            // continue
+        }
+        try {
+            return Timestamp.valueOf(LocalDateTime.parse(text));
+        } catch (DateTimeParseException ignored) {
+            // continue
+        }
+        try {
+            return Date.valueOf(LocalDate.parse(text));
+        } catch (DateTimeParseException ignored) {
+            return value;
+        }
     }
 }

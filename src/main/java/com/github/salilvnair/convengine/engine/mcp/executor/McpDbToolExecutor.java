@@ -48,40 +48,11 @@ public class McpDbToolExecutor implements McpToolExecutor {
             throw new IllegalStateException(
                     "McpDbToolExecutor can execute only DB tools. toolCode=" + toolCode + ", toolGroup=" + toolGroup);
         }
-        if (isKnowledgeToolCode(toolCode)) {
-            throw new IllegalStateException(buildKnowledgeHandlerMissingMessage(toolCode));
-        }
         if (isSemanticQueryToolCode(toolCode)) {
             throw new IllegalStateException(buildSemanticQueryHandlerMissingMessage(toolCode));
         }
-        if (isDbkgToolCode(toolCode)) {
-            throw new IllegalStateException(buildDbkgHandlerMissingMessage(toolCode));
-        }
         CeMcpDbTool dbTool = registry.requireDbTool(toolCode);
         return dbExecutor.execute(dbTool, args, session);
-    }
-
-    private boolean isKnowledgeToolCode(String toolCode) {
-        return toolCode != null && "db.semantic.catalog".equalsIgnoreCase(toolCode.trim());
-    }
-
-    private String buildKnowledgeHandlerMissingMessage(String toolCode) {
-        boolean enabled = mcpConfig != null
-                && mcpConfig.getDb() != null
-                && mcpConfig.getDb().semanticCatalogConfig().isEnabled();
-        if (!enabled) {
-            return "DB knowledge tool handler is not registered for toolCode=" + toolCode
-                    + ". Enable convengine.mcp.db.semantic-catalog.enabled=true. "
-                    + "This tool does not require ce_mcp_db_tool SQL-template rows when handler-based execution is enabled.";
-        }
-        return "DB knowledge tool handler is not registered for toolCode=" + toolCode
-                + " even though convengine.mcp.db.semantic-catalog.enabled=true. "
-                + "Check component scanning / bean registration for DbSemanticCatalogToolHandler. "
-                + "This tool does not require ce_mcp_db_tool SQL-template rows.";
-    }
-
-    private boolean isDbkgToolCode(String toolCode) {
-        return toolCode != null && toolCode.trim().toLowerCase(java.util.Locale.ROOT).startsWith("dbkg.");
     }
 
     private boolean isSemanticQueryToolCode(String toolCode) {
@@ -106,21 +77,6 @@ public class McpDbToolExecutor implements McpToolExecutor {
         return "Semantic query tool handler is not registered for toolCode=" + toolCode
                 + " even though convengine.mcp.db.semantic.enabled=true. "
                 + "Check bean registration for DbSemanticQueryToolHandler.";
-    }
-
-    private String buildDbkgHandlerMissingMessage(String toolCode) {
-        boolean enabled = mcpConfig.getDb() != null
-                && mcpConfig.getDb().getKnowledgeGraph() != null
-                && mcpConfig.getDb().getKnowledgeGraph().isEnabled();
-        if (!enabled) {
-            return "Database Knowledge Graph (DBKG) tool handler is not registered for toolCode=" + toolCode
-                    + ". Enable convengine.mcp.db.knowledge-graph.enabled=true. "
-                    + "dbkg.* tools do not use ce_mcp_db_tool SQL-template rows.";
-        }
-        return "Database Knowledge Graph (DBKG) tool handler is not registered for toolCode=" + toolCode
-                + " even though convengine.mcp.db.knowledge-graph.enabled=true. "
-                + "Check component scanning / bean registration for DbToolHandler implementations. "
-                + "dbkg.* tools do not use ce_mcp_db_tool SQL-template rows.";
     }
 
     private String normalizeResult(Object value) {

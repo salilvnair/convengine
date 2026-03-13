@@ -4,7 +4,6 @@ DROP TABLE IF EXISTS ce_semantic_entity_override CASCADE;
 DROP TABLE IF EXISTS ce_semantic_relationship_override CASCADE;
 DROP TABLE IF EXISTS ce_semantic_join_hint CASCADE;
 DROP TABLE IF EXISTS ce_semantic_value_pattern CASCADE;
-DROP TABLE IF EXISTS ce_mcp_semantic_embedding CASCADE;
 DROP TABLE IF EXISTS ce_user_query_knowledge CASCADE;
 DROP TABLE IF EXISTS ce_mcp_user_feedback CASCADE;
 DROP TABLE IF EXISTS ce_mcp_user_query_knowledge CASCADE;
@@ -362,21 +361,6 @@ CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
 );
 CREATE INDEX idx_ce_user_query_knowledge_query_text ON public.ce_user_query_knowledge USING btree (query_text);
 CREATE INDEX idx_ce_user_query_knowledge_tool_code ON public.ce_user_query_knowledge USING btree (tool_code, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS ce_mcp_semantic_embedding (
-                                id BIGSERIAL PRIMARY KEY,
-                                namespace VARCHAR(128) NOT NULL,
-                                target_type VARCHAR(32) NOT NULL,
-                                target_name VARCHAR(255) NOT NULL,
-                                embedding vector NOT NULL,
-                                metadata_json jsonb,
-                                created_at timestamptz DEFAULT now() NOT NULL,
-                                updated_at timestamptz DEFAULT now() NOT NULL
-);
-CREATE UNIQUE INDEX ux_ce_mcp_semantic_embedding_target
-    ON public.ce_mcp_semantic_embedding USING btree (namespace, target_type, target_name);
-CREATE INDEX idx_ce_mcp_semantic_embedding_lookup
-    ON public.ce_mcp_semantic_embedding USING btree (target_type, target_name);
 
 CREATE TABLE IF NOT EXISTS ce_semantic_join_hint (
                                 id BIGSERIAL PRIMARY KEY,

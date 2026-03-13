@@ -7,10 +7,9 @@ import com.github.salilvnair.convengine.api.dto.ConversationFeedbackResponse;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.mcp.McpConstants;
-import com.github.salilvnair.convengine.engine.mcp.knowledge.SemanticCatalogConstants;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureFeedbackService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.v2.feedback.SemanticFailureRecord;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureFeedbackService;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureRecord;
 import com.github.salilvnair.convengine.entity.CeConversation;
 import com.github.salilvnair.convengine.entity.CeMcpUserFeedback;
 import com.github.salilvnair.convengine.entity.CeMcpUserQueryKnowledge;
@@ -33,9 +32,12 @@ public class ConversationFeedbackService {
     private static final String FEEDBACK_THUMBS_DOWN = "THUMBS_DOWN";
 
     private static final String TOOL_DB_SEMANTIC_QUERY = "db.semantic.query";
-    private static final String TOOL_DB_SEMANTIC_CATALOG = "db.semantic.catalog";
-    private static final String TOOL_DB_KNOWLEDGE_GRAPH = "db.knowledge.graph";
-    private static final String TOOL_DBKG_INVESTIGATE_EXECUTE = "dbkg.investigate.execute";
+    private static final String KEY_QUERY_KNOWLEDGE = "queryKnowledge";
+    private static final String KEY_QUERY_TEXT = "queryText";
+    private static final String KEY_DESCRIPTION = "description";
+    private static final String KEY_PREPARED_SQL = "preparedSql";
+    private static final String KEY_TAGS = "tags";
+    private static final String KEY_API_HINTS = "apiHints";
 
     private final ConversationRepository conversationRepository;
     private final McpUserFeedbackRepository feedbackRepository;
@@ -186,16 +188,16 @@ public class ConversationFeedbackService {
             return;
         }
         for (Map<String, Object> row : queryKnowledgeRows) {
-            String queryText = trimToNull(asText(row.get(SemanticCatalogConstants.KEY_QUERY_TEXT)));
+            String queryText = trimToNull(asText(row.get(KEY_QUERY_TEXT)));
             if (queryText == null) {
                 continue;
             }
             CeMcpUserQueryKnowledge knowledge = CeMcpUserQueryKnowledge.builder()
                     .queryText(queryText)
-                    .description(trimToNull(asText(row.get(SemanticCatalogConstants.KEY_DESCRIPTION))))
-                    .preparedSql(trimToNull(asText(row.get(SemanticCatalogConstants.KEY_PREPARED_SQL))))
-                    .tags(toCsv(row.get(SemanticCatalogConstants.KEY_TAGS)))
-                    .apiHints(toCsv(row.get(SemanticCatalogConstants.KEY_API_HINTS)))
+                    .description(trimToNull(asText(row.get(KEY_DESCRIPTION))))
+                    .preparedSql(trimToNull(asText(row.get(KEY_PREPARED_SQL))))
+                    .tags(toCsv(row.get(KEY_TAGS)))
+                    .apiHints(toCsv(row.get(KEY_API_HINTS)))
                     .embedding(null)
                     .build();
             legacyUserQueryKnowledgeRepository.save(knowledge);
@@ -253,29 +255,7 @@ public class ConversationFeedbackService {
             return out;
         }
 
-        if (isSemanticCatalogToolCode(toolCode)) {
-            JsonNode queryKnowledge = observationJson.path(SemanticCatalogConstants.KEY_QUERY_KNOWLEDGE);
-            if (queryKnowledge.isArray()) {
-                for (JsonNode queryRow : queryKnowledge) {
-                    String queryText = trimToNull(queryRow.path(SemanticCatalogConstants.KEY_QUERY_TEXT).asText(userQuery));
-                    String description = trimToNull(queryRow.path(SemanticCatalogConstants.KEY_DESCRIPTION).asText(null));
-                    String preparedSql = trimToNull(queryRow.path(SemanticCatalogConstants.KEY_PREPARED_SQL).asText(null));
-                    List<String> tags = toStringList(queryRow.path(SemanticCatalogConstants.KEY_TAGS));
-                    List<String> apiHints = toStringList(queryRow.path(SemanticCatalogConstants.KEY_API_HINTS));
-                    Map<String, Object> meta = new LinkedHashMap<>();
-                    meta.put("source", "semantic-catalog");
-                    meta.put("feedbackId", feedbackId);
-                    meta.put("intent", intent);
-                    meta.put("state", state);
-                    meta.put("feedbackType", feedbackType);
-                    meta.put("toolCode", toolCode);
-                    out.add(new FeedbackKnowledgeEntry(toolCode, queryText, description, preparedSql, tags, apiHints, meta));
-                }
-            }
-            return out;
-        }
-
-        if (isSemanticQueryToolCode(toolCode) || isDbkgToolCode(toolCode)) {
+        if (isSemanticQueryToolCode(toolCode)) {
             String preparedSql = firstNonBlank(
                     pathText(observationJson, "_db", "sql"),
                     trimToNull(observationJson.path("compiledSql").asText(null)),
@@ -287,7 +267,7 @@ public class ConversationFeedbackService {
                     trimToNull(observationJson.path("message").asText(null))
             );
             Map<String, Object> meta = new LinkedHashMap<>();
-            meta.put("source", isSemanticQueryToolCode(toolCode) ? "semantic-query" : "dbkg");
+            meta.put("source", "semantic-query");
             meta.put("feedbackId", feedbackId);
             meta.put("intent", intent);
             meta.put("state", state);
@@ -320,27 +300,6 @@ public class ConversationFeedbackService {
             return out;
         }
 
-        for (JsonNode observationNode : observations) {
-            String toolCode = trimToNull(observationNode.path(McpConstants.CONTEXT_OBSERVATION_TOOL_CODE).asText(null));
-            if (!isSemanticCatalogToolCode(toolCode)) {
-                continue;
-            }
-            String rawObservationJson = observationNode.path(McpConstants.CONTEXT_OBSERVATION_JSON).asText("");
-            JsonNode observationJson = parseJson(rawObservationJson);
-            JsonNode queryKnowledge = observationJson.path(SemanticCatalogConstants.KEY_QUERY_KNOWLEDGE);
-            if (!queryKnowledge.isArray()) {
-                continue;
-            }
-            for (JsonNode queryRow : queryKnowledge) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put(SemanticCatalogConstants.KEY_QUERY_TEXT, queryRow.path(SemanticCatalogConstants.KEY_QUERY_TEXT).asText(""));
-                row.put(SemanticCatalogConstants.KEY_DESCRIPTION, queryRow.path(SemanticCatalogConstants.KEY_DESCRIPTION).asText(""));
-                row.put(SemanticCatalogConstants.KEY_PREPARED_SQL, queryRow.path(SemanticCatalogConstants.KEY_PREPARED_SQL).asText(""));
-                row.put(SemanticCatalogConstants.KEY_TAGS, toStringList(queryRow.path(SemanticCatalogConstants.KEY_TAGS)));
-                row.put(SemanticCatalogConstants.KEY_API_HINTS, toStringList(queryRow.path(SemanticCatalogConstants.KEY_API_HINTS)));
-                out.add(row);
-            }
-        }
         return out;
     }
 
@@ -458,28 +417,11 @@ public class ConversationFeedbackService {
         return null;
     }
 
-    private boolean isSemanticCatalogToolCode(String toolCode) {
-        if (toolCode == null || toolCode.isBlank()) {
-            return false;
-        }
-        return TOOL_DB_SEMANTIC_CATALOG.equalsIgnoreCase(toolCode.trim());
-    }
-
     private boolean isSemanticQueryToolCode(String toolCode) {
         if (toolCode == null || toolCode.isBlank()) {
             return false;
         }
         return TOOL_DB_SEMANTIC_QUERY.equalsIgnoreCase(toolCode.trim());
-    }
-
-    private boolean isDbkgToolCode(String toolCode) {
-        if (toolCode == null || toolCode.isBlank()) {
-            return false;
-        }
-        String normalized = toolCode.trim().toLowerCase(Locale.ROOT);
-        return TOOL_DB_KNOWLEDGE_GRAPH.equalsIgnoreCase(normalized)
-                || TOOL_DBKG_INVESTIGATE_EXECUTE.equalsIgnoreCase(normalized)
-                || normalized.contains("dbkg");
     }
 
     private List<String> toStringList(JsonNode node) {

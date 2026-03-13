@@ -217,6 +217,78 @@ public class SemanticEmbeddingService {
                 .build();
     }
 
+    public SemanticEmbeddingCatalogRebuildResponse rebuildQueryFailureEmbeddings(SemanticEmbeddingCatalogRebuildRequest request) {
+        SemanticEmbeddingCatalogRebuildRequest safeRequest =
+                request == null ? new SemanticEmbeddingCatalogRebuildRequest() : request;
+        ConvEngineMcpConfig.Db.Semantic cfg = semanticConfig();
+        if (cfg.getVector() == null || !cfg.getVector().isEnabled()) {
+            return SemanticEmbeddingCatalogRebuildResponse.builder()
+                    .success(false)
+                    .candidateCount(0)
+                    .indexedCount(0)
+                    .failedCount(0)
+                    .skippedCount(0)
+                    .message("Semantic vector retrieval is disabled. Set convengine.mcp.db.semantic.vector.enabled=true.")
+                    .build();
+        }
+        int limit = safeRequest.getLimit() == null ? 200 : Math.max(1, Math.min(5000, safeRequest.getLimit()));
+        boolean onlyMissing = safeRequest.getOnlyMissing() == null || safeRequest.getOnlyMissing();
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, question
+                FROM ce_semantic_query_failures
+                WHERE question IS NOT NULL
+                  AND LENGTH(TRIM(question)) > 0
+                """);
+        if (onlyMissing) {
+            sql.append(" AND question_embedding IS NULL");
+        }
+        sql.append(" ORDER BY created_at DESC LIMIT :limit");
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), Map.of("limit", limit));
+        int indexed = 0;
+        int failed = 0;
+        int skipped = 0;
+        for (Map<String, Object> row : rows) {
+            Long id = asLong(row.get("id"));
+            String question = trimToNull(row.get("question") == null ? null : String.valueOf(row.get("question")));
+            if (id == null || question == null) {
+                skipped++;
+                continue;
+            }
+            try {
+                float[] embedding = llmClient.generateEmbedding(null, question);
+                if (embedding == null || embedding.length == 0) {
+                    failed++;
+                    continue;
+                }
+                jdbcTemplate.update("""
+                        UPDATE ce_semantic_query_failures
+                        SET question_embedding = CAST(:embedding AS vector),
+                            metadata_json = COALESCE(metadata_json, '{}'::jsonb)
+                                || jsonb_build_object('query_embedding', CAST(:embeddingJson AS jsonb))
+                        WHERE id = :id
+                        """, Map.of(
+                        "id", id,
+                        "embedding", vectorLiteral(embedding),
+                        "embeddingJson", JsonUtil.toJson(toNumberList(embedding))
+                ));
+                indexed++;
+            } catch (Exception ex) {
+                failed++;
+                log.debug("query-failure embedding refresh skip id={} cause={}", id, ex.getMessage());
+            }
+        }
+
+        return SemanticEmbeddingCatalogRebuildResponse.builder()
+                .success(failed == 0 || indexed > 0)
+                .candidateCount(rows.size())
+                .indexedCount(indexed)
+                .failedCount(failed)
+                .skippedCount(skipped)
+                .message("Query failure embedding refresh completed.")
+                .build();
+    }
+
     private List<EmbeddingDoc> buildModelDocs(SemanticEmbeddingRebuildRequest request) {
         SemanticModel model = semanticModelRegistry.getModel();
         List<EmbeddingDoc> docs = new ArrayList<>();

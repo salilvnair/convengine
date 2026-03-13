@@ -17,7 +17,6 @@ DELETE FROM ce_intent WHERE intent_code = 'SEMANTIC_QUERY';
 -- Keep tool ids deterministic for demo setup.
 DELETE FROM ce_mcp_tool WHERE tool_code IN (
   'db.semantic.interpret',
-  'db.semantic.resolve',
   'db.semantic.query',
   'postgres.query'
 );
@@ -377,13 +376,9 @@ VALUES
  'Interpret stage completed.',
  'Interpret stage failed.',
  11, true, now()),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticResolveService', 'RESOLVE_DONE', NULL, 'db.semantic.resolve',
- 'Resolve stage completed.',
- 'Resolve stage failed.',
- 11, true, now()),
-('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticQueryV2Service', 'QUERY_COMPILED', NULL, 'db.semantic.query',
- 'Query v2 compiled SQL from resolved plan.',
- 'Query v2 compile failed.',
+('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'SemanticLlmQueryService', 'SEMANTIC_QUERY_LLM_OUTPUT', NULL, 'db.semantic.query',
+ 'LLM query stage completed.',
+ 'LLM query stage failed.',
  11, true, now()),
 ('SEMANTIC_QUERY', 'ANALYZE', 'EXACT', 'PostgresQueryToolHandler', 'SQL_EXECUTED', NULL, 'postgres.query',
  'postgres.query executed.',
@@ -396,8 +391,7 @@ VALUES
 INSERT INTO ce_mcp_tool (tool_id, tool_code, tool_group, intent_code, state_code, enabled, description)
 VALUES
 (9401, 'db.semantic.interpret', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Interpret user query into canonical business intent.'),
-(9402, 'db.semantic.resolve', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Legacy resolve tool (not required in default two-agent semantic pipeline).'),
-(9403, 'db.semantic.query', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Agent-2 SQL builder from canonical intent (LLM-first; deterministic optional).'),
+(9403, 'db.semantic.query', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Agent-2 SQL builder from canonical intent (LLM).'),
 (9404, 'postgres.query', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Execute read-only SQL with parameters.'),
 (9405, 'db.semantic.embed.refresh', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Refresh ce_semantic_concept_embedding vectors.');
 

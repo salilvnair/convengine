@@ -5,6 +5,7 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,10 +30,8 @@ public class ConvEngineMcpConfig {
     @Setter
     public static class Db {
         private Query query = new Query();
-        private Knowledge semanticCatalog = new Knowledge();
-        private KnowledgeGraph knowledgeGraph = new KnowledgeGraph();
         private Semantic semantic = new Semantic();
-        private String sqlGuardrailTable = "ce_mcp_sql_guardrail";
+        private String sqlGuardrailTable = "";
         /**
          * Optional schema-introspection allow-list.
          * Supports exact table names (e.g. ce_config) and wildcard patterns (e.g. ce_*).
@@ -40,93 +39,14 @@ public class ConvEngineMcpConfig {
          */
         private List<String> introspectTables = new ArrayList<>();
 
-        public Knowledge semanticCatalogConfig() {
-            return semanticCatalog == null ? new Knowledge() : semanticCatalog;
-        }
-
-        @Getter
-        @Setter
-        public static class Knowledge {
-            private boolean enabled = false;
-            private boolean knowledgeCapsule = true;
-            private boolean schemaKnowledge = true;
-            private boolean queryKnowledge = true;
-            private VectorSearch vectorSearch = new VectorSearch();
-            private int maxResults = 5;
-            private int scanLimit = 5000;
-            private double minScore = 0.15d;
-
-            private String queryCatalogTable = "ce_mcp_query_knowledge";
-            private String queryTextColumn = "query_text";
-            private String queryDescriptionColumn = "description";
-            private String preparedSqlColumn = "prepared_sql";
-            private String tagsColumn = "tags";
-            private String apiHintsColumn = "api_hints";
-
-            private String schemaCatalogTable = "ce_mcp_schema_knowledge";
-            private String schemaTableNameColumn = "table_name";
-            private String schemaColumnNameColumn = "column_name";
-            private String schemaDescriptionColumn = "description";
-            private String schemaTagsColumn = "tags";
-            private String schemaValidValuesColumn = "valid_values";
-
-            @Getter
-            @Setter
-            public static class VectorSearch {
-                private boolean enabled = false;
-                private int maxResults = 10;
-                private String vectorColumn = "vector";
-            }
-        }
-
-        @Getter
-        @Setter
-        public static class KnowledgeGraph {
-            private boolean enabled = false;
-            private int maxResults = 5;
-            private int scanLimit = 5000;
-            private boolean schemaIntrospectionEnabled = true;
-            private int schemaObjectLimit = 200;
-            private List<String> includedSchemas = new ArrayList<>(List.of("public"));
-            private List<String> excludedSchemas = new ArrayList<>(List.of("information_schema", "pg_catalog"));
-            private boolean sqlRefinementEnabled = false;
-            private String sqlDialect = "postgres";
-            private String caseResolveToolCode = "dbkg.case.resolve";
-            private String knowledgeLookupToolCode = "dbkg.knowledge.lookup";
-            private String investigatePlanToolCode = "dbkg.investigate.plan";
-            private String investigateExecuteToolCode = "dbkg.investigate.execute";
-            private String playbookValidateToolCode = "dbkg.playbook.validate";
-
-            private String caseTypeTable = "ce_mcp_case_type";
-            private String caseSignalTable = "ce_mcp_case_signal";
-            private String playbookTable = "ce_mcp_playbook";
-            private String playbookSignalTable = "ce_mcp_playbook_signal";
-            private String domainEntityTable = "ce_mcp_domain_entity";
-            private String domainRelationTable = "ce_mcp_domain_relation";
-            private String systemNodeTable = "ce_mcp_system_node";
-            private String systemRelationTable = "ce_mcp_system_relation";
-            private String apiFlowTable = "ce_mcp_api_flow";
-            private String dbObjectTable = "ce_mcp_db_object";
-            private String dbColumnTable = "ce_mcp_db_column";
-            private String dbJoinPathTable = "ce_mcp_db_join_path";
-            private String statusDictionaryTable = "ce_mcp_status_dictionary";
-            private String idLineageTable = "ce_mcp_id_lineage";
-            private String queryTemplateTable = "ce_mcp_query_template";
-            private String queryParamRuleTable = "ce_mcp_query_param_rule";
-            private String playbookStepTable = "ce_mcp_playbook_step";
-            private String playbookTransitionTable = "ce_mcp_playbook_transition";
-            private String outcomeRuleTable = "ce_mcp_outcome_rule";
-            private String executorTemplateTable = "ce_mcp_executor_template";
-        }
-
         @Getter
         @Setter
         public static class Query {
             /**
              * Supported values:
-             * semantic-catalog | knowledge-graph | semantic
+             * semantic
              */
-            private String mode = "semantic-catalog";
+            private String mode = "semantic";
         }
 
         @Getter
@@ -134,21 +54,11 @@ public class ConvEngineMcpConfig {
         public static class Semantic {
             private boolean enabled = false;
             private String toolCode = "db.semantic.query";
-            /**
-             * Controls how db.semantic.query compiles SQL.
-             * Supported values: llm | deterministic
-             */
-            private String queryMode = "llm";
-            /**
-             * When true, db.semantic.query v2 path (resolvedPlan input) fails fast
-             * on incomplete/invalid resolved plans instead of attempting fallback.
-             */
-            private boolean strictMode = false;
             private String modelPath = "classpath:/mcp/semantic-layer.yml";
             private int defaultLimit = 100;
             private int maxLimit = 500;
             private String sqlDialect = "postgres";
-            private String timezone = "UTC";
+            private String timezone = ZoneId.systemDefault().getId();
             private int maxJoinHops = 6;
             private int maxTables = 10;
 
@@ -168,7 +78,6 @@ public class ConvEngineMcpConfig {
                 private double fieldWeight = 0.25d;
                 private double idPatternWeight = 0.20d;
                 private double lexicalWeight = 0.15d;
-                private double deterministicBlendWeight = 0.70d;
                 private double vectorBlendWeight = 0.30d;
             }
 
@@ -184,7 +93,7 @@ public class ConvEngineMcpConfig {
                 /**
                  * Postgres table containing semantic embedding rows.
                  */
-                private String table = "ce_mcp_semantic_embedding";
+                private String table = "ce_semantic_concept_embedding";
                 private String namespaceColumn = "namespace";
                 private String targetTypeColumn = "target_type";
                 private String targetNameColumn = "target_name";

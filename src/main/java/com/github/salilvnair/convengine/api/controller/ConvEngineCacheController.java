@@ -1,7 +1,10 @@
 package com.github.salilvnair.convengine.api.controller;
 
+import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildRequest;
+import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildResponse;
 import com.github.salilvnair.convengine.cache.ConvEngineCacheAnalyzer;
 import com.github.salilvnair.convengine.cache.StaticTableCachePreloader;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
@@ -24,6 +27,7 @@ public class ConvEngineCacheController {
     private final StaticTableCachePreloader preloader;
     private final ConvEngineCacheAnalyzer cacheAnalyzer;
     private final CacheManager cacheManager;
+    private final SemanticEmbeddingService semanticEmbeddingService;
 
     @PostMapping("/refresh")
     public ResponseEntity<String> refreshStaticCaches() {
@@ -33,7 +37,19 @@ public class ConvEngineCacheController {
         // Immediately reload the tables into JVM
         preloader.preloadCaches();
 
-        return ResponseEntity.ok("Successfully evicted and reloaded ConvEngine Static Database Configuration Caches.");
+        SemanticEmbeddingCatalogRebuildResponse embeddingRefresh = refreshQueryFailureEmbeddings();
+        if (embeddingRefresh == null) {
+            return ResponseEntity.ok("Successfully evicted and reloaded ConvEngine Static Database Configuration Caches.");
+        }
+        return ResponseEntity.ok(
+                "Successfully evicted/reloaded caches. Query-failure embedding refresh: indexed="
+                        + embeddingRefresh.getIndexedCount()
+                        + ", failed="
+                        + embeddingRefresh.getFailedCount()
+                        + ", skipped="
+                        + embeddingRefresh.getSkippedCount()
+                        + "."
+        );
     }
 
     @GetMapping("/analyze")
@@ -57,6 +73,20 @@ public class ConvEngineCacheController {
             } catch (Exception ex) {
                 log.warn("ConvEngine Admin: Failed clearing cache '{}': {}", cacheName, ex.getMessage());
             }
+        }
+    }
+
+    private SemanticEmbeddingCatalogRebuildResponse refreshQueryFailureEmbeddings() {
+        if (semanticEmbeddingService == null) {
+            return null;
+        }
+        try {
+            SemanticEmbeddingCatalogRebuildRequest request = new SemanticEmbeddingCatalogRebuildRequest();
+            request.setOnlyMissing(Boolean.TRUE);
+            return semanticEmbeddingService.rebuildQueryFailureEmbeddings(request);
+        } catch (Exception ex) {
+            log.warn("ConvEngine Admin: Query-failure embedding refresh skipped: {}", ex.getMessage());
+            return null;
         }
     }
 

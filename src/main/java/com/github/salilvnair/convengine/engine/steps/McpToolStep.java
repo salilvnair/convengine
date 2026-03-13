@@ -20,7 +20,6 @@ import com.github.salilvnair.convengine.engine.mcp.McpConstants;
 import com.github.salilvnair.convengine.engine.mcp.McpPlanner;
 import com.github.salilvnair.convengine.engine.mcp.McpToolRegistry;
 import com.github.salilvnair.convengine.engine.mcp.executor.McpToolExecutor;
-import com.github.salilvnair.convengine.engine.mcp.knowledge.DbkgConstants;
 import com.github.salilvnair.convengine.engine.mcp.model.McpObservation;
 import com.github.salilvnair.convengine.engine.mcp.model.McpPlan;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
@@ -60,7 +59,6 @@ public class McpToolStep implements EngineStep {
     private static final String OPERATION_TAG_POLICY_RESTRICTED_OPERATION = "POLICY_RESTRICTED_OPERATION";
     private static final String FALLBACK_POLICY_RESTRICTED = "This request is restricted by policy. Read-only operations are allowed.";
     private static final String TOOL_DB_SEMANTIC_INTERPRET = "db.semantic.interpret";
-    private static final String TOOL_DB_SEMANTIC_RESOLVE = "db.semantic.resolve";
     private static final String TOOL_DB_SEMANTIC_QUERY = "db.semantic.query";
     private static final String TOOL_POSTGRES_QUERY = "postgres.query";
     private static final String CONTEXT_KEY_SEMANTIC = "semantic";
@@ -590,9 +588,6 @@ public class McpToolStep implements EngineStep {
     }
 
     private String nextToolGuardrailBlockReason(String nextToolCode, List<McpObservation> observations) {
-        if (!isAllowedByDbkgValidationGuard(nextToolCode, observations)) {
-            return "DBKG_VALIDATION_REQUIRED_BEFORE_EXECUTION";
-        }
         if (!isAllowedBySemanticPipelineGuard(nextToolCode, observations)) {
             return "SEMANTIC_PIPELINE_SEQUENCE_GUARD_BLOCKED";
         }
@@ -669,45 +664,6 @@ public class McpToolStep implements EngineStep {
             }
         }
         return allowedSet.contains(nextKey);
-    }
-
-    private boolean isAllowedByDbkgValidationGuard(String nextToolCode, List<McpObservation> observations) {
-        if (nextToolCode == null || nextToolCode.isBlank() || mcpConfig == null || mcpConfig.getDb() == null
-                || mcpConfig.getDb().getKnowledgeGraph() == null) {
-            return true;
-        }
-
-        ConvEngineMcpConfig.Db.KnowledgeGraph knowledgeGraph = mcpConfig.getDb().getKnowledgeGraph();
-        String executeToolCode = knowledgeGraph.getInvestigateExecuteToolCode();
-        if (!normalize(nextToolCode).equals(normalize(executeToolCode))) {
-            return true;
-        }
-
-        String validateToolCode = knowledgeGraph.getPlaybookValidateToolCode();
-        if (validateToolCode == null || validateToolCode.isBlank() || CollectionUtils.isEmpty(observations)) {
-            return false;
-        }
-
-        for (int i = observations.size() - 1; i >= 0; i--) {
-            McpObservation observation = observations.get(i);
-            if (!normalize(validateToolCode).equals(normalize(observation.toolCode()))) {
-                continue;
-            }
-            if (isSuccessfulDbkgValidationObservation(observation)) {
-                return true;
-            }
-            return false;
-        }
-        return false;
-    }
-
-    private boolean isSuccessfulDbkgValidationObservation(McpObservation observation) {
-        try {
-            JsonNode root = mapper.readTree(observation.json());
-            return root.path("valid").asBoolean(false) && root.path("canExecute").asBoolean(false);
-        } catch (Exception ignored) {
-            return false;
-        }
     }
 
     private String normalize(String value) {
@@ -933,14 +889,21 @@ public class McpToolStep implements EngineStep {
         }
         String normalized = normalize(toolCode);
         if (!normalize(TOOL_DB_SEMANTIC_INTERPRET).equals(normalized)
-                && !normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalized)
-                && !normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(normalized)) {
+                && !normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalized)) {
             return null;
         }
         try {
             JsonNode root = mapper.readTree(observationJson);
+            boolean operationSupported = !root.path("operationSupported").isMissingNode()
+                    ? root.path("operationSupported").asBoolean(true)
+                    : !root.path("meta").path("operationSupported").isMissingNode()
+                    ? root.path("meta").path("operationSupported").asBoolean(true)
+                    : true;
             boolean unsupported = root.path("unsupported").asBoolean(false)
                     || root.path("meta").path("unsupported").asBoolean(false);
+            if (!operationSupported) {
+                unsupported = true;
+            }
             if (unsupported) {
                 return null;
             }
@@ -965,14 +928,21 @@ public class McpToolStep implements EngineStep {
         }
         String normalized = normalize(toolCode);
         if (!normalize(TOOL_DB_SEMANTIC_INTERPRET).equals(normalized)
-                && !normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalized)
-                && !normalize(TOOL_DB_SEMANTIC_RESOLVE).equals(normalized)) {
+                && !normalize(TOOL_DB_SEMANTIC_QUERY).equals(normalized)) {
             return null;
         }
         try {
             JsonNode root = mapper.readTree(observationJson);
+            boolean operationSupported = !root.path("operationSupported").isMissingNode()
+                    ? root.path("operationSupported").asBoolean(true)
+                    : !root.path("meta").path("operationSupported").isMissingNode()
+                    ? root.path("meta").path("operationSupported").asBoolean(true)
+                    : true;
             boolean unsupported = root.path("unsupported").asBoolean(false)
                     || root.path("meta").path("unsupported").asBoolean(false);
+            if (!operationSupported) {
+                unsupported = true;
+            }
             if (unsupported) {
                 String message = textAt(root, "unsupportedMessage", "meta.unsupportedMessage");
                 if (message != null && !message.isBlank()) {
@@ -1127,8 +1097,7 @@ public class McpToolStep implements EngineStep {
             }
         }
 
-        if (TOOL_DB_SEMANTIC_INTERPRET.equalsIgnoreCase(lastToolCode)
-                || TOOL_DB_SEMANTIC_RESOLVE.equalsIgnoreCase(lastToolCode)) {
+        if (TOOL_DB_SEMANTIC_INTERPRET.equalsIgnoreCase(lastToolCode)) {
             // Keep a stable alias usable in ce_rule/response templates.
             ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
             if (!clarification.has("signal")) {
@@ -1143,9 +1112,6 @@ public class McpToolStep implements EngineStep {
         if (TOOL_DB_SEMANTIC_INTERPRET.equalsIgnoreCase(toolCode)) {
             return "INTERPRET";
         }
-        if (TOOL_DB_SEMANTIC_RESOLVE.equalsIgnoreCase(toolCode)) {
-            return "RESOLVE";
-        }
         if (TOOL_DB_SEMANTIC_QUERY.equalsIgnoreCase(toolCode)) {
             return "QUERY";
         }
@@ -1158,9 +1124,6 @@ public class McpToolStep implements EngineStep {
     private String semanticToolKey(String toolCode) {
         if (TOOL_DB_SEMANTIC_INTERPRET.equalsIgnoreCase(toolCode)) {
             return "interpret";
-        }
-        if (TOOL_DB_SEMANTIC_RESOLVE.equalsIgnoreCase(toolCode)) {
-            return "resolve";
         }
         if (TOOL_DB_SEMANTIC_QUERY.equalsIgnoreCase(toolCode)) {
             return "query";
@@ -1193,7 +1156,13 @@ public class McpToolStep implements EngineStep {
             }
             boolean needsClarification = boolAt(rootObs, "needsClarification", "meta.needsClarification");
             toolNode.put("needsClarification", needsClarification);
-            boolean unsupported = boolAt(rootObs, "unsupported", "meta.unsupported");
+            boolean operationSupported = boolAt(rootObs, "operationSupported", "meta.operationSupported");
+            if (!rootObs.path("operationSupported").isBoolean()
+                    && !rootObs.path("meta").path("operationSupported").isBoolean()) {
+                operationSupported = !boolAt(rootObs, "unsupported", "meta.unsupported");
+            }
+            toolNode.put("operationSupported", operationSupported);
+            boolean unsupported = boolAt(rootObs, "unsupported", "meta.unsupported") || !operationSupported;
             toolNode.put("unsupported", unsupported);
             String unsupportedMessage = textAt(rootObs, "unsupportedMessage", "meta.unsupportedMessage");
             if (unsupportedMessage != null && !unsupportedMessage.isBlank()) {
@@ -1223,6 +1192,7 @@ public class McpToolStep implements EngineStep {
             if (unsupported) {
                 semantic.put("semanticClarificationRequired", false);
                 semantic.put("semanticUnsupported", true);
+                semantic.put("operationSupported", false);
                 semantic.put("unsupported", true);
                 if (unsupportedMessage != null && !unsupportedMessage.isBlank()) {
                     semantic.put("unsupportedMessage", unsupportedMessage);
@@ -1238,9 +1208,11 @@ public class McpToolStep implements EngineStep {
                 clarification.put("signal", "CLARIFICATION_REQUIRED");
                 semantic.put("semanticClarificationRequired", true);
                 semantic.put("semanticUnsupported", false);
+                semantic.put("operationSupported", true);
                 semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, true);
             } else {
                 semantic.put("semanticUnsupported", false);
+                semantic.put("operationSupported", true);
                 semantic.put(CONTEXT_KEY_SEMANTIC_QUERY_AMBIGUITY, false);
             }
 

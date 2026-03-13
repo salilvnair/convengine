@@ -1,5 +1,6 @@
 -- Semantic V2 dynamic overlay tables.
 -- These tables hold mutable semantic assets that should not live in semantic-layer.yaml.
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS ce_semantic_entity_override (
     id BIGSERIAL PRIMARY KEY,
@@ -176,6 +177,7 @@ CREATE TABLE IF NOT EXISTS ce_semantic_query_failures (
     id BIGSERIAL PRIMARY KEY,
     conversation_id uuid,
     question TEXT NOT NULL,
+    question_embedding vector,
     generated_sql TEXT,
     corrected_sql TEXT,
     root_cause_code VARCHAR(255),
@@ -186,3 +188,5 @@ CREATE TABLE IF NOT EXISTS ce_semantic_query_failures (
 );
 CREATE INDEX IF NOT EXISTS idx_ce_semantic_query_failures_created
     ON public.ce_semantic_query_failures USING btree (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ce_semantic_query_failures_embedding
+    ON public.ce_semantic_query_failures USING ivfflat (question_embedding vector_cosine_ops) WITH (lists = 100);

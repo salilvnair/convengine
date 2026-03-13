@@ -6,7 +6,6 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
-import com.github.salilvnair.convengine.engine.mcp.knowledge.DbkgSupportService;
 import com.github.salilvnair.convengine.engine.mcp.model.McpPlan;
 import com.github.salilvnair.convengine.engine.mcp.model.McpObservation;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
@@ -18,10 +17,8 @@ import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
-import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
@@ -113,8 +110,6 @@ public class McpPlanner {
     private final AuditService audit;
     private final CeConfigResolver configResolver;
     private final VerboseMessagePublisher verbosePublisher;
-    private final ConvEngineMcpConfig mcpConfig;
-    private final ObjectProvider<DbkgSupportService> dbkgSupportServiceProvider;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -127,13 +122,10 @@ public class McpPlanner {
 
         ObservationPayload obsPayload = buildObservationsPayload(observations);
         String obsJson = obsPayload.json();
-        String dbkgCapsuleJson = resolveDbkgCapsuleJson(session, obsPayload.dbkgCapsuleJson());
 
         Map<String, Object> extraVars = new LinkedHashMap<>(session.promptTemplateVars());
         extraVars.remove("mcp_observations");
         extraVars.remove("MCP_OBSERVATIONS");
-        extraVars.put("dbkg_capsule", dbkgCapsuleJson);
-        extraVars.put("DBKG_CAPSULE", dbkgCapsuleJson);
         Map<String, Object> contextMap = session.contextDict();
         extraVars.put("context", contextMap);
         PlannerTimeContext timeContext = resolvePlannerTimeContext();
@@ -184,7 +176,6 @@ public class McpPlanner {
         inputPayload.put("mcp_observations_compacted", obsPayload.compacted());
         inputPayload.put("mcp_observations_raw_chars", obsPayload.rawChars());
         inputPayload.put("mcp_observations_final_chars", obsPayload.finalChars());
-        inputPayload.put("dbkg_capsule_chars", dbkgCapsuleJson == null ? 0 : dbkgCapsuleJson.length());
         audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_INPUT, session.getConversationId(), inputPayload);
         verbosePublisher.publish(session, "McpPlanner", "MCP_PLAN_LLM_INPUT", null, null, false, inputPayload);
 
@@ -339,19 +330,8 @@ public class McpPlanner {
         if (toolCode == null) {
             return plan;
         }
+        String normalizedToolCode = toolCode.trim().toLowerCase(Locale.ROOT);
         Map<String, Object> args = plan.args() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(plan.args());
-        if ("db.semantic.resolve".equalsIgnoreCase(toolCode)) {
-            Map<String, Object> canonicalIntent = extractCanonicalIntent(args, observations);
-            if (!canonicalIntent.isEmpty()) {
-                Map<String, Object> rewrittenArgs = new LinkedHashMap<>();
-                rewrittenArgs.put("canonicalIntent", canonicalIntent);
-                Object query = args.get("query");
-                if (query != null && !String.valueOf(query).isBlank()) {
-                    rewrittenArgs.put("query", String.valueOf(query));
-                }
-                return new McpPlan(McpConstants.ACTION_CALL_TOOL, "db.semantic.query", rewrittenArgs, null, plan.operation_tag());
-            }
-        }
         if ("db.semantic.query".equalsIgnoreCase(toolCode) && !args.containsKey("canonicalIntent") && !args.containsKey("canonical_intent")) {
             Map<String, Object> canonicalIntent = extractCanonicalIntent(args, observations);
             if (!canonicalIntent.isEmpty()) {
@@ -426,10 +406,10 @@ public class McpPlanner {
     }
 
     private PlannerPromptSet fromLegacyConfig() {
-        String system = resolveLegacyPrompt("DB_SYSTEM_PROMPT", "SYSTEM_PROMPT", DEFAULT_DB_SYSTEM_PROMPT);
-        String user = resolveLegacyPrompt("DB_USER_PROMPT", "USER_PROMPT", DEFAULT_DB_USER_PROMPT);
+        String system = configResolver.resolveString(this, "SYSTEM_PROMPT", DEFAULT_DB_SYSTEM_PROMPT);
+        String user = configResolver.resolveString(this, "USER_PROMPT", DEFAULT_DB_USER_PROMPT);
         return new PlannerPromptSet(system, user,
-                "ce_config(DB_USER_PROMPT,DB_SYSTEM_PROMPT -> USER_PROMPT,SYSTEM_PROMPT fallback)");
+                "ce_config(SYSTEM_PROMPT,USER_PROMPT)");
     }
 
     private ObservationPayload buildObservationsPayload(List<McpObservation> observations) {
@@ -446,19 +426,13 @@ public class McpPlanner {
         // so the LLM doesn't see double-escaped strings
         List<Map<String, Object>> compact = new ArrayList<>();
         Set<String> seenEntries = new HashSet<>();
-        String latestDbkgCapsuleJson = "{}";
         for (McpObservation observation : recentObservations) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("toolCode", observation.toolCode());
 
             JsonNode parsed = parseJson(observation.json());
-            String observedCapsule = extractDbkgCapsuleJson(parsed, observation.toolCode());
-            if (observedCapsule != null && !observedCapsule.isBlank() && !"{}".equals(observedCapsule)) {
-                latestDbkgCapsuleJson = observedCapsule;
-            }
-            JsonNode sanitized = stripPlannerRedundantPayload(parsed);
-            String sanitizedRaw = JsonUtil.toJson(sanitized);
-            entry.put("json", summarizeObservationForPlanner(sanitized, sanitizedRaw, maxChars));
+            String parsedRaw = JsonUtil.toJson(parsed);
+            entry.put("json", summarizeObservationForPlanner(parsed, parsedRaw, maxChars));
 
             String signature = JsonUtil.toJson(entry);
             if (seenEntries.add(signature)) {
@@ -467,183 +441,11 @@ public class McpPlanner {
         }
 
         String compactJson = JsonUtil.toJson(compact);
-        return new ObservationPayload(compactJson, raw.length() > maxChars, raw.length(), compactJson.length(), latestDbkgCapsuleJson);
-    }
-
-    private JsonNode stripPlannerRedundantPayload(JsonNode parsed) {
-        if (parsed == null || parsed.isNull() || !parsed.isObject()) {
-            return parsed;
-        }
-        if (!mcpConfig.getDb().semanticCatalogConfig().isKnowledgeCapsule()) {
-            return parsed;
-        }
-        JsonNode clone = parsed.deepCopy();
-        if (clone instanceof com.fasterxml.jackson.databind.node.ObjectNode objectNode) {
-            objectNode.remove("dbkgCapsule");
-        }
-        return clone;
-    }
-
-    private String extractDbkgCapsuleJson(JsonNode parsed, String toolCode) {
-        if (!mcpConfig.getDb().semanticCatalogConfig().isKnowledgeCapsule()) {
-            return "{}";
-        }
-        if (parsed == null || !parsed.isObject()) {
-            return "{}";
-        }
-        JsonNode capsule = parsed.get("dbkgCapsule");
-        if (capsule != null && !capsule.isNull()) {
-            return capsule.toString();
-        }
-        if (toolCode != null && "db.semantic.catalog".equalsIgnoreCase(toolCode.trim())) {
-            return JsonUtil.toJson(buildLegacyDbkgCapsuleFromKnowledge(parsed));
-        }
-        return "{}";
-    }
-
-    private Map<String, Object> buildLegacyDbkgCapsuleFromKnowledge(JsonNode parsed) {
-        Map<String, Object> capsule = new LinkedHashMap<>();
-        capsule.put("version", "legacy-dbkg-capsule-v1");
-        capsule.put("source", "db.semantic.catalog");
-
-        JsonNode queryKnowledge = parsed.path("queryKnowledge");
-        JsonNode schemaKnowledge = parsed.path("schemaKnowledge");
-        JsonNode insights = parsed.path("insights");
-
-        Map<String, Object> sourceCoverage = new LinkedHashMap<>();
-        sourceCoverage.put("ce_mcp_query_knowledge", queryKnowledge.isArray() ? queryKnowledge.size() : 0);
-        sourceCoverage.put("ce_mcp_schema_knowledge", schemaKnowledge.isArray() ? schemaKnowledge.size() : 0);
-        capsule.put("sourceCoverage", sourceCoverage);
-
-        Map<String, List<String>> columnsByObject = new LinkedHashMap<>();
-        Map<String, Map<String, List<String>>> validValuesByObject = new LinkedHashMap<>();
-        Map<String, List<Map<String, Object>>> schemaKnowledgeByObject = new LinkedHashMap<>();
-        List<String> objects = new ArrayList<>();
-        if (schemaKnowledge.isArray()) {
-            for (JsonNode row : schemaKnowledge) {
-                String tableName = text(row, "tableName");
-                String columnName = text(row, "columnName");
-                String description = text(row, "description");
-                String tags = text(row, "tags");
-                String validValues = text(row, "validValues");
-                if (!tableName.isBlank() && !objects.contains(tableName)) {
-                    objects.add(tableName);
-                }
-                if (!tableName.isBlank() && !columnName.isBlank()) {
-                    List<String> cols = columnsByObject.computeIfAbsent(tableName, ignored -> new ArrayList<>());
-                    if (!cols.contains(columnName) && cols.size() < 20) {
-                        cols.add(columnName);
-                    }
-                    if (!validValues.isBlank()) {
-                        Map<String, List<String>> tableValues = validValuesByObject.computeIfAbsent(tableName, ignored -> new LinkedHashMap<>());
-                        tableValues.put(columnName, splitCsvLike(validValues));
-                    }
-                    List<Map<String, Object>> rows = schemaKnowledgeByObject.computeIfAbsent(tableName, ignored -> new ArrayList<>());
-                    Map<String, Object> columnInfo = new LinkedHashMap<>();
-                    columnInfo.put("columnName", columnName);
-                    if (!description.isBlank()) {
-                        columnInfo.put("description", description);
-                    }
-                    if (!tags.isBlank()) {
-                        columnInfo.put("tags", splitCsvLike(tags));
-                    }
-                    if (!validValues.isBlank()) {
-                        columnInfo.put("validValues", splitCsvLike(validValues));
-                    }
-                    rows.add(columnInfo);
-                }
-                if (objects.size() >= 20 && columnsByObject.size() >= 20) {
-                    break;
-                }
-            }
-        }
-
-        List<Map<String, Object>> queryTemplates = new ArrayList<>();
-        if (queryKnowledge.isArray()) {
-            for (JsonNode row : queryKnowledge) {
-                Map<String, Object> template = new LinkedHashMap<>();
-                String queryText = text(row, "queryText");
-                String description = text(row, "description");
-                String preparedSql = text(row, "preparedSql");
-                String tags = text(row, "tags");
-                String apiHints = text(row, "apiHints");
-                if (!queryText.isBlank()) {
-                    template.put("queryText", compactJsonValue(queryText, 200));
-                }
-                if (!description.isBlank()) {
-                    template.put("purpose", compactJsonValue(description, 300));
-                }
-                if (!preparedSql.isBlank()) {
-                    template.put("preparedSqlPreview", compactJsonValue(preparedSql, 400));
-                }
-                if (!tags.isBlank()) {
-                    template.put("tags", splitCsvLike(tags));
-                }
-                if (!apiHints.isBlank()) {
-                    template.put("apiHints", splitCsvLike(apiHints));
-                }
-                if (!template.isEmpty()) {
-                    queryTemplates.add(template);
-                }
-                if (queryTemplates.size() >= 20) {
-                    break;
-                }
-            }
-        }
-
-        Map<String, Object> sqlGraph = new LinkedHashMap<>();
-        sqlGraph.put("objects", objects);
-        sqlGraph.put("columnsByObject", columnsByObject);
-        sqlGraph.put("validValuesByObject", validValuesByObject);
-        sqlGraph.put("schemaKnowledgeByObject", schemaKnowledgeByObject);
-        sqlGraph.put("queryTemplates", queryTemplates);
-        sqlGraph.put("joinPaths", List.of());
-        sqlGraph.put("statusDictionary", List.of());
-        sqlGraph.put("lineage", List.of());
-        capsule.put("sqlGraph", sqlGraph);
-
-        Map<String, Object> semanticGraph = new LinkedHashMap<>();
-        semanticGraph.put("entities", objects);
-        semanticGraph.put("cases", List.of());
-        semanticGraph.put("playbooks", List.of());
-        semanticGraph.put("systems", List.of());
-        semanticGraph.put("apiFlows", List.of());
-        capsule.put("semanticGraph", semanticGraph);
-
-        Map<String, Object> plannerRuntime = new LinkedHashMap<>();
-        List<String> suggestedTables = new ArrayList<>();
-        JsonNode suggestedTablesNode = insights.path("suggestedTables");
-        if (suggestedTablesNode.isArray()) {
-            for (JsonNode node : suggestedTablesNode) {
-                if (node.isTextual() && !node.asText().isBlank()) {
-                    suggestedTables.add(node.asText());
-                }
-                if (suggestedTables.size() >= 20) {
-                    break;
-                }
-            }
-        }
-        List<String> suggestedQueries = new ArrayList<>();
-        JsonNode suggestedPreparedQueriesNode = insights.path("suggestedPreparedQueries");
-        if (suggestedPreparedQueriesNode.isArray()) {
-            for (JsonNode node : suggestedPreparedQueriesNode) {
-                if (node.isTextual() && !node.asText().isBlank()) {
-                    suggestedQueries.add(compactJsonValue(node.asText(), 400));
-                }
-                if (suggestedQueries.size() >= 20) {
-                    break;
-                }
-            }
-        }
-        plannerRuntime.put("suggestedTables", suggestedTables);
-        plannerRuntime.put("suggestedPreparedQueries", suggestedQueries);
-        plannerRuntime.put("hints", List.of("legacy db.semantic.catalog capsule"));
-        capsule.put("plannerRuntime", plannerRuntime);
-        return capsule;
+        return new ObservationPayload(compactJson, raw.length() > maxChars, raw.length(), compactJson.length());
     }
 
     private int resolvePlannerMaxObservationChars() {
-        int yamlValue = mcpConfig == null ? 6000 : mcpConfig.getPlannerMaxObservationChars();
+        int yamlValue = 6000;
         int resolved = configResolver.resolveInt(this, "MCP_PLANNER_MAX_OBS_CHARS", yamlValue);
         return Math.max(1000, resolved);
     }
@@ -667,30 +469,6 @@ public class McpPlanner {
             count++;
         }
         return out;
-    }
-
-    private String resolveDbkgCapsuleJson(EngineSession session, String observedCapsuleJson) {
-        if (!mcpConfig.getDb().semanticCatalogConfig().isKnowledgeCapsule()) {
-            return "{}";
-        }
-        if (observedCapsuleJson != null && !observedCapsuleJson.isBlank() && !"{}".equals(observedCapsuleJson.trim())) {
-            return observedCapsuleJson;
-        }
-        try {
-            DbkgSupportService support = dbkgSupportServiceProvider.getIfAvailable();
-            if (support == null) {
-                return "{}";
-            }
-            String question = session == null ? "" : session.getUserText();
-            List<String> tokens = support.normalizeTokens(question);
-            Map<String, Object> capsule = support.buildMetadataCapsule(question, tokens, null, null);
-            if (capsule == null || capsule.isEmpty()) {
-                return "{}";
-            }
-            return JsonUtil.toJson(capsule);
-        } catch (Exception e) {
-            return "{}";
-        }
     }
 
     private Object summarizeObservationForPlanner(JsonNode parsed, String raw, int maxChars) {
@@ -736,17 +514,6 @@ public class McpPlanner {
         }
     }
 
-    private String text(JsonNode node, String field) {
-        if (node == null) {
-            return "";
-        }
-        JsonNode child = node.get(field);
-        if (child == null || child.isNull()) {
-            return "";
-        }
-        return child.isTextual() ? child.asText() : child.toString();
-    }
-
     private Object compactNode(JsonNode node) {
         if (node == null || node.isNull()) {
             return null;
@@ -776,30 +543,7 @@ public class McpPlanner {
         return value.substring(0, max);
     }
 
-    private List<String> splitCsvLike(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return List.of();
-        }
-        String[] parts = raw.split("[,|]");
-        List<String> out = new ArrayList<>();
-        for (String part : parts) {
-            String token = part == null ? "" : part.trim();
-            if (!token.isBlank()) {
-                out.add(token);
-            }
-        }
-        return out;
-    }
-
-    private record ObservationPayload(String json, boolean compacted, int rawChars, int finalChars, String dbkgCapsuleJson) {
-    }
-
-    private String resolveLegacyPrompt(String primaryKey, String legacyKey, String defaultValue) {
-        String primary = configResolver.resolveString(this, primaryKey, defaultValue);
-        if (primary != null && !primary.isBlank() && !defaultValue.equals(primary)) {
-            return primary;
-        }
-        return configResolver.resolveString(this, legacyKey, defaultValue);
+    private record ObservationPayload(String json, boolean compacted, int rawChars, int finalChars) {
     }
 
     private PlannerTimeContext resolvePlannerTimeContext() {
@@ -807,10 +551,10 @@ public class McpPlanner {
         OffsetDateTime nowUtc = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime nowSystem = OffsetDateTime.now(systemZone);
         return new PlannerTimeContext(
-                nowUtc.toLocalDate().toString(),
-                nowUtc.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                String.valueOf(nowUtc.getYear()),
-                "UTC",
+                nowSystem.toLocalDate().toString(),
+                nowSystem.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                String.valueOf(nowSystem.getYear()),
+                systemZone.getId(),
                 nowSystem.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 systemZone.getId());
     }
