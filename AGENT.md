@@ -6,9 +6,9 @@ ConvEngine is a deterministic, configuration-driven conversational workflow engi
 
 It is not an unconstrained chatbot runtime. Business behavior is declared in `ce_*` tables, constrained by config, and executed by an auditable step pipeline.
 
-Current library baseline: `2.0.10`.
+Current library baseline: `2.0.12`.
 
-## Current Release Line (`2.0.0` to `2.0.10`)
+## Current Release Line (`2.0.0` to `2.0.12`)
 
 ### `2.0.0` foundation
 - step-pipeline architecture became the core execution model
@@ -36,11 +36,21 @@ Current library baseline: `2.0.10`.
 - `ce_prompt_template.interaction_mode` and `interaction_contract` became actual runtime routing inputs
 - prompt and verbose rendering consolidated through the shared Thymeleaf-backed renderer
 - `DialogueActStep` added richer audit checkpoints and `POST_DIALOGUE_ACT` rule interaction
-- DBKG (`dbkg.*`) introduced the DB-driven MCP investigation model
 
 ### `2.0.10`
-- Current repo baseline.
-- Treat the current 27-step pipeline, scoped MCP model, `ce_verbose`, and DBKG as the canonical runtime shape.
+- Introduced semantic metadata-driven query pipeline foundation (`ce_semantic_*`).
+
+### `2.0.11`
+- Semantic runtime hardening:
+  - query retry loop
+  - failure-memory storage + correction tracking (`ce_semantic_query_failures`)
+  - improved timestamp and SQL safety handling
+
+### `2.0.12`
+- Semantic simplification baseline:
+  - single semantic path: `db.semantic.interpret -> db.semantic.query -> postgres.query`
+  - active package namespace is `com.github.salilvnair.convengine.engine.mcp.query.semantic`
+  - stale legacy semantic docs/surfaces removed
 
 ## Runtime Architecture
 
@@ -137,27 +147,18 @@ public interface LlmClient {
 - `ce_conversation_history`
 - `ce_llm_call_log`
 
-### DBKG control-plane tables
-- `ce_mcp_case_type`
-- `ce_mcp_case_signal`
-- `ce_mcp_playbook`
-- `ce_mcp_playbook_signal`
-- `ce_mcp_domain_entity`
-- `ce_mcp_domain_relation`
-- `ce_mcp_system_node`
-- `ce_mcp_api_flow`
-- `ce_mcp_system_relation`
-- `ce_mcp_db_object`
-- `ce_mcp_db_column`
-- `ce_mcp_db_join_path`
-- `ce_mcp_status_dictionary`
-- `ce_mcp_id_lineage`
-- `ce_mcp_executor_template`
-- `ce_mcp_query_template`
-- `ce_mcp_query_param_rule`
-- `ce_mcp_playbook_step`
-- `ce_mcp_playbook_transition`
-- `ce_mcp_outcome_rule`
+### Semantic control-plane tables
+- `ce_semantic_concept`
+- `ce_semantic_synonym`
+- `ce_semantic_mapping`
+- `ce_semantic_query_class`
+- `ce_semantic_ambiguity_option`
+- `ce_semantic_concept_embedding`
+- `ce_semantic_entity_override`
+- `ce_semantic_join_hint`
+- `ce_semantic_relationship_override`
+- `ce_semantic_value_pattern`
+- `ce_semantic_query_failures`
 
 ## Must-Keep Table Contracts
 
@@ -302,7 +303,6 @@ Do not document or seed invalid `step_match` values.
 
 Current SQL observability determinants:
 - `MCP_DB_SQL_EXECUTION` on `McpDbExecutor`
-- `DBKG_QUERY_SQL_EXECUTION` on `DbkgQueryTemplateStepExecutor`
 
 Both publish metadata with:
 - `sql`
@@ -310,26 +310,13 @@ Both publish metadata with:
 - `row_count`
 - `rows`
 
-### `ce_mcp_schema_knowledge`
-
-Semantic catalog depends on this table for table/column hints and value grounding.
-
-Important columns:
-- `table_name`
-- `column_name`
-- `description`
-- `tags`
-- `valid_values`
-
-`valid_values` should be populated for enum-like business fields (status/type/code/channel/etc.) to improve grounding quality.
-
 ## Step Design Rules
 
 - Keep steps composable and side-effect scoped.
 - Prefer explicit audit and deterministic mutation over hidden behavior.
 - Keep order constraints explicit with annotations and DAG rules.
 - For safety steps (`PolicyEnforcementStep`, `GuardrailStep`, `StateGraphStep`), fail-soft unless config explicitly requires fail-closed behavior.
-- Do not move domain logic into step classes when the behavior belongs in `ce_rule`, `ce_prompt_template`, or DBKG metadata tables.
+- Do not move domain logic into step classes when the behavior belongs in `ce_rule`, `ce_prompt_template`, or semantic metadata tables.
 
 ## Rule-First Philosophy
 
@@ -387,52 +374,23 @@ Current MCP next-tool guard model:
 - `failClosed` can block if allowed-next rules are missing
 - blocked-next behavior must remain deterministic and auditable
 
-## DBKG (DB-Driven MCP Investigation Model)
+## Semantic Query MCP Runtime
 
-DBKG extends MCP from simple tool calling into a database-driven investigation runtime.
+The active semantic MCP chain is:
 
-### DBKG tool chain
-1. `dbkg.case.resolve`
-2. `dbkg.knowledge.lookup`
-3. `dbkg.investigate.plan`
-4. `dbkg.playbook.validate`
-5. `dbkg.investigate.execute`
-6. planner `ANSWER`
+1. `db.semantic.interpret`
+2. `db.semantic.query`
+3. `postgres.query`
+4. planner `ANSWER`
 
-### DBKG Java runtime chain
-1. `DbkgCaseResolveToolHandler`
-2. `DbkgCaseResolver`
-3. `DbkgKnowledgeLookupToolHandler`
-4. `DbkgKnowledgeLookupService`
-5. `DbkgInvestigatePlanToolHandler`
-6. `DbkgPlaybookResolver`
-7. `DbkgPlaybookValidateToolHandler`
-8. `DbkgPlaybookValidator`
-9. `DbkgInvestigateExecuteToolHandler`
-10. `DbkgPlaybookEngine`
+Design rules:
 
-### DBKG design rules
-- Do not hardcode project-specific investigation logic in Java handlers.
-- Keep case detection in:
-  - `ce_mcp_case_type`
-  - `ce_mcp_case_signal`
-- Keep playbook routing and graph execution in:
-  - `ce_mcp_playbook*`
-- Keep SQL in:
-  - `ce_mcp_query_template`
-  - `ce_mcp_query_param_rule`
-- Keep final diagnosis logic in:
-  - `ce_mcp_outcome_rule`
-- Use live schema introspection for physical schema whenever possible.
-- Use overlay tables (`ce_mcp_db_object`, `ce_mcp_db_column`, `ce_mcp_db_join_path`) only for semantic hints and preferred joins.
-- Validation must happen before execute.
-
-### DBKG hard guard
-
-`McpToolStep` must block `dbkg.investigate.execute` unless a successful `dbkg.playbook.validate` observation is already present in the same MCP loop.
-
-Current explicit block reason:
-- `DBKG_VALIDATION_REQUIRED_BEFORE_EXECUTION`
+- keep business semantics in `ce_semantic_*` metadata tables
+- keep query shape rules in `ce_semantic_query_class`
+- keep mappings in `ce_semantic_mapping`
+- keep clarification options in `ce_semantic_ambiguity_option`
+- keep failure memory in `ce_semantic_query_failures`
+- keep runtime SQL read-only and guarded
 
 ## Prompt and Rendering Rules
 
@@ -451,11 +409,6 @@ Current explicit block reason:
   - `resolved_user_input`
 
 ## MCP DB Extension Points
-
-### Semantic catalog vector ranking
-- Interface: `SemanticCatalogVectorSearchInterceptor`
-- Default fallback: `DefaultSemanticCatalogVectorSearchInterceptor` (lowest precedence)
-- Consumer can provide higher-priority interceptor for DB-native vector search (for example pgvector cosine) or any custom ranking path.
 
 ### `postgres.query` SQL normalization
 - Interface: `PostgresQueryInterceptor`
@@ -498,5 +451,5 @@ When behavior changes:
 - New audit stages centralized in enums/constants
 - MCP scope rules documented with current strict behavior
 - `ce_verbose` docs and seeds aligned with real determinants and matcher types
-- DBKG docs and seeds aligned with the current metadata table set
+- Semantic docs and seeds aligned with the current metadata table set
 - Prompt and verbose rendering continue to use the shared renderer path

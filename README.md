@@ -6,23 +6,20 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `2.0.10`
+- Current library version: `2.0.12`
 
-### MCP Semantic Catalog + SQL Interceptor SPI + MCP Loop Flags (v2.0.10)
-- **Semantic catalog runtime model**:
-  - MCP tool code is fixed as `db.semantic.catalog` and is registered through `ce_mcp_tool`.
-  - `convengine.mcp.db.semantic-catalog` controls semantic-catalog behavior (`knowledge-capsule`, `schema-knowledge`, `query-knowledge`, `vector-search.*`).
-  - `ce_mcp_schema_knowledge` supports `valid_values` for column-level value grounding.
-- **Vector ranking extension point**:
-  - `SemanticCatalogVectorSearchInterceptor` allows consumer-controlled ranking/search strategy.
-  - framework fallback is `DefaultSemanticCatalogVectorSearchInterceptor` (least precedence), using `LlmClient.generateEmbedding(...)` + cosine similarity.
-- **`postgres.query` interceptor chain**:
-  - `PostgresQueryInterceptor` allows consumer SQL normalization/fixes before guardrail + execution.
-  - framework fallback is `DefaultPostgresQueryInterceptor` (least precedence), including timestamp/epoch safety fixes.
-- **MCP loop execution flags in context**:
-  - `context.mcp.finalAnswerDetermined`
-  - `context.mcp.toolExecutionAbrupted`
-  - `context.mcp.toolExecutionAbruptionLimit`
+### Semantic Runtime Simplification (v2.0.12)
+- active semantic chain:
+  - `db.semantic.interpret -> db.semantic.query -> postgres.query`
+- active semantic package:
+  - `com.github.salilvnair.convengine.engine.mcp.query.semantic`
+- stale legacy semantic doc/runtime references removed.
+
+### Semantic Runtime Hardening (v2.0.11)
+- SQL generation retry loop with configurable attempts.
+- failure-memory feedback loop via `ce_semantic_query_failures`.
+- corrected SQL persistence and embedding-based similar-failure recall.
+- better timestamp/date parameter handling in query generation/execution path.
 
 ### Hybrid Prompt Rendering, Correction Routing, and Consumer Verbose Adapter (v2.0.9)
 - **Thymeleaf-backed prompt and verbose rendering**: Prompt templates and DB-backed `ce_verbose` messages now resolve through the shared `ThymeleafTemplateRenderer`, with session-aware variables and support for legacy `{{...}}`, `#{...}`, and `[${...}]` styles.
@@ -40,7 +37,7 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - **Verbose and audit coverage expansion**:
   - added LLM input/output/error verbose stages across dialogue act, intent, schema extraction, MCP planning, and response generation
   - `MCP_TOOL_CALL` now emits richer tool/action/intent/state metadata
-  - `MCP_DB_SQL_EXECUTION` and `DBKG_QUERY_SQL_EXECUTION` now emit audit + `ce_verbose` events with SQL text, bind params, row counts, and rows
+  - `MCP_DB_SQL_EXECUTION` emits audit + `ce_verbose` events with SQL text, bind params, row counts, and rows
   - new `ConvEngineVerboseAdapter` lets consumer hooks, transformers, and custom beans publish DB-resolved or direct UI verbose events
 - **Constant hygiene and control-path cleanup**:
   - centralized routing, correction, syntax, pending-action, guardrail, response/output, and verbose keys in constants
@@ -73,28 +70,20 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - **[api-processor](https://github.com/salilvnair/api-processor) native MCP path**: Added `HttpApiApiProcessorToolHandler` so consumers can execute MCP HTTP tools directly through `RestWebServiceFacade` (`prepareRequest -> delegate.invoke -> processResponse`) and return mapped responses to ConvEngine.
 - **Intent/state-scoped planner prompts**: Added `ce_mcp_planner` table and runtime selection in `McpPlanner` so each use case can own planner prompts by `intent_code` + `state_code` instead of globally overriding `ce_config`.
 
-### Semantic Catalog + DBKG Runtime (latest branch updates)
-- **Semantic catalog DB tool**: Added `DbSemanticCatalogToolHandler` for `db.semantic.catalog` (enabled via `convengine.mcp.db.semantic-catalog.enabled=true`) to provide ranked query/schema semantic hints from `ce_mcp_query_knowledge` and `ce_mcp_schema_knowledge`.
-- **DBKG runtime path**: Database Knowledge Graph execution is explicitly modeled as:
-  - `dbkg.case.resolve`
-  - `dbkg.knowledge.lookup`
-  - `dbkg.investigate.plan`
-  - `dbkg.playbook.validate`
-  - `dbkg.investigate.execute`
-- **Capsule-first planner grounding**: MCP planner supports compact DBKG capsule grounding (`{{dbkg_capsule}}`) to reduce planner token pressure while preserving table/column/join hints.
+### Current Semantic Runtime (latest branch updates)
+- **Active chain**:
+  - `db.semantic.interpret`
+  - `db.semantic.query`
+  - `postgres.query`
 - **DB tool execution contract**:
-  - Java `DbToolHandler` implementations are preferred (`DbSemanticCatalogToolHandler`, `PostgresQueryToolHandler`, DBKG handlers).
+  - Java `DbToolHandler` implementations are preferred (`PostgresQueryToolHandler` and semantic handlers).
   - `ce_mcp_db_tool` remains required only for SQL-template fallback tools (`McpDbExecutor` path).
-- **Read-only SQL guardrail hardening**: `McpSqlGuardrail` still blocks non-read-only/multi-statement SQL, but now allows a single trailing semicolon on otherwise valid single-statement SELECT/WITH queries.
-- **SQL observability**: dynamic SQL and DBKG query-template execution emit richer audit/verbose payloads (SQL, params, row_count, rows preview, error metadata).
+- **Read-only SQL guardrail hardening**: `McpSqlGuardrail` blocks non-read-only/multi-statement SQL while allowing safe single-statement SELECT/WITH usage.
+- **SQL observability**: dynamic SQL execution emits richer audit/verbose payloads (SQL, params, row_count, rows preview, error metadata).
 - **MCP execution telemetry flags**:
   - `context.mcp.finalAnswerDetermined`
   - `context.mcp.toolExecutionAbrupted`
   - `context.mcp.toolExecutionAbruptionLimit`
-- **Schema-aware dynamic SQL seed refresh** (`src/main/resources/sql/dbkg/schema_aware_sql_seed.sql`):
-  - planner guidance enforces semantic-catalog-first grounding before `postgres.query`,
-  - `dynamic_sql` response fallbacks added for `IDLE`/`EXECUTE`,
-  - tighter timestamp/type-safety guidance for generated SQL.
 - **DB schema inspection APIs**:
   - `GET /api/v1/db/inspect-schema`
   - `POST /api/v1/db/agent`
@@ -267,7 +256,6 @@ Main runtime stages:
 - `determinant`: use emitted runtime determinants such as `STEP_ENTER`, `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, `DIALOGUE_ACT_LLM_ERROR`, `MCP_TOOL_CALL`, `RESOLVE_RESPONSE_LLM_OUTPUT`
 - SQL observability determinants:
   - `MCP_DB_SQL_EXECUTION` from `McpDbExecutor`
-  - `DBKG_QUERY_SQL_EXECUTION` from `DbkgQueryTemplateStepExecutor`
   - metadata includes `sql`, `params`, `row_count`, and `rows`
 
 ## Flow Configuration (application.yml)
@@ -316,15 +304,9 @@ convengine:
     recent-turns-for-summary: 3
   mcp:
     db:
-      semantic-catalog:
-        enabled: true
-        knowledge-capsule: true
-        schema-knowledge: true
-        query-knowledge: true
-        vector-search:
-          enabled: false
-          max-results: 10
-      knowledge-graph:
+      query:
+        mode: semantic
+      semantic:
         enabled: true
     http-api:
       defaults:
@@ -345,9 +327,9 @@ Consumer contract details:
   - `src/main/resources/sql/mcp_planner_seed.sql` (Postgres)
   - `src/main/resources/sql/mcp_planner_seed_postgres.sql` (Postgres alias)
   - `src/main/resources/sql/mcp_planner_seed_sqlite.sql` (SQLite)
-- Optional advanced DB knowledge seed packs:
-  - `src/main/resources/sql/seed_mcp_advanced_postgres.sql`
-  - `src/main/resources/sql/seed_mcp_advanced_sqlite.sql`
+- Semantic metadata seed packs:
+  - `src/main/resources/mcp/semantic_v2/ddl.sql`
+  - `src/main/resources/mcp/semantic_v2/dml.sql`
 
 ## Streaming Configuration
 
