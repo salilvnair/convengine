@@ -94,7 +94,7 @@ VALUES
 -- -----------------------------------------------------------------------------
 -- Prompt templates
 -- -----------------------------------------------------------------------------
-INSERT INTO ce_prompt_template (intent_code, state_code, response_type, system_prompt, user_prompt, temperature,
+INSERT INTO ce_prompt_template (intent_code, state_code, output_format, system_prompt, user_prompt, temperature,
                                 interaction_mode, interaction_contract, enabled)
 VALUES
 (
@@ -156,7 +156,7 @@ VALUES
 -- -----------------------------------------------------------------------------
 -- Responses
 -- -----------------------------------------------------------------------------
-INSERT INTO ce_response (intent_code, state_code, output_format, response_type, exact_text, derivation_hint, json_schema, priority, enabled, description)
+INSERT INTO ce_response (intent_code, state_code, output_format, output_format, exact_text, derivation_hint, json_schema, priority, enabled, description)
 VALUES
 ('ORDER_DIAGNOSTICS', 'ANALYZE', 'TEXT', 'DERIVED',
  NULL,

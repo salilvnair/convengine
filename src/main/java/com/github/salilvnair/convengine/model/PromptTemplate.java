@@ -9,7 +9,7 @@ import lombok.Data;
 public class PromptTemplate {
     private Long templateId;
     private String templateDesc;
-    private String responseType;
+    private String outputFormat;
     private String systemPrompt;
     private String userPrompt;
     private Double temperature;
@@ -18,7 +18,7 @@ public class PromptTemplate {
     public static PromptTemplate initFrom(CePromptTemplate cePromptTemplate) {
         if(cePromptTemplate == null) return null;
         return PromptTemplate.builder()
-                .responseType(cePromptTemplate.getResponseType())
+                .outputFormat(cePromptTemplate.getOutputFormat())
                 .systemPrompt(cePromptTemplate.getSystemPrompt())
                 .userPrompt(cePromptTemplate.getUserPrompt())
                 .temperature(cePromptTemplate.getTemperature())
@@ -28,7 +28,7 @@ public class PromptTemplate {
 
     public static PromptTemplate initFrom(String systemPrompt, String userPrompt, String responseType, String templateDesc) {
         return PromptTemplate.builder()
-                .responseType(responseType)
+                .outputFormat(responseType)
                 .systemPrompt(systemPrompt)
                 .userPrompt(userPrompt)
                 .templateDesc(templateDesc)

@@ -325,7 +325,7 @@ public class StaticConfigurationCacheService {
             String stateCode) {
         return self().getAllPromptTemplates().stream()
                 .filter(CePromptTemplate::isEnabled)
-                .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
+                .filter(p -> p.getOutputFormat() != null && p.getOutputFormat().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(p -> p.getStateCode() != null && p.getStateCode().equalsIgnoreCase(stateCode))
                 .max(Comparator.comparing(CePromptTemplate::getCreatedAt));
@@ -334,7 +334,7 @@ public class StaticConfigurationCacheService {
     public Optional<CePromptTemplate> findFirstPromptTemplate(String responseType, String intentCode) {
         return self().getAllPromptTemplates().stream()
                 .filter(CePromptTemplate::isEnabled)
-                .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
+                .filter(p -> p.getOutputFormat() != null && p.getOutputFormat().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(p -> p.getStateCode() != null && p.getStateCode().equalsIgnoreCase(ConvEngineValue.ANY))
                 .max(Comparator.comparing(CePromptTemplate::getCreatedAt));

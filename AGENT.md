@@ -168,7 +168,7 @@ Columns include:
 - `template_id`
 - `intent_code`
 - `state_code`
-- `response_type`
+- `output_format`
 - `system_prompt`
 - `user_prompt`
 - `temperature`

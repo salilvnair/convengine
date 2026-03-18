@@ -166,7 +166,7 @@ CREATE TABLE ce_prompt_template (
                                     template_id bigserial NOT NULL,
                                     intent_code text NOT NULL,
                                     state_code text NOT NULL,
-                                    response_type text NOT NULL,
+                                    output_format text NOT NULL,
                                     system_prompt text NOT NULL,
                                     user_prompt text NOT NULL,
                                     temperature numeric(3, 2) DEFAULT 0.0 NOT NULL,
@@ -178,7 +178,7 @@ CREATE TABLE ce_prompt_template (
                                     CONSTRAINT ce_prompt_template_intent_not_blank CHECK (btrim(intent_code) <> ''),
                                     CONSTRAINT ce_prompt_template_state_not_blank CHECK (btrim(state_code) <> '')
 );
-CREATE INDEX idx_ce_prompt_template_lookup ON public.ce_prompt_template USING btree (response_type, intent_code, state_code, enabled);
+CREATE INDEX idx_ce_prompt_template_lookup ON public.ce_prompt_template USING btree (output_format, intent_code, state_code, enabled);
 
 CREATE TABLE ce_response (
                              response_id bigserial NOT NULL,

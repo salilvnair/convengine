@@ -143,7 +143,7 @@ CREATE TABLE ce_prompt_template (
   template_id INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
   state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
-  response_type TEXT NOT NULL,
+  output_format TEXT NOT NULL,
   system_prompt TEXT NOT NULL,
   user_prompt TEXT NOT NULL,
   temperature NUMERIC(3,2) NOT NULL DEFAULT 0.0,
@@ -152,7 +152,7 @@ CREATE TABLE ce_prompt_template (
   enabled BOOLEAN NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
-CREATE INDEX idx_ce_prompt_template_lookup ON ce_prompt_template (response_type, intent_code, state_code, enabled);
+CREATE INDEX idx_ce_prompt_template_lookup ON ce_prompt_template (output_format, intent_code, state_code, enabled);
 
 CREATE TABLE ce_response (
   response_id INTEGER PRIMARY KEY AUTOINCREMENT,

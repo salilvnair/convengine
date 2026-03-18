@@ -272,7 +272,7 @@ VALUES
 );
 
 INSERT INTO ce_prompt_template
-(intent_code, state_code, response_type, system_prompt, user_prompt, temperature, interaction_mode, interaction_contract, enabled)
+(intent_code, state_code, output_format, system_prompt, user_prompt, temperature, interaction_mode, interaction_contract, enabled)
 VALUES
 (
   'SEMANTIC_QUERY',
@@ -590,5 +590,5 @@ UPDATE ce_prompt_template
 SET system_prompt = system_prompt || E'\n- Ambiguity option labels/mapped filters may contain {{value}} placeholder.\n- Infer placeholderValue from user text and return it in JSON.\n- If needsClarification=true, replace {{value}} in clarificationQuestion/options using placeholderValue.',
     user_prompt = user_prompt || E'\n\nAlso return:\n"placeholderValue": "<inferred token or null>"\n\nWhen ambiguity_options contain {{value}}, use placeholderValue to render user-facing options (do not leave {{value}} unresolved).'
 WHERE intent_code = 'SEMANTIC_QUERY'
-  AND response_type = 'SEMANTIC_INTERPRET'
+  AND output_format = 'SEMANTIC_INTERPRET'
   AND enabled = true;

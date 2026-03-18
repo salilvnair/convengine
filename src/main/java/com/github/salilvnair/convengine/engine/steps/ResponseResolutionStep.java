@@ -7,7 +7,6 @@ import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.engine.history.core.ConversationHistoryProvider;
-import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
@@ -93,13 +92,13 @@ public class ResponseResolutionStep implements EngineStep {
         if (ResponseType.DERIVED.name().equalsIgnoreCase(resp.getResponseType())) {
             template = staticCacheService.getAllPromptTemplates().stream()
                     .filter(CePromptTemplate::isEnabled)
-                    .filter(t -> resp.getResponseType().equalsIgnoreCase(t.getResponseType()))
+                    .filter(t -> resp.getOutputFormat().equalsIgnoreCase(t.getOutputFormat()))
                     .filter(t -> matchesOrNull(t.getIntentCode(), session.getIntent()))
                     .filter(t -> matchesOrNull(t.getStateCode(), session.getState())
                             || matches(t.getStateCode(), ConvEngineValue.ANY))
                     .max(Comparator.comparingInt(t -> score(t, session)))
                     .orElseThrow(() -> new IllegalStateException(
-                            "No ce_prompt_template found for response_type=" +
+                            "No ce_prompt_template found for output_format=" +
                                     resp.getOutputFormat() + ", intent=" + session.getIntent() + ", state="
                                     + session.getState()));
         }

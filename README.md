@@ -229,11 +229,11 @@ Main runtime stages:
 ### `ce_response`
 
 - `response_type`: `EXACT`, `DERIVED`
-- `output_format`: `TEXT`, `JSON`
+- `output_format`: `TEXT`, `JSON`, `SCHEMA_JSON`, `SEMANTIC_INTERPRET`
 
 ### `ce_prompt_template`
 
-- `response_type`: `TEXT`, `JSON`, `SCHEMA_JSON`
+- `response_type`: `TEXT`, `JSON`, `SCHEMA_JSON`, `SEMANTIC_INTERPRET`
 - `interaction_mode`: `NORMAL`, `IDLE`, `COLLECT`, `CONFIRM`, `PROCESSING`, `FINAL`, `ERROR`, `DISAMBIGUATE`, `FOLLOW_UP`, `PENDING_ACTION`, `REVIEW`
 - `interaction_contract`: JSON text for extensible turn behavior. Recommended shape:
   `{"allows":["affirm","edit","retry","reset"],"expects":["structured_input"]}`

@@ -92,7 +92,7 @@ VALUES
 -- -----------------------------------------------------------------------------
 -- Prompt templates
 -- -----------------------------------------------------------------------------
-INSERT INTO ce_prompt_template (intent_code, state_code, response_type, system_prompt, user_prompt, temperature,
+INSERT INTO ce_prompt_template (intent_code, state_code, output_format, system_prompt, user_prompt, temperature,
                                 interaction_mode, interaction_contract, enabled)
 VALUES
 (

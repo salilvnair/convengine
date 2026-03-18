@@ -146,7 +146,7 @@ public class ExactTextResponseTypeResolver implements ResponseTypeResolver {
         }
         if (template != null) {
             metadata.put("promptTemplateId", template.getTemplateId());
-            metadata.put("promptResponseType", template.getResponseType());
+            metadata.put("promptResponseType", template.getOutputFormat());
             metadata.put("promptTemplateDesc", template.getTemplateDesc());
         }
         return metadata;

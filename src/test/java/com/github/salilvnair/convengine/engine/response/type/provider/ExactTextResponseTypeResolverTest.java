@@ -55,7 +55,7 @@ class ExactTextResponseTypeResolverTest {
 
         resolver.resolve(
                 session,
-                PromptTemplate.builder().templateId(999L).responseType("EXACT").build(),
+                PromptTemplate.builder().templateId(999L).outputFormat("EXACT").build(),
                 response
         );
 
@@ -100,7 +100,7 @@ class ExactTextResponseTypeResolverTest {
 
         resolver.resolve(
                 session,
-                PromptTemplate.builder().templateId(1000L).responseType("EXACT").build(),
+                PromptTemplate.builder().templateId(1000L).outputFormat("EXACT").build(),
                 response
         );
 
@@ -142,7 +142,7 @@ class ExactTextResponseTypeResolverTest {
 
         resolver.resolve(
                 session,
-                PromptTemplate.builder().templateId(1001L).responseType("EXACT").build(),
+                PromptTemplate.builder().templateId(1001L).outputFormat("EXACT").build(),
                 response
         );
 
