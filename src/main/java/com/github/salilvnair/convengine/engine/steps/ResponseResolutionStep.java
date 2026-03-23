@@ -110,11 +110,12 @@ public class ResponseResolutionStep implements EngineStep {
                 session, session.getInputParams());
         session.setPayload(transformedOutput);
 
-        Object payloadValue = switch (session.getPayload()) {
-            case TextPayload(String text) -> text;
-            case JsonPayload(String json) -> json;
-            case null -> null;
-        };
+        Object payloadValue = null;
+        if (session.getPayload() instanceof TextPayload textPayload) {
+            payloadValue = textPayload.text();
+        } else if (session.getPayload() instanceof JsonPayload jsonPayload) {
+            payloadValue = jsonPayload.json();
+        }
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
         outputPayload.put(ConvEnginePayloadKey.OUTPUT, payloadValue);

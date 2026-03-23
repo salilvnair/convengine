@@ -562,10 +562,12 @@ public class EngineSession {
             facts.putAll(sessionDict());
             facts.put("inputParams", safeInputParams());
             if (getPayload() != null) {
-                Object payload = switch (getPayload()) {
-                    case JsonPayload(String json) -> JsonUtil.parseOrNull(json);
-                    case TextPayload(String text) -> Map.of("text", text);
-                };
+                Object payload = null;
+                if (getPayload() instanceof JsonPayload jsonPayload) {
+                    payload = JsonUtil.parseOrNull(jsonPayload.json());
+                } else if (getPayload() instanceof TextPayload textPayload) {
+                    payload = Map.of("text", textPayload.text());
+                }
                 if (payload != null) {
                     facts.put("payload", payload);
                 }

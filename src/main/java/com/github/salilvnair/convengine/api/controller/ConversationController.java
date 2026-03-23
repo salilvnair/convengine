@@ -72,12 +72,12 @@ public class ConversationController {
                         res.setState(result.state());
                         res.setContext(result.contextJson());
 
-                        if (result.payload() instanceof TextPayload(String text)) {
+                        if (result.payload() instanceof TextPayload textPayload) {
                                 res.setPayload(
-                                                new ConversationResponse.ApiPayload("TEXT", text));
-                        } else if (result.payload() instanceof JsonPayload(String json)) {
+                                                new ConversationResponse.ApiPayload("TEXT", textPayload.text()));
+                        } else if (result.payload() instanceof JsonPayload jsonPayload) {
                                 res.setPayload(
-                                                new ConversationResponse.ApiPayload("JSON", json));
+                                                new ConversationResponse.ApiPayload("JSON", jsonPayload.json()));
                         }
 
                         return res;
