@@ -104,7 +104,7 @@ public class DefaultConvEngineSchemaResolver implements ConvEngineSchemaResolver
                 return "{}";
             }
             ObjectNode cleaned = MAPPER.createObjectNode();
-            node.fields().forEachRemaining(entry -> {
+            node.properties().forEach(entry -> {
                 JsonNode value = entry.getValue();
                 if (value == null || value.isNull()) {
                     return;

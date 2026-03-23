@@ -800,7 +800,7 @@ public class McpToolStep implements EngineStep {
         if (node.isObject()) {
             ObjectNode out = mapper.createObjectNode();
             Map<String, JsonNode> sorted = new java.util.TreeMap<>();
-            node.fields().forEachRemaining(entry -> sorted.put(entry.getKey(), canonicalizeJson(entry.getValue())));
+            node.properties().forEach(entry -> sorted.put(entry.getKey(), canonicalizeJson(entry.getValue())));
             sorted.forEach(out::set);
             return out;
         }

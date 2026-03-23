@@ -1061,7 +1061,7 @@ public class SemanticInterpretService {
             return List.of();
         }
         List<SemanticFilter> out = new ArrayList<>();
-        node.fields().forEachRemaining(entry -> {
+        node.properties().forEach(entry -> {
             if (entry.getValue() == null || entry.getValue().isNull()) {
                 return;
             }

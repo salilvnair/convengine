@@ -462,7 +462,7 @@ public class McpPlanner {
         Map<String, Object> out = new LinkedHashMap<>();
         int limit = 20;
         int count = 0;
-        java.util.Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+        java.util.Iterator<Map.Entry<String, JsonNode>> fields = node.properties().iterator();
         while (fields.hasNext() && count < limit) {
             Map.Entry<String, JsonNode> entry = fields.next();
             out.put(entry.getKey(), compactNode(entry.getValue()));

@@ -313,7 +313,7 @@ public class SchemaExtractionStep implements EngineStep {
             if (!extracted.isObject()) {
                 return false;
             }
-            java.util.Iterator<Map.Entry<String, JsonNode>> fields = extracted.fields();
+            java.util.Iterator<Map.Entry<String, JsonNode>> fields = extracted.properties().iterator();
             while (fields.hasNext()) {
                 Map.Entry<String, JsonNode> field = fields.next();
                 JsonNode value = field.getValue();

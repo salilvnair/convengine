@@ -17,6 +17,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -60,7 +61,7 @@ class SemanticFailureFeedbackServiceTest {
         assertEquals("show failed disconnects", saved.getQuestion());
         assertEquals("WRONG_SELECT", saved.getRootCause());
         assertEquals("SEMANTIC_QUERY_V2", saved.getStage());
-        verify(auditService).audit(any(String.class), any(UUID.class), any(Map.class));
+        verify(auditService).audit(any(String.class), any(UUID.class), anyMap());
     }
 
     @Test
@@ -76,7 +77,7 @@ class SemanticFailureFeedbackServiceTest {
                 Map.of()
         ));
         verify(repository, never()).save(any(CeSemanticQueryFailure.class));
-        verify(auditService, never()).audit(any(String.class), any(UUID.class), any(Map.class));
+        verify(auditService, never()).audit(any(String.class), any(UUID.class), anyMap());
     }
 
     @Test
@@ -93,6 +94,6 @@ class SemanticFailureFeedbackServiceTest {
                 null
         ));
         verify(repository).save(any(CeSemanticQueryFailure.class));
-        verify(auditService, never()).audit(any(String.class), any(UUID.class), any(Map.class));
+        verify(auditService, never()).audit(any(String.class), any(UUID.class), anyMap());
     }
 }

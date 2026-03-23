@@ -1,5 +1,6 @@
 package com.github.salilvnair.convengine.engine.steps;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -191,7 +192,8 @@ public class ToolOrchestrationStep implements EngineStep {
                     String code = node.path("tool_code").asText(null);
                     String group = node.path("tool_group").asText(null);
                     Map<String, Object> args = node.has("args") && node.get("args").isObject()
-                            ? mapper.convertValue(node.get("args"), Map.class)
+                            ? mapper.convertValue(node.get("args"), new TypeReference<Map<String, Object>>() {
+                            })
                             : Map.of();
                     return new ToolRequest(code, group == null ? null : registry.normalizeToolGroup(group), args);
                 }

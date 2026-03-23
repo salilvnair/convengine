@@ -378,7 +378,7 @@ public class AgentIntentResolver implements IntentResolver {
         }
 
         if (scoreNode.isObject()) {
-            scoreNode.fields().forEachRemaining(entry -> {
+            scoreNode.properties().forEach(entry -> {
                 String code = str(entry.getKey());
                 double confidence = number(entry.getValue());
                 if (code != null && allowedCodes.contains(code.toUpperCase())) {

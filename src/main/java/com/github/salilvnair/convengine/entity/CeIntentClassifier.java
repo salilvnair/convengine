@@ -21,6 +21,7 @@ public class CeIntentClassifier {
     private String intentCode;
 
     @Column(name = "state_code", nullable = false)
+    @Builder.Default
     private String stateCode = "UNKNOWN";
 
     @Column(name = "rule_type", nullable = false)
