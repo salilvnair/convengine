@@ -50,7 +50,7 @@ public class CoreStepDagOrderer {
             throw new IllegalStateException("Exactly one start step required for " + pipelineName + ", found: "
                     + starts.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
         }
-        Class<?> start = starts.getFirst();
+        Class<?> start = starts.get(0);
 
         // --------------------------------------------
         // Terminal-step enforcement (EXACTLY ONE)
@@ -60,7 +60,7 @@ public class CoreStepDagOrderer {
             throw new IllegalStateException("Exactly one terminal step required for " + pipelineName + ", found: "
                     + terminals.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
         }
-        Class<?> terminal = terminals.getFirst();
+        Class<?> terminal = terminals.get(0);
 
         // --------------------------------------------
         // DAG structures

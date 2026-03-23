@@ -177,7 +177,7 @@ public class PendingActionStep implements EngineStep {
         if (actionKey == null || actionKey.isBlank()) {
             // Auto-resolve only when registry returns a single clear candidate.
             if (candidates.size() > 1) {
-                CePendingAction first = candidates.getFirst();
+                CePendingAction first = candidates.get(0);
                 CePendingAction second = candidates.get(1);
                 Integer p1 = first.getPriority() == null ? Integer.MAX_VALUE : first.getPriority();
                 Integer p2 = second.getPriority() == null ? Integer.MAX_VALUE : second.getPriority();
@@ -186,7 +186,7 @@ public class PendingActionStep implements EngineStep {
                 }
             }
         }
-        CePendingAction best = candidates.getFirst();
+        CePendingAction best = candidates.get(0);
         if (best.getBeanName() == null || best.getBeanName().isBlank()
                 || best.getMethodNames() == null || best.getMethodNames().isBlank()) {
             return null;

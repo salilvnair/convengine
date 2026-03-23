@@ -460,7 +460,7 @@ public class SemanticInterpretService {
                     options
             ));
             if (allowedEntities.size() == 1) {
-                safeEntity = allowedEntities.getFirst();
+                safeEntity = allowedEntities.get(0);
             }
         }
 
@@ -690,7 +690,7 @@ public class SemanticInterpretService {
         if (ambiguities.isEmpty()) {
             return null;
         }
-        List<Map<String, Object>> options = safeMapList(ambiguities.getFirst().get("options"));
+        List<Map<String, Object>> options = safeMapList(ambiguities.get(0).get("options"));
         if (options.isEmpty() || selectedIndex < 1 || selectedIndex > options.size()) {
             return null;
         }
@@ -842,7 +842,7 @@ public class SemanticInterpretService {
             if (rows.isEmpty()) {
                 return Map.of();
             }
-            return parseJsonObject(rows.getFirst().get("mapped_filter_json"));
+            return parseJsonObject(rows.get(0).get("mapped_filter_json"));
         } catch (Exception ignored) {
             return Map.of();
         }
@@ -1923,7 +1923,7 @@ public class SemanticInterpretService {
             if (rows.isEmpty()) {
                 return Map.of();
             }
-            Map<String, Object> row = rows.getFirst();
+            Map<String, Object> row = rows.get(0);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("queryClassKey", asText(row.get("query_class_key")));
             out.put("baseTableName", asText(row.get("base_table_name")));
@@ -2107,7 +2107,7 @@ public class SemanticInterpretService {
             }
         }
         if (relevantEntities.isEmpty() && allAllowedEntityKeys != null && !allAllowedEntityKeys.isEmpty()) {
-            String first = normalizeEntityKey(allAllowedEntityKeys.getFirst());
+            String first = normalizeEntityKey(allAllowedEntityKeys.get(0));
             if (first != null && !first.isBlank()) {
                 relevantEntities.add(first);
             }

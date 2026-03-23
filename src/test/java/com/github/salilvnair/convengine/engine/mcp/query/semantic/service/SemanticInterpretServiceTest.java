@@ -166,7 +166,7 @@ class SemanticInterpretServiceTest {
         SemanticInterpretResponse response = service.interpret(request, session(request.question()));
 
         assertNotNull(response);
-        assertEquals("FAILED", String.valueOf(response.canonicalIntent().filters().getFirst().value()));
+        assertEquals("FAILED", String.valueOf(response.canonicalIntent().filters().get(0).value()));
         assertTrue(response.meta().confidence() >= 0.80d || response.meta().needsClarification());
         assertTrue(response.meta().confidence() >= 0.0d);
     }

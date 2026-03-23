@@ -207,8 +207,8 @@ public class AgentIntentResolver implements IntentResolver {
                 Map.of("scores", scores, "followups", followups));
 
         if ((intent == null || intent.isBlank()) && !scores.isEmpty()) {
-            intent = str(scores.getFirst().get("intent"));
-            confidence = Math.max(confidence, number(scores.getFirst().get("confidence")));
+            intent = str(scores.get(0).get("intent"));
+            confidence = Math.max(confidence, number(scores.get(0).get("confidence")));
         }
 
         List<Map<String, Object>> collisionCandidates = collisionCandidates(scores);
@@ -218,11 +218,11 @@ public class AgentIntentResolver implements IntentResolver {
             needsClarification = true;
             state = INTENT_COLLISION_STATE;
             if (intent == null || intent.isBlank()) {
-                intent = str(collisionCandidates.getFirst().get("code"));
+                intent = str(collisionCandidates.get(0).get("code"));
             }
             if (clarificationQuestion == null || clarificationQuestion.isBlank()) {
                 clarificationQuestion = !followups.isEmpty()
-                        ? followups.getFirst()
+                        ? followups.get(0)
                         : buildCollisionQuestion(collisionCandidates);
             }
             Map<String, Object> collisionPayload = new LinkedHashMap<>();
@@ -254,7 +254,7 @@ public class AgentIntentResolver implements IntentResolver {
         if ((needsClarification || INTENT_COLLISION_STATE.equalsIgnoreCase(state))
                 && (clarificationQuestion == null || clarificationQuestion.isBlank())
                 && !followups.isEmpty()) {
-            clarificationQuestion = followups.getFirst();
+            clarificationQuestion = followups.get(0);
             needsClarification = true;
         }
 

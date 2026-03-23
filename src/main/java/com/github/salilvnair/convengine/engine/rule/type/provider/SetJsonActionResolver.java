@@ -36,7 +36,7 @@ public class SetJsonActionResolver implements RuleActionResolver {
         JsonNode jsonNode = session.eject();
         List<?> search = jsonPathUtil.search(jsonNode, path, new TypeRef<>() {});
         if (!search.isEmpty()) {
-            Object value = search.getFirst();
+            Object value = search.get(0);
             session.putInputParam(key, value);
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put(ConvEnginePayloadKey.RULE_ID, rule.getRuleId());

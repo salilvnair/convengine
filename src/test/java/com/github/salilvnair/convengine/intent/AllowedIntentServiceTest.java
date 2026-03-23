@@ -39,7 +39,7 @@ class AllowedIntentServiceTest {
         List<AllowedIntent> intents = service.allowedIntents();
 
         assertEquals(1, intents.size());
-        assertEquals("LOAN_APPLICATION", intents.getFirst().code());
+        assertEquals("LOAN_APPLICATION", intents.get(0).code());
     }
 
     @Test

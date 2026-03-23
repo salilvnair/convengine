@@ -102,8 +102,8 @@ public class DisambiguationStep implements EngineStep {
             return new StepResult.Continue();
         }
 
-        int bestPriority = candidates.getFirst().getPriority() == null ? Integer.MAX_VALUE
-                : candidates.getFirst().getPriority();
+        int bestPriority = candidates.get(0).getPriority() == null ? Integer.MAX_VALUE
+                : candidates.get(0).getPriority();
         List<CePendingAction> top = candidates.stream()
                 .filter(c -> (c.getPriority() == null ? Integer.MAX_VALUE : c.getPriority()) == bestPriority)
                 .toList();

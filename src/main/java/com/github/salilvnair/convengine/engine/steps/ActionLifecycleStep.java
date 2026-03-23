@@ -190,8 +190,8 @@ public class ActionLifecycleStep implements EngineStep {
         }
         if (actionKey == null || actionKey.isBlank()) {
             if (candidates.size() > 1) {
-                Integer p1 = candidates.getFirst().getPriority() == null ? Integer.MAX_VALUE
-                        : candidates.getFirst().getPriority();
+                Integer p1 = candidates.get(0).getPriority() == null ? Integer.MAX_VALUE
+                        : candidates.get(0).getPriority();
                 Integer p2 = candidates.get(1).getPriority() == null ? Integer.MAX_VALUE
                         : candidates.get(1).getPriority();
                 if (p1.equals(p2)) {
@@ -199,7 +199,7 @@ public class ActionLifecycleStep implements EngineStep {
                 }
             }
         }
-        CePendingAction best = candidates.getFirst();
+        CePendingAction best = candidates.get(0);
         if (best.getBeanName() == null || best.getBeanName().isBlank()
                 || best.getMethodNames() == null || best.getMethodNames().isBlank()) {
             return null;

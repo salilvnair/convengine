@@ -143,7 +143,7 @@ public class ResponseResolutionStep implements EngineStep {
         }
 
         candidates.sort((a, b) -> Integer.compare(responseScore(b, session), responseScore(a, session)));
-        return Optional.ofNullable(candidates.getFirst());
+        return Optional.ofNullable(candidates.get(0));
     }
 
     private boolean matches(String left, String right) {
