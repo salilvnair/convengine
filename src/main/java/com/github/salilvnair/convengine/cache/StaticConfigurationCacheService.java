@@ -1,5 +1,6 @@
 package com.github.salilvnair.convengine.cache;
 
+import com.github.salilvnair.convengine.config.ConvEngineEntityConfig;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.*;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
@@ -41,6 +42,7 @@ public class StaticConfigurationCacheService {
     private final VerboseRepository verboseRepo;
     private final CeConfigRepository ceConfigRepo;
     private final UserQueryKnowledgeRepository userQueryKnowledgeRepository;
+    private final ConvEngineEntityConfig entityConfig;
     private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
     @Autowired
     private ObjectProvider<StaticConfigurationCacheService> selfProvider;
@@ -203,12 +205,31 @@ public class StaticConfigurationCacheService {
         if (jdbc == null || tableName == null || tableName.isBlank()) {
             return List.of();
         }
+        String resolvedTableName = resolveConfiguredTableName(tableName);
         try {
-            return jdbc.queryForList("SELECT * FROM " + tableName, Map.of());
+            return jdbc.queryForList("SELECT * FROM " + resolvedTableName, Map.of());
         } catch (Exception ex) {
-            log.debug("Static semantic cache load skipped for table={} cause={}", tableName, ex.getMessage());
+            log.debug("Static semantic cache load skipped for table={} resolved={} cause={}",
+                    tableName, resolvedTableName, ex.getMessage());
             return List.of();
         }
+    }
+
+    private String resolveConfiguredTableName(String logicalTableName) {
+        if (logicalTableName == null || logicalTableName.isBlank()) {
+            return logicalTableName;
+        }
+        String normalized = logicalTableName.trim();
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        if (!upper.startsWith("CE_")) {
+            return normalized;
+        }
+        String key = upper.substring(3);
+        if (entityConfig == null || entityConfig.getTables() == null || entityConfig.getTables().isEmpty()) {
+            return normalized;
+        }
+        String mapped = entityConfig.getTables().get(key);
+        return (mapped == null || mapped.isBlank()) ? normalized : mapped.trim();
     }
 
     public List<CeConfig> findConfigParams(String type, String configKey) {
