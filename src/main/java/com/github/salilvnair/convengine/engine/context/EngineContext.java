@@ -1,5 +1,6 @@
 package com.github.salilvnair.convengine.engine.context;
 
+import com.github.salilvnair.convengine.engine.session.EngineSession;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,4 +18,5 @@ public class EngineContext {
     private String userText;
     private Map<String, Object> inputParams;
     private Map<String, Object> userInputParams;
+    private EngineSession session;
 }

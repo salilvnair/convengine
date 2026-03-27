@@ -57,7 +57,7 @@ class SemanticModelDynamicOverlayServiceTest {
                         Map.of("from_field", "requestId", "to_field", "disconnectOrderId", "value_starts_with", "DON|DOR", "enabled", true),
                         Map.of("from_field", "disconnectOrderId", "to_field", "requestId", "value_starts_with", "ZPR", "enabled", true)
                 ),
-                "ce_semantic_entity_override", List.of(
+                "ce_semantic_entity", List.of(
                         Map.of(
                                 "entity_name", "REQUEST",
                                 "description", "DB override request",
@@ -68,7 +68,7 @@ class SemanticModelDynamicOverlayServiceTest {
                                 "enabled", true
                         )
                 ),
-                "ce_semantic_relationship_override", List.of(
+                "ce_semantic_relationship", List.of(
                         Map.of(
                                 "relationship_name", "request_to_disconnect",
                                 "description", "db rel",
@@ -147,11 +147,11 @@ class SemanticModelDynamicOverlayServiceTest {
             if (lower.contains("ce_semantic_value_pattern")) {
                 return rowsByTable.getOrDefault("ce_semantic_value_pattern", List.of());
             }
-            if (lower.contains("ce_semantic_entity_override")) {
-                return rowsByTable.getOrDefault("ce_semantic_entity_override", List.of());
+            if (lower.contains("ce_semantic_entity")) {
+                return rowsByTable.getOrDefault("ce_semantic_entity", List.of());
             }
-            if (lower.contains("ce_semantic_relationship_override")) {
-                return rowsByTable.getOrDefault("ce_semantic_relationship_override", List.of());
+            if (lower.contains("ce_semantic_relationship")) {
+                return rowsByTable.getOrDefault("ce_semantic_relationship", List.of());
             }
             return List.of();
         }

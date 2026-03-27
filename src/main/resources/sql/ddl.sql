@@ -1,7 +1,7 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool CASCADE;
 DROP TABLE IF EXISTS ce_mcp_planner CASCADE;
-DROP TABLE IF EXISTS ce_semantic_entity_override CASCADE;
-DROP TABLE IF EXISTS ce_semantic_relationship_override CASCADE;
+DROP TABLE IF EXISTS ce_semantic_entity CASCADE;
+DROP TABLE IF EXISTS ce_semantic_relationship CASCADE;
 DROP TABLE IF EXISTS ce_semantic_join_hint CASCADE;
 DROP TABLE IF EXISTS ce_semantic_value_pattern CASCADE;
 DROP TABLE IF EXISTS ce_user_query_knowledge CASCADE;
@@ -376,7 +376,7 @@ CREATE TABLE IF NOT EXISTS ce_semantic_join_hint (
 CREATE INDEX idx_ce_semantic_join_hint_lookup
     ON public.ce_semantic_join_hint USING btree (enabled, base_table, priority, join_table);
 
-CREATE TABLE IF NOT EXISTS ce_semantic_entity_override (
+CREATE TABLE IF NOT EXISTS ce_semantic_entity (
     id BIGSERIAL PRIMARY KEY,
     entity_name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -388,10 +388,10 @@ CREATE TABLE IF NOT EXISTS ce_semantic_entity_override (
     enabled BOOLEAN DEFAULT true NOT NULL,
     created_at timestamptz DEFAULT now() NOT NULL
 );
-CREATE INDEX idx_ce_semantic_entity_override_lookup
-    ON public.ce_semantic_entity_override USING btree (enabled, entity_name, priority);
+CREATE INDEX idx_ce_semantic_entity_lookup
+    ON public.ce_semantic_entity USING btree (enabled, entity_name, priority);
 
-CREATE TABLE IF NOT EXISTS ce_semantic_relationship_override (
+CREATE TABLE IF NOT EXISTS ce_semantic_relationship (
     id BIGSERIAL PRIMARY KEY,
     relationship_name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -404,8 +404,8 @@ CREATE TABLE IF NOT EXISTS ce_semantic_relationship_override (
     enabled BOOLEAN DEFAULT true NOT NULL,
     created_at timestamptz DEFAULT now() NOT NULL
 );
-CREATE INDEX idx_ce_semantic_relationship_override_lookup
-    ON public.ce_semantic_relationship_override USING btree (enabled, relationship_name, priority);
+CREATE INDEX idx_ce_semantic_relationship_lookup
+    ON public.ce_semantic_relationship USING btree (enabled, relationship_name, priority);
 
 CREATE TABLE IF NOT EXISTS ce_semantic_value_pattern (
     id BIGSERIAL PRIMARY KEY,

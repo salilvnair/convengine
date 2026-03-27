@@ -1,8 +1,8 @@
--- Semantic V2 dynamic overlay tables.
--- These tables hold mutable semantic assets that should not live in semantic-layer.yaml.
+-- Semantic V2 dynamic semantic tables.
+-- These tables are the source of truth for semantic metadata.
 CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE TABLE IF NOT EXISTS ce_semantic_entity_override (
+CREATE TABLE IF NOT EXISTS ce_semantic_entity (
     id BIGSERIAL PRIMARY KEY,
     entity_name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS ce_semantic_entity_override (
     enabled BOOLEAN DEFAULT true NOT NULL,
     created_at timestamptz DEFAULT now() NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_ce_semantic_entity_override_lookup
-    ON public.ce_semantic_entity_override USING btree (enabled, entity_name, priority);
+CREATE INDEX IF NOT EXISTS idx_ce_semantic_entity_lookup
+    ON public.ce_semantic_entity USING btree (enabled, entity_name, priority);
 
-CREATE TABLE IF NOT EXISTS ce_semantic_relationship_override (
+CREATE TABLE IF NOT EXISTS ce_semantic_relationship (
     id BIGSERIAL PRIMARY KEY,
     relationship_name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS ce_semantic_relationship_override (
     enabled BOOLEAN DEFAULT true NOT NULL,
     created_at timestamptz DEFAULT now() NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_ce_semantic_relationship_override_lookup
-    ON public.ce_semantic_relationship_override USING btree (enabled, relationship_name, priority);
+CREATE INDEX IF NOT EXISTS idx_ce_semantic_relationship_lookup
+    ON public.ce_semantic_relationship USING btree (enabled, relationship_name, priority);
 
 CREATE TABLE IF NOT EXISTS ce_semantic_join_hint (
     id BIGSERIAL PRIMARY KEY,

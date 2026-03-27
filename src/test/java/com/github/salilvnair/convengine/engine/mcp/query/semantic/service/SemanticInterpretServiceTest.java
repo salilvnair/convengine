@@ -9,7 +9,6 @@ import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.Semantic
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticField;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelDynamicOverlayService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelLoader;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelValidator;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.SemanticInterpretRequest;
@@ -21,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 import java.util.List;
@@ -52,9 +50,7 @@ class SemanticInterpretServiceTest {
         llmClient = new StubLlmClient();
         DefaultListableBeanFactory factory = new DefaultListableBeanFactory();
         ObjectProvider<NamedParameterJdbcTemplate> noJdbc = factory.getBeanProvider(NamedParameterJdbcTemplate.class);
-        SemanticModelLoader loader = new SemanticModelLoader(mcpConfig, new DefaultResourceLoader());
         SemanticModelRegistry registry = new SemanticModelRegistry(
-                loader,
                 new SemanticModelDynamicOverlayService(noJdbc),
                 new SemanticModelValidator()
         );

@@ -432,6 +432,66 @@ VALUES
   ('transformerConnectionId', 'feederId', 'TX-CN-', 110, true)
 ON CONFLICT DO NOTHING;
 
+INSERT INTO ce_semantic_entity (entity_name, description, primary_table, related_tables, synonyms, fields_json, priority, enabled)
+VALUES
+  ('DisconnectRequest', 'Enterprise electricity disconnect request lifecycle.', 'zp_disco_request',
+   'zp_disco_trans_data,zp_inventory_data,zp_action_status',
+   'disconnect request,electricity disconnect,service termination',
+   '{
+      "requestId":{"column":"zp_disco_request.request_id","type":"string","key":true,"searchable":true,"filterable":true},
+      "customerName":{"column":"zp_disco_request.customer_name","type":"string","searchable":true,"filterable":true},
+      "customerId":{"column":"zp_disco_request.customer_id","type":"string","searchable":true,"filterable":true},
+      "feederId":{"column":"zp_disco_request.feeder_id","type":"string","searchable":true,"filterable":true},
+      "transformerConnectionId":{"column":"zp_disco_request.transformer_connection_id","type":"string","searchable":true,"filterable":true},
+      "status":{"column":"zp_disco_request.status","type":"number","filterable":true,"allowed_values":[0,120,200,404,500,700,710,800,810,835,840,841,850,855]},
+      "signedDisconnectDocument":{"column":"zp_disco_request.signed_disconnect_document","type":"boolean"}
+    }'::jsonb,
+   100, true),
+  ('DiscoTransData', 'Status/action transaction trail for Team1 and Team2 flow.', 'zp_disco_trans_data',
+   'zp_disco_request,zp_action_status',
+   'workflow transaction,assignment trail,approval trail',
+   '{
+      "id":{"column":"zp_disco_trans_data.id","type":"number","key":true},
+      "requestId":{"column":"zp_disco_trans_data.request_id","type":"string","searchable":true,"filterable":true},
+      "actionId":{"column":"zp_disco_trans_data.action_id","type":"number","filterable":true},
+      "status":{"column":"zp_disco_trans_data.status","type":"number","filterable":true},
+      "disconnectOrderNo":{"column":"zp_disco_trans_data.disconnect_order_no","type":"string","searchable":true,"filterable":true},
+      "loggedUserId":{"column":"zp_disco_trans_data.logged_user_id","type":"string","searchable":true,"filterable":true},
+      "notesText":{"column":"zp_disco_trans_data.notes_text","type":"string","searchable":true},
+      "dueDate":{"column":"zp_disco_trans_data.due_date","type":"date"}
+    }'::jsonb,
+   110, true),
+  ('ActionStatus', 'Static action-to-status transition rule table.', 'zp_action_status',
+   'zp_disco_trans_data',
+   'action rules,workflow rules,status transition matrix',
+   '{
+      "actionId":{"column":"zp_action_status.action_id","type":"number","key":true},
+      "actionValue":{"column":"zp_action_status.action_value","type":"string"},
+      "status":{"column":"zp_action_status.status","type":"number"},
+      "nextStatus":{"column":"zp_action_status.nxt_status","type":"number"},
+      "team":{"column":"zp_action_status.team","type":"number"}
+    }'::jsonb,
+   120, true),
+  ('InventoryData', 'Inventory validation snapshot by request.', 'zp_inventory_data',
+   'zp_disco_request',
+   '',
+   '{
+      "inventoryId":{"column":"zp_inventory_data.inventory_id","type":"number","key":true},
+      "requestId":{"column":"zp_inventory_data.request_id","type":"string","searchable":true,"filterable":true},
+      "feederId":{"column":"zp_inventory_data.feeder_id","type":"string","searchable":true,"filterable":true},
+      "transformerConnectionId":{"column":"zp_inventory_data.transformer_connection_id","type":"string","searchable":true,"filterable":true},
+      "feederState":{"column":"zp_inventory_data.feeder_state","type":"string","filterable":true}
+    }'::jsonb,
+   130, true)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO ce_semantic_relationship (relationship_name, description, from_table, from_column, to_table, to_column, relation_type, priority, enabled)
+VALUES
+  ('request_to_inventory', '', 'zp_disco_request', 'request_id', 'zp_inventory_data', 'request_id', 'one_to_one', 100, true),
+  ('request_to_trans', '', 'zp_disco_request', 'request_id', 'zp_disco_trans_data', 'request_id', 'one_to_many', 110, true),
+  ('action_rule_to_trans', '', 'zp_action_status', 'action_id', 'zp_disco_trans_data', 'action_id', 'one_to_many', 120, true)
+ON CONFLICT DO NOTHING;
+
 INSERT INTO ce_semantic_concept (concept_key, concept_kind, description, tags, enabled, priority)
 VALUES
   ('DISCONNECT_REQUEST', 'ENTITY', 'Enterprise electricity disconnect request', 'disconnect,request,electricity,enterprise', true, 100),

@@ -1,7 +1,7 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool;
 DROP TABLE IF EXISTS ce_mcp_planner;
-DROP TABLE IF EXISTS ce_semantic_entity_override;
-DROP TABLE IF EXISTS ce_semantic_relationship_override;
+DROP TABLE IF EXISTS ce_semantic_entity;
+DROP TABLE IF EXISTS ce_semantic_relationship;
 DROP TABLE IF EXISTS ce_semantic_join_hint;
 DROP TABLE IF EXISTS ce_semantic_value_pattern;
 DROP TABLE IF EXISTS ce_user_query_knowledge;
@@ -324,7 +324,7 @@ CREATE TABLE IF NOT EXISTS ce_semantic_join_hint (
 );
 CREATE INDEX idx_ce_semantic_join_hint_lookup ON ce_semantic_join_hint (enabled, base_table, priority, join_table);
 
-CREATE TABLE IF NOT EXISTS ce_semantic_entity_override (
+CREATE TABLE IF NOT EXISTS ce_semantic_entity (
                                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
                                                      entity_name TEXT NOT NULL,
                                                      description TEXT,
@@ -336,9 +336,9 @@ CREATE TABLE IF NOT EXISTS ce_semantic_entity_override (
                                                      enabled BOOLEAN NOT NULL DEFAULT 1,
                                                      created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
-CREATE INDEX idx_ce_semantic_entity_override_lookup ON ce_semantic_entity_override (enabled, entity_name, priority);
+CREATE INDEX idx_ce_semantic_entity_lookup ON ce_semantic_entity (enabled, entity_name, priority);
 
-CREATE TABLE IF NOT EXISTS ce_semantic_relationship_override (
+CREATE TABLE IF NOT EXISTS ce_semantic_relationship (
                                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
                                                      relationship_name TEXT NOT NULL,
                                                      description TEXT,
@@ -351,7 +351,7 @@ CREATE TABLE IF NOT EXISTS ce_semantic_relationship_override (
                                                      enabled BOOLEAN NOT NULL DEFAULT 1,
                                                      created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
-CREATE INDEX idx_ce_semantic_relationship_override_lookup ON ce_semantic_relationship_override (enabled, relationship_name, priority);
+CREATE INDEX idx_ce_semantic_relationship_lookup ON ce_semantic_relationship (enabled, relationship_name, priority);
 
 CREATE TABLE IF NOT EXISTS ce_semantic_value_pattern (
                                                      id INTEGER PRIMARY KEY AUTOINCREMENT,

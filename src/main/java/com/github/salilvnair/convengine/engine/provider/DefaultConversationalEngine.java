@@ -26,6 +26,8 @@ public class DefaultConversationalEngine implements ConversationalEngine {
         EngineSession session = sessionFactory.open(engineContext);
         session.setConversationHistory(historyProvider.lastTurns(session.getConversationId(), convEngineFlowConfig.getConversationHistory().getMaxTurns()));
         EnginePipeline pipeline = pipelineFactory.create();
-        return pipeline.execute(session);
+        EngineResult engineResult = pipeline.execute(session);
+        engineContext.setSession(session);
+        return engineResult;
     }
 }

@@ -1,5 +1,6 @@
 package com.github.salilvnair.convengine.api.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.api.dto.ConversationRequest;
 import com.github.salilvnair.convengine.api.dto.ConversationResponse;
 import com.github.salilvnair.convengine.api.dto.ConversationFeedbackRequest;
@@ -14,8 +15,12 @@ import com.github.salilvnair.convengine.engine.core.ConversationalEngine;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.engine.helper.InputParamsHelper;
 import com.github.salilvnair.convengine.engine.model.EngineResult;
+import com.github.salilvnair.convengine.engine.response.service.ResponseTransformerService;
+import com.github.salilvnair.convengine.engine.response.type.ResponseTransformType;
+import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CeAudit;
 import com.github.salilvnair.convengine.model.JsonPayload;
+import com.github.salilvnair.convengine.model.OutputPayload;
 import com.github.salilvnair.convengine.model.TextPayload;
 import com.github.salilvnair.convengine.repo.AuditRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
@@ -37,6 +42,7 @@ public class ConversationController {
         private final AuditService audit;
         private final AuditTraceService auditTraceService;
         private final ConversationFeedbackService feedbackService;
+        private final ResponseTransformerService responseTransformerService;
 
         @PostMapping("/message")
         public ConversationResponse message(@RequestBody ConversationRequest request) {
@@ -64,7 +70,7 @@ public class ConversationController {
 
                 try {
                         EngineResult result = engine.process(engineContext);
-
+                        OutputPayload transformedPayload = transformIfApplicable(engineContext, result);
                         ConversationResponse res = new ConversationResponse();
                         res.setSuccess(true);
                         res.setConversationId(conversationId.toString());
@@ -72,10 +78,10 @@ public class ConversationController {
                         res.setState(result.state());
                         res.setContext(result.contextJson());
 
-                        if (result.payload() instanceof TextPayload textPayload) {
+                        if (transformedPayload instanceof TextPayload textPayload) {
                                 res.setPayload(
                                                 new ConversationResponse.ApiPayload("TEXT", textPayload.text()));
-                        } else if (result.payload() instanceof JsonPayload jsonPayload) {
+                        } else if (transformedPayload instanceof JsonPayload jsonPayload) {
                                 res.setPayload(
                                                 new ConversationResponse.ApiPayload("JSON", jsonPayload.json()));
                         }
@@ -160,5 +166,20 @@ public class ConversationController {
                         String errorCode,
                         String message,
                         boolean recoverable) {
+        }
+
+        private OutputPayload transformIfApplicable(EngineContext engineContext, EngineResult result) {
+                if (result == null || result.payload() == null) {
+                        return null;
+                }
+                if (result.intent() == null || result.state() == null) {
+                        return result.payload();
+                }
+                EngineSession session = engineContext.getSession();
+                return responseTransformerService.transformIfApplicable(
+                                result.payload(),
+                                session,
+                                session.getInputParams(),
+                                ResponseTransformType.FINAL);
         }
 }

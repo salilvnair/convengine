@@ -23,41 +23,173 @@ public class SemanticModelDynamicOverlayService {
 
     private static final String JOIN_HINT_TABLE = "ce_semantic_join_hint";
     private static final String VALUE_PATTERN_TABLE = "ce_semantic_value_pattern";
-    private static final String ENTITY_OVERRIDE_TABLE = "ce_semantic_entity_override";
-    private static final String RELATIONSHIP_OVERRIDE_TABLE = "ce_semantic_relationship_override";
+    private static final String ENTITY_TABLE = "ce_semantic_entity";
+    private static final String RELATIONSHIP_TABLE = "ce_semantic_relationship";
+    private static final String MODEL_TABLE = "ce_semantic_model";
+    private static final String SETTING_TABLE = "ce_semantic_setting";
+    private static final String SOURCE_TABLE_TABLE = "ce_semantic_source_table";
+    private static final String SOURCE_COLUMN_TABLE = "ce_semantic_source_column";
+    private static final String LEXICON_TABLE = "ce_semantic_lexicon";
+    private static final String RULE_ALLOWED_TABLE = "ce_semantic_rule_allowed_table";
+    private static final String RULE_DENY_TABLE = "ce_semantic_rule_deny_operation";
+    private static final String RULE_CONFIG_TABLE = "ce_semantic_rule_config";
 
     private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public SemanticModel apply(SemanticModel baseModel) {
-        if (baseModel == null) {
-            return null;
-        }
+        SemanticModel source = baseModel == null
+                ? new SemanticModel(1, "", "", null, null, null, null, null)
+                : baseModel;
         NamedParameterJdbcTemplate jdbcTemplate = jdbcTemplateProvider.getIfAvailable();
         if (jdbcTemplate == null) {
-            return baseModel;
+            return source;
         }
 
-        Map<String, SemanticEntity> mergedEntities = mergeEntities(baseModel.entities(), fetchEntityOverrideRows(jdbcTemplate));
-        List<SemanticRelationship> mergedRelationships = mergeRelationships(baseModel.relationships(), fetchRelationshipOverrideRows(jdbcTemplate));
-        Map<String, SemanticJoinHint> mergedJoinHints = mergeJoinHints(baseModel.joinHints(), fetchJoinHintRows(jdbcTemplate));
-        List<SemanticIntentFieldRemap> mergedValuePatterns = mergeValuePatterns(baseModel.valuePatterns(), fetchValuePatternRows(jdbcTemplate));
+        Map<String, Object> modelRow = fetchModelRow(jdbcTemplate);
+        int version = resolveInt(modelRow.get("model_version"), source.version() <= 0 ? 1 : source.version());
+        String database = firstNonBlank(normalizeText(modelRow.get("database_name")), source.database());
+        String description = firstNonBlank(normalizeText(modelRow.get("description")), source.description());
+        SemanticSettings settings = buildSettings(source.settings(), fetchSettingRows(jdbcTemplate));
+        Map<String, SemanticTable> tables = buildTables(source.tables(), fetchSourceTableRows(jdbcTemplate), fetchSourceColumnRows(jdbcTemplate));
+        Map<String, List<String>> synonyms = buildLexicon(source.synonyms(), fetchLexiconRows(jdbcTemplate));
+        SemanticRules rules = buildRules(source.rules(), fetchAllowedRuleTableRows(jdbcTemplate), fetchDenyRuleOperationRows(jdbcTemplate), fetchRuleConfigRows(jdbcTemplate));
+        Map<String, SemanticEntity> mergedEntities = mergeEntities(null, fetchEntityRows(jdbcTemplate));
+        List<SemanticRelationship> mergedRelationships = mergeRelationships(null, fetchRelationshipRows(jdbcTemplate));
+        Map<String, SemanticJoinHint> mergedJoinHints = mergeJoinHints(null, fetchJoinHintRows(jdbcTemplate));
+        List<SemanticIntentFieldRemap> mergedValuePatterns = mergeValuePatterns(null, fetchValuePatternRows(jdbcTemplate));
 
         return new SemanticModel(
-                baseModel.version(),
-                baseModel.database(),
-                baseModel.description(),
+                version,
+                database,
+                description,
                 mergedEntities,
                 mergedRelationships,
-                baseModel.tables(),
-                baseModel.synonyms(),
-                baseModel.metrics(),
-                baseModel.settings(),
+                tables,
+                synonyms,
+                source.metrics(),
+                settings,
                 mergedJoinHints,
-                baseModel.rules(),
+                rules,
                 mergedValuePatterns,
-                baseModel.intentRules()
+                source.intentRules()
         );
+    }
+
+    private Map<String, Object> fetchModelRow(NamedParameterJdbcTemplate jdbcTemplate) {
+        String sql = """
+                SELECT model_version, database_name, description, enabled
+                FROM ce_semantic_model
+                WHERE enabled = true
+                ORDER BY created_at DESC
+                LIMIT 1
+                """;
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, Map.of());
+            return rows.isEmpty() ? Map.of() : rows.get(0);
+        } catch (Exception ex) {
+            log.debug("Skipping semantic model metadata DB load from table={} cause={}", MODEL_TABLE, ex.getMessage());
+            return Map.of();
+        }
+    }
+
+    private List<Map<String, Object>> fetchSettingRows(NamedParameterJdbcTemplate jdbcTemplate) {
+        String sql = """
+                SELECT setting_key, setting_value, priority, enabled
+                FROM ce_semantic_setting
+                ORDER BY COALESCE(priority, 999999), setting_key
+                """;
+        try {
+            return jdbcTemplate.queryForList(sql, Map.of());
+        } catch (Exception ex) {
+            log.debug("Skipping semantic settings DB load from table={} cause={}", SETTING_TABLE, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<Map<String, Object>> fetchSourceTableRows(NamedParameterJdbcTemplate jdbcTemplate) {
+        String sql = """
+                SELECT table_name, description, priority, enabled
+                FROM ce_semantic_source_table
+                ORDER BY COALESCE(priority, 999999), table_name
+                """;
+        try {
+            return jdbcTemplate.queryForList(sql, Map.of());
+        } catch (Exception ex) {
+            log.debug("Skipping semantic source-table DB load from table={} cause={}", SOURCE_TABLE_TABLE, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<Map<String, Object>> fetchSourceColumnRows(NamedParameterJdbcTemplate jdbcTemplate) {
+        String sql = """
+                SELECT table_name, column_name, data_type, is_primary_key, description,
+                       foreign_key_table, foreign_key_column, priority, enabled
+                FROM ce_semantic_source_column
+                ORDER BY COALESCE(priority, 999999), table_name, column_name
+                """;
+        try {
+            return jdbcTemplate.queryForList(sql, Map.of());
+        } catch (Exception ex) {
+            log.debug("Skipping semantic source-column DB load from table={} cause={}", SOURCE_COLUMN_TABLE, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<Map<String, Object>> fetchLexiconRows(NamedParameterJdbcTemplate jdbcTemplate) {
+        String sql = """
+                SELECT term_key, synonym_text, priority, enabled
+                FROM ce_semantic_lexicon
+                ORDER BY COALESCE(priority, 999999), term_key, synonym_text
+                """;
+        try {
+            return jdbcTemplate.queryForList(sql, Map.of());
+        } catch (Exception ex) {
+            log.debug("Skipping semantic lexicon DB load from table={} cause={}", LEXICON_TABLE, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<Map<String, Object>> fetchAllowedRuleTableRows(NamedParameterJdbcTemplate jdbcTemplate) {
+        String sql = """
+                SELECT table_name, priority, enabled
+                FROM ce_semantic_rule_allowed_table
+                ORDER BY COALESCE(priority, 999999), table_name
+                """;
+        try {
+            return jdbcTemplate.queryForList(sql, Map.of());
+        } catch (Exception ex) {
+            log.debug("Skipping semantic rule allow-list DB load from table={} cause={}", RULE_ALLOWED_TABLE, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<Map<String, Object>> fetchDenyRuleOperationRows(NamedParameterJdbcTemplate jdbcTemplate) {
+        String sql = """
+                SELECT operation_name, priority, enabled
+                FROM ce_semantic_rule_deny_operation
+                ORDER BY COALESCE(priority, 999999), operation_name
+                """;
+        try {
+            return jdbcTemplate.queryForList(sql, Map.of());
+        } catch (Exception ex) {
+            log.debug("Skipping semantic rule deny-ops DB load from table={} cause={}", RULE_DENY_TABLE, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<Map<String, Object>> fetchRuleConfigRows(NamedParameterJdbcTemplate jdbcTemplate) {
+        String sql = """
+                SELECT max_result_limit, enabled
+                FROM ce_semantic_rule_config
+                ORDER BY created_at DESC
+                """;
+        try {
+            return jdbcTemplate.queryForList(sql, Map.of());
+        } catch (Exception ex) {
+            log.debug("Skipping semantic rule config DB load from table={} cause={}", RULE_CONFIG_TABLE, ex.getMessage());
+            return List.of();
+        }
     }
 
     private List<Map<String, Object>> fetchJoinHintRows(NamedParameterJdbcTemplate jdbcTemplate) {
@@ -88,30 +220,30 @@ public class SemanticModelDynamicOverlayService {
         }
     }
 
-    private List<Map<String, Object>> fetchEntityOverrideRows(NamedParameterJdbcTemplate jdbcTemplate) {
+    private List<Map<String, Object>> fetchEntityRows(NamedParameterJdbcTemplate jdbcTemplate) {
         String sql = """
                 SELECT entity_name, description, primary_table, related_tables, synonyms, fields_json, enabled, priority
-                FROM ce_semantic_entity_override
+                FROM ce_semantic_entity
                 ORDER BY COALESCE(priority, 999999), entity_name
                 """;
         try {
             return jdbcTemplate.queryForList(sql, Map.of());
         } catch (Exception ex) {
-            log.debug("Skipping semantic entity DB overlay from table={} cause={}", ENTITY_OVERRIDE_TABLE, ex.getMessage());
+            log.debug("Skipping semantic entity DB load from table={} cause={}", ENTITY_TABLE, ex.getMessage());
             return List.of();
         }
     }
 
-    private List<Map<String, Object>> fetchRelationshipOverrideRows(NamedParameterJdbcTemplate jdbcTemplate) {
+    private List<Map<String, Object>> fetchRelationshipRows(NamedParameterJdbcTemplate jdbcTemplate) {
         String sql = """
                 SELECT relationship_name, description, from_table, from_column, to_table, to_column, relation_type, enabled, priority
-                FROM ce_semantic_relationship_override
+                FROM ce_semantic_relationship
                 ORDER BY COALESCE(priority, 999999), relationship_name
                 """;
         try {
             return jdbcTemplate.queryForList(sql, Map.of());
         } catch (Exception ex) {
-            log.debug("Skipping semantic relationship DB overlay from table={} cause={}", RELATIONSHIP_OVERRIDE_TABLE, ex.getMessage());
+            log.debug("Skipping semantic relationship DB load from table={} cause={}", RELATIONSHIP_TABLE, ex.getMessage());
             return List.of();
         }
     }
@@ -262,6 +394,163 @@ public class SemanticModelDynamicOverlayService {
         return new ArrayList<>(mergedByPair.values());
     }
 
+    private SemanticSettings buildSettings(SemanticSettings base, List<Map<String, Object>> dbRows) {
+        Integer defaultLimit = base == null ? null : base.defaultLimit();
+        String timezone = base == null ? null : base.timezone();
+        String sqlDialect = base == null ? null : base.sqlDialect();
+        for (Map<String, Object> row : dbRows == null ? List.<Map<String, Object>>of() : dbRows) {
+            if (!isEnabled(row.get("enabled"))) {
+                continue;
+            }
+            String key = normalizeText(row.get("setting_key"));
+            String value = normalizeText(row.get("setting_value"));
+            if (key == null || value == null) {
+                continue;
+            }
+            switch (key.toLowerCase(Locale.ROOT)) {
+                case "default_limit" -> defaultLimit = resolveInt(value, defaultLimit == null ? 100 : defaultLimit);
+                case "timezone" -> timezone = value;
+                case "sql_dialect" -> sqlDialect = value;
+                default -> {
+                    // no-op for unknown setting keys
+                }
+            }
+        }
+        return new SemanticSettings(defaultLimit, timezone, sqlDialect);
+    }
+
+    private Map<String, SemanticTable> buildTables(Map<String, SemanticTable> baseTables,
+                                                   List<Map<String, Object>> tableRows,
+                                                   List<Map<String, Object>> columnRows) {
+        Map<String, SemanticTable> out = new LinkedHashMap<>();
+        if (baseTables != null) {
+            out.putAll(baseTables);
+        }
+
+        for (Map<String, Object> row : tableRows == null ? List.<Map<String, Object>>of() : tableRows) {
+            if (!isEnabled(row.get("enabled"))) {
+                continue;
+            }
+            String tableName = normalizeText(row.get("table_name"));
+            if (tableName == null) {
+                continue;
+            }
+            String description = normalizeText(row.get("description"));
+            SemanticTable base = out.get(tableName);
+            Map<String, SemanticColumn> columns = base == null ? new LinkedHashMap<>() : new LinkedHashMap<>(base.columns());
+            out.put(tableName, new SemanticTable(firstNonBlank(description, base == null ? null : base.description()), columns));
+        }
+
+        for (Map<String, Object> row : columnRows == null ? List.<Map<String, Object>>of() : columnRows) {
+            if (!isEnabled(row.get("enabled"))) {
+                continue;
+            }
+            String tableName = normalizeText(row.get("table_name"));
+            String columnName = normalizeText(row.get("column_name"));
+            if (tableName == null || columnName == null) {
+                continue;
+            }
+            SemanticTable table = out.get(tableName);
+            if (table == null) {
+                table = new SemanticTable(null, new LinkedHashMap<>());
+                out.put(tableName, table);
+            }
+            Map<String, SemanticColumn> columns = new LinkedHashMap<>(table.columns());
+            String type = normalizeText(row.get("data_type"));
+            String description = normalizeText(row.get("description"));
+            Boolean primaryKey = toBoolean(row.get("is_primary_key"));
+            String fkTable = normalizeText(row.get("foreign_key_table"));
+            String fkColumn = normalizeText(row.get("foreign_key_column"));
+            SemanticForeignKey fk = (fkTable == null || fkColumn == null) ? null : new SemanticForeignKey(fkTable, fkColumn);
+            columns.put(columnName, new SemanticColumn(type, description, primaryKey, fk));
+            out.put(tableName, new SemanticTable(table.description(), columns));
+        }
+
+        return out;
+    }
+
+    private Map<String, List<String>> buildLexicon(Map<String, List<String>> baseSynonyms,
+                                                   List<Map<String, Object>> rows) {
+        Map<String, LinkedHashSet<String>> grouped = new LinkedHashMap<>();
+        if (baseSynonyms != null) {
+            for (Map.Entry<String, List<String>> entry : baseSynonyms.entrySet()) {
+                if (entry.getKey() == null) {
+                    continue;
+                }
+                grouped.computeIfAbsent(entry.getKey(), ignored -> new LinkedHashSet<>())
+                        .addAll(entry.getValue() == null ? List.of() : entry.getValue());
+            }
+        }
+        for (Map<String, Object> row : rows == null ? List.<Map<String, Object>>of() : rows) {
+            if (!isEnabled(row.get("enabled"))) {
+                continue;
+            }
+            String term = normalizeText(row.get("term_key"));
+            String synonym = normalizeText(row.get("synonym_text"));
+            if (term == null || synonym == null) {
+                continue;
+            }
+            grouped.computeIfAbsent(term, ignored -> new LinkedHashSet<>()).add(synonym);
+        }
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        grouped.forEach((k, v) -> out.put(k, new ArrayList<>(v)));
+        return out;
+    }
+
+    private SemanticRules buildRules(SemanticRules base,
+                                     List<Map<String, Object>> allowedTableRows,
+                                     List<Map<String, Object>> denyRows,
+                                     List<Map<String, Object>> configRows) {
+        List<String> allowedTables = base == null ? new ArrayList<>() : new ArrayList<>(base.allowedTables());
+        List<String> denyOperations = base == null ? new ArrayList<>() : new ArrayList<>(base.denyOperations());
+        Integer maxResultLimit = base == null ? null : base.maxResultLimit();
+
+        if (allowedTableRows != null && !allowedTableRows.isEmpty()) {
+            LinkedHashSet<String> out = new LinkedHashSet<>();
+            for (Map<String, Object> row : allowedTableRows) {
+                if (!isEnabled(row.get("enabled"))) {
+                    continue;
+                }
+                String table = normalizeText(row.get("table_name"));
+                if (table != null) {
+                    out.add(table);
+                }
+            }
+            if (!out.isEmpty()) {
+                allowedTables = new ArrayList<>(out);
+            }
+        }
+
+        if (denyRows != null && !denyRows.isEmpty()) {
+            LinkedHashSet<String> out = new LinkedHashSet<>();
+            for (Map<String, Object> row : denyRows) {
+                if (!isEnabled(row.get("enabled"))) {
+                    continue;
+                }
+                String op = normalizeText(row.get("operation_name"));
+                if (op != null) {
+                    out.add(op);
+                }
+            }
+            if (!out.isEmpty()) {
+                denyOperations = new ArrayList<>(out);
+            }
+        }
+
+        for (Map<String, Object> row : configRows == null ? List.<Map<String, Object>>of() : configRows) {
+            if (!isEnabled(row.get("enabled"))) {
+                continue;
+            }
+            Integer limit = resolveInt(row.get("max_result_limit"), null);
+            if (limit != null) {
+                maxResultLimit = limit;
+                break;
+            }
+        }
+
+        return new SemanticRules(allowedTables, denyOperations, maxResultLimit);
+    }
+
     private boolean isEnabled(Object enabled) {
         if (enabled == null) {
             return true;
@@ -274,6 +563,40 @@ public class SemanticModelDynamicOverlayService {
         }
         String text = String.valueOf(enabled).trim().toLowerCase(Locale.ROOT);
         return !"false".equals(text) && !"0".equals(text) && !"n".equals(text) && !"no".equals(text);
+    }
+
+    private Integer resolveInt(Object value, Integer fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private Boolean toBoolean(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof Number n) {
+            return n.intValue() != 0;
+        }
+        String text = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
+        if ("true".equals(text) || "1".equals(text) || "yes".equals(text) || "y".equals(text)) {
+            return true;
+        }
+        if ("false".equals(text) || "0".equals(text) || "no".equals(text) || "n".equals(text)) {
+            return false;
+        }
+        return null;
     }
 
     private List<String> splitTokens(Object value) {

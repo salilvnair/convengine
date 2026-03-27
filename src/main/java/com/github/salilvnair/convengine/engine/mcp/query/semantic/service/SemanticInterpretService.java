@@ -1251,11 +1251,11 @@ public class SemanticInterpretService {
                                                 Map<String, Object> semanticMetadata,
                                                 List<Map<String, Object>> semanticAmbiguityOptions,
                                                 List<Map<String, Object>> semanticConcepts,
-                                                List<Map<String, Object>> semanticEntityOverrides,
+                                                List<Map<String, Object>> semanticEntities,
                                                 List<Map<String, Object>> semanticJoinHints,
                                                 List<Map<String, Object>> semanticMappings,
                                                 List<Map<String, Object>> semanticQueryClasses,
-                                                List<Map<String, Object>> semanticRelationshipOverrides,
+                                                List<Map<String, Object>> semanticRelationships,
                                                 List<Map<String, Object>> semanticSynonyms,
                                                 List<Map<String, Object>> semanticValuePatterns,
                                                 List<Map<String, Object>> semanticEmbeddingCatalogForPrompt) {
@@ -1268,11 +1268,11 @@ public class SemanticInterpretService {
                 && base.contains("semantic_metadata")
                 && base.contains("ce_semantic_ambiguity_option")
                 && base.contains("ce_semantic_concept")
-                && base.contains("ce_semantic_entity_override")
+                && base.contains("ce_semantic_entity")
                 && base.contains("ce_semantic_join_hint")
                 && base.contains("ce_semantic_mapping")
                 && base.contains("ce_semantic_query_class")
-                && base.contains("ce_semantic_relationship_override")
+                && base.contains("ce_semantic_relationship")
                 && base.contains("ce_semantic_synonym")
                 && base.contains("ce_semantic_value_pattern")
                 && base.contains("ce_semantic_concept_embedding");
@@ -1281,11 +1281,11 @@ public class SemanticInterpretService {
                 && base.contains("Semantic metadata (DB-driven):")
                 && base.contains("ce_semantic_ambiguity_option:")
                 && base.contains("ce_semantic_concept:")
-                && base.contains("ce_semantic_entity_override:")
+                && base.contains("ce_semantic_entity:")
                 && base.contains("ce_semantic_join_hint:")
                 && base.contains("ce_semantic_mapping:")
                 && base.contains("ce_semantic_query_class:")
-                && base.contains("ce_semantic_relationship_override:")
+                && base.contains("ce_semantic_relationship:")
                 && base.contains("ce_semantic_synonym:")
                 && base.contains("ce_semantic_value_pattern:")
                 && base.contains("ce_semantic_concept_embedding:");
@@ -1298,11 +1298,11 @@ public class SemanticInterpretService {
                 + "semantic_metadata:\n" + safeJson(semanticMetadata) + "\n\n"
                 + "ce_semantic_ambiguity_option:\n" + safeJson(semanticAmbiguityOptions) + "\n\n"
                 + "ce_semantic_concept:\n" + safeJson(semanticConcepts) + "\n\n"
-                + "ce_semantic_entity_override:\n" + safeJson(semanticEntityOverrides) + "\n\n"
+                + "ce_semantic_entity:\n" + safeJson(semanticEntities) + "\n\n"
                 + "ce_semantic_join_hint:\n" + safeJson(semanticJoinHints) + "\n\n"
                 + "ce_semantic_mapping:\n" + safeJson(semanticMappings) + "\n\n"
                 + "ce_semantic_query_class:\n" + safeJson(semanticQueryClasses) + "\n\n"
-                + "ce_semantic_relationship_override:\n" + safeJson(semanticRelationshipOverrides) + "\n\n"
+                + "ce_semantic_relationship:\n" + safeJson(semanticRelationships) + "\n\n"
                 + "ce_semantic_synonym:\n" + safeJson(semanticSynonyms) + "\n\n"
                 + "ce_semantic_value_pattern:\n" + safeJson(semanticValuePatterns) + "\n\n"
                 + "ce_semantic_concept_embedding:\n" + safeJson(semanticEmbeddingCatalogForPrompt);
@@ -1358,11 +1358,11 @@ public class SemanticInterpretService {
         Map<String, Object> allAllowedFieldsByEntity = loadAllowedFieldsByEntity();
         List<Map<String, Object>> semanticAmbiguityOptions = loadSemanticAmbiguityOptionRows();
         List<Map<String, Object>> semanticConcepts = loadSemanticConceptRows();
-        List<Map<String, Object>> semanticEntityOverrides = loadSemanticEntityOverrideRows();
+        List<Map<String, Object>> semanticEntities = loadSemanticEntityRows();
         List<Map<String, Object>> semanticJoinHints = loadSemanticJoinHintRows();
         List<Map<String, Object>> semanticMappings = loadSemanticMappingRows();
         List<Map<String, Object>> semanticQueryClasses = loadSemanticQueryClassRows();
-        List<Map<String, Object>> semanticRelationshipOverrides = loadSemanticRelationshipOverrideRows();
+        List<Map<String, Object>> semanticRelationships = loadSemanticRelationshipRows();
         List<Map<String, Object>> semanticSynonyms = loadSemanticSynonymRows();
         List<Map<String, Object>> semanticValuePatterns = loadSemanticValuePatternRows();
         List<Map<String, Object>> semanticEmbeddingCatalog = loadSemanticEmbeddingCatalogRows(queryClassKey);
@@ -1374,11 +1374,11 @@ public class SemanticInterpretService {
                 allAllowedFieldsByEntity,
                 semanticAmbiguityOptions,
                 semanticConcepts,
-                semanticEntityOverrides,
+                semanticEntities,
                 semanticJoinHints,
                 semanticMappings,
                 semanticQueryClasses,
-                semanticRelationshipOverrides,
+                semanticRelationships,
                 semanticSynonyms,
                 semanticValuePatterns,
                 semanticEmbeddingCatalog
@@ -1387,11 +1387,11 @@ public class SemanticInterpretService {
         Map<String, Object> allowedFieldsByEntity = scope.allowedFieldsByEntity();
         semanticAmbiguityOptions = scope.semanticAmbiguityOptions();
         semanticConcepts = scope.semanticConcepts();
-        semanticEntityOverrides = scope.semanticEntityOverrides();
+        semanticEntities = scope.semanticEntities();
         semanticJoinHints = scope.semanticJoinHints();
         semanticMappings = scope.semanticMappings();
         semanticQueryClasses = scope.semanticQueryClasses();
-        semanticRelationshipOverrides = scope.semanticRelationshipOverrides();
+        semanticRelationships = scope.semanticRelationships();
         semanticSynonyms = scope.semanticSynonyms();
         semanticValuePatterns = scope.semanticValuePatterns();
         semanticEmbeddingCatalog = scope.semanticEmbeddingCatalog();
@@ -1456,7 +1456,7 @@ public class SemanticInterpretService {
                 ce_semantic_concept:
                 %s
 
-                ce_semantic_entity_override:
+                ce_semantic_entity:
                 %s
 
                 ce_semantic_join_hint:
@@ -1468,7 +1468,7 @@ public class SemanticInterpretService {
                 ce_semantic_query_class:
                 %s
 
-                ce_semantic_relationship_override:
+                ce_semantic_relationship:
                 %s
 
                 ce_semantic_synonym:
@@ -1517,11 +1517,11 @@ public class SemanticInterpretService {
                 safeJson(semanticMetadata),
                 safeJson(semanticAmbiguityOptions),
                 safeJson(semanticConcepts),
-                safeJson(semanticEntityOverrides),
+                safeJson(semanticEntities),
                 safeJson(semanticJoinHints),
                 safeJson(semanticMappings),
                 safeJson(semanticQueryClasses),
-                safeJson(semanticRelationshipOverrides),
+                safeJson(semanticRelationships),
                 safeJson(semanticSynonyms),
                 safeJson(semanticValuePatterns),
                 safeJson(semanticEmbeddingCatalogForPrompt),
@@ -1544,11 +1544,11 @@ public class SemanticInterpretService {
         vars.put("semantic_metadata", semanticMetadata);
         vars.put("ce_semantic_ambiguity_option", semanticAmbiguityOptions);
         vars.put("ce_semantic_concept", semanticConcepts);
-        vars.put("ce_semantic_entity_override", semanticEntityOverrides);
+        vars.put("ce_semantic_entity", semanticEntities);
         vars.put("ce_semantic_join_hint", semanticJoinHints);
         vars.put("ce_semantic_mapping", semanticMappings);
         vars.put("ce_semantic_query_class", semanticQueryClasses);
-        vars.put("ce_semantic_relationship_override", semanticRelationshipOverrides);
+        vars.put("ce_semantic_relationship", semanticRelationships);
         vars.put("ce_semantic_synonym", semanticSynonyms);
         vars.put("ce_semantic_value_pattern", semanticValuePatterns);
         vars.put("ce_semantic_concept_embedding", semanticEmbeddingCatalogForPrompt);
@@ -1593,11 +1593,11 @@ public class SemanticInterpretService {
         Map<String, Object> allAllowedFieldsByEntity = loadAllowedFieldsByEntity();
         List<Map<String, Object>> semanticAmbiguityOptions = loadSemanticAmbiguityOptionRows();
         List<Map<String, Object>> semanticConcepts = loadSemanticConceptRows();
-        List<Map<String, Object>> semanticEntityOverrides = loadSemanticEntityOverrideRows();
+        List<Map<String, Object>> semanticEntities = loadSemanticEntityRows();
         List<Map<String, Object>> semanticJoinHints = loadSemanticJoinHintRows();
         List<Map<String, Object>> semanticMappings = loadSemanticMappingRows();
         List<Map<String, Object>> semanticQueryClasses = loadSemanticQueryClassRows();
-        List<Map<String, Object>> semanticRelationshipOverrides = loadSemanticRelationshipOverrideRows();
+        List<Map<String, Object>> semanticRelationships = loadSemanticRelationshipRows();
         List<Map<String, Object>> semanticSynonyms = loadSemanticSynonymRows();
         List<Map<String, Object>> semanticValuePatterns = loadSemanticValuePatternRows();
         List<Map<String, Object>> semanticEmbeddingCatalog = loadSemanticEmbeddingCatalogRows(queryClassKey);
@@ -1609,11 +1609,11 @@ public class SemanticInterpretService {
                 allAllowedFieldsByEntity,
                 semanticAmbiguityOptions,
                 semanticConcepts,
-                semanticEntityOverrides,
+                semanticEntities,
                 semanticJoinHints,
                 semanticMappings,
                 semanticQueryClasses,
-                semanticRelationshipOverrides,
+                semanticRelationships,
                 semanticSynonyms,
                 semanticValuePatterns,
                 semanticEmbeddingCatalog
@@ -1622,11 +1622,11 @@ public class SemanticInterpretService {
         Map<String, Object> allowedFieldsByEntity = scope.allowedFieldsByEntity();
         semanticAmbiguityOptions = scope.semanticAmbiguityOptions();
         semanticConcepts = scope.semanticConcepts();
-        semanticEntityOverrides = scope.semanticEntityOverrides();
+        semanticEntities = scope.semanticEntities();
         semanticJoinHints = scope.semanticJoinHints();
         semanticMappings = scope.semanticMappings();
         semanticQueryClasses = scope.semanticQueryClasses();
-        semanticRelationshipOverrides = scope.semanticRelationshipOverrides();
+        semanticRelationships = scope.semanticRelationships();
         semanticSynonyms = scope.semanticSynonyms();
         semanticValuePatterns = scope.semanticValuePatterns();
         semanticEmbeddingCatalog = scope.semanticEmbeddingCatalog();
@@ -1650,11 +1650,11 @@ public class SemanticInterpretService {
         promptVars.put("semantic_metadata", safeJson(semanticMetadata));
         promptVars.put("ce_semantic_ambiguity_option", safeJson(semanticAmbiguityOptions));
         promptVars.put("ce_semantic_concept", safeJson(semanticConcepts));
-        promptVars.put("ce_semantic_entity_override", safeJson(semanticEntityOverrides));
+        promptVars.put("ce_semantic_entity", safeJson(semanticEntities));
         promptVars.put("ce_semantic_join_hint", safeJson(semanticJoinHints));
         promptVars.put("ce_semantic_mapping", safeJson(semanticMappings));
         promptVars.put("ce_semantic_query_class", safeJson(semanticQueryClasses));
-        promptVars.put("ce_semantic_relationship_override", safeJson(semanticRelationshipOverrides));
+        promptVars.put("ce_semantic_relationship", safeJson(semanticRelationships));
         promptVars.put("ce_semantic_synonym", safeJson(semanticSynonyms));
         promptVars.put("ce_semantic_value_pattern", safeJson(semanticValuePatterns));
         promptVars.put("ce_semantic_concept_embedding", safeJson(semanticEmbeddingCatalogForPrompt));
@@ -1710,11 +1710,11 @@ public class SemanticInterpretService {
                 semanticMetadata,
                 semanticAmbiguityOptions,
                 semanticConcepts,
-                semanticEntityOverrides,
+                semanticEntities,
                 semanticJoinHints,
                 semanticMappings,
                 semanticQueryClasses,
-                semanticRelationshipOverrides,
+                semanticRelationships,
                 semanticSynonyms,
                 semanticValuePatterns,
                 semanticEmbeddingCatalogForPrompt
@@ -1735,11 +1735,11 @@ public class SemanticInterpretService {
         vars.put("semantic_metadata", semanticMetadata);
         vars.put("ce_semantic_ambiguity_option", semanticAmbiguityOptions);
         vars.put("ce_semantic_concept", semanticConcepts);
-        vars.put("ce_semantic_entity_override", semanticEntityOverrides);
+        vars.put("ce_semantic_entity", semanticEntities);
         vars.put("ce_semantic_join_hint", semanticJoinHints);
         vars.put("ce_semantic_mapping", semanticMappings);
         vars.put("ce_semantic_query_class", semanticQueryClasses);
-        vars.put("ce_semantic_relationship_override", semanticRelationshipOverrides);
+        vars.put("ce_semantic_relationship", semanticRelationships);
         vars.put("ce_semantic_synonym", semanticSynonyms);
         vars.put("ce_semantic_value_pattern", semanticValuePatterns);
         vars.put("ce_semantic_concept_embedding", semanticEmbeddingCatalogForPrompt);
@@ -2592,12 +2592,12 @@ public class SemanticInterpretService {
         }
         try {
             List<Map<String, Object>> rows = jdbc.queryForList("""
-                    SELECT base_table_name,
-                           join_table_name,
-                           join_priority
+                    SELECT base_table AS base_table_name,
+                           join_table AS join_table_name,
+                           priority AS join_priority
                     FROM ce_semantic_join_hint
                     WHERE enabled = true
-                    ORDER BY COALESCE(join_priority, 999999), base_table_name, join_table_name
+                    ORDER BY COALESCE(priority, 999999), base_table, join_table
                     """, Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
@@ -2605,7 +2605,7 @@ public class SemanticInterpretService {
         }
     }
 
-    private List<Map<String, Object>> loadSemanticEntityOverrideRows() {
+    private List<Map<String, Object>> loadSemanticEntityRows() {
         NamedParameterJdbcTemplate jdbc = jdbcTemplateProvider.getIfAvailable();
         if (jdbc == null) {
             return List.of();
@@ -2613,7 +2613,7 @@ public class SemanticInterpretService {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList("""
                     SELECT *
-                    FROM ce_semantic_entity_override
+                    FROM ce_semantic_entity
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999)
                     """, Map.of());
@@ -2623,7 +2623,7 @@ public class SemanticInterpretService {
         }
     }
 
-    private List<Map<String, Object>> loadSemanticRelationshipOverrideRows() {
+    private List<Map<String, Object>> loadSemanticRelationshipRows() {
         NamedParameterJdbcTemplate jdbc = jdbcTemplateProvider.getIfAvailable();
         if (jdbc == null) {
             return List.of();
@@ -2631,7 +2631,7 @@ public class SemanticInterpretService {
         try {
             List<Map<String, Object>> rows = jdbc.queryForList("""
                     SELECT *
-                    FROM ce_semantic_relationship_override
+                    FROM ce_semantic_relationship
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999)
                     """, Map.of());
@@ -3558,11 +3558,11 @@ public class SemanticInterpretService {
             Map<String, Object> allowedFieldsByEntity,
             List<Map<String, Object>> semanticAmbiguityOptions,
             List<Map<String, Object>> semanticConcepts,
-            List<Map<String, Object>> semanticEntityOverrides,
+            List<Map<String, Object>> semanticEntities,
             List<Map<String, Object>> semanticJoinHints,
             List<Map<String, Object>> semanticMappings,
             List<Map<String, Object>> semanticQueryClasses,
-            List<Map<String, Object>> semanticRelationshipOverrides,
+            List<Map<String, Object>> semanticRelationships,
             List<Map<String, Object>> semanticSynonyms,
             List<Map<String, Object>> semanticValuePatterns,
             List<Map<String, Object>> semanticEmbeddingCatalog

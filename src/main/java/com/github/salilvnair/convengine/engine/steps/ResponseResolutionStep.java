@@ -12,6 +12,7 @@ import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.response.service.ResponseTransformerService;
+import com.github.salilvnair.convengine.engine.response.type.ResponseTransformType;
 import com.github.salilvnair.convengine.engine.response.type.factory.ResponseTypeResolverFactory;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.ResponseType;
@@ -107,7 +108,7 @@ public class ResponseResolutionStep implements EngineStep {
                 .resolve(session, PromptTemplate.initFrom(template), ResponseTemplate.initFrom(resp));
 
         OutputPayload transformedOutput = responseTransformerService.transformIfApplicable(session.getPayload(),
-                session, session.getInputParams());
+                session, session.getInputParams(), ResponseTransformType.LLM);
         session.setPayload(transformedOutput);
 
         Object payloadValue = null;

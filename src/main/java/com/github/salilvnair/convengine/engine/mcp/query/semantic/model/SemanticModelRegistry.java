@@ -13,7 +13,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SemanticModelRegistry {
 
-    private final SemanticModelLoader loader;
     private final SemanticModelDynamicOverlayService dynamicOverlayService;
     private final SemanticModelValidator validator;
 
@@ -26,8 +25,7 @@ public class SemanticModelRegistry {
     }
 
     public synchronized void refresh() {
-        SemanticModel loaded = loader.loadOrEmpty();
-        loaded = dynamicOverlayService.apply(loaded);
+        SemanticModel loaded = dynamicOverlayService.apply(new SemanticModel(1, "", "", null, null, null, null, null));
         List<String> errors = validator.validate(loaded);
         if (!errors.isEmpty()) {
             log.warn("Semantic model validation errors: {}", errors);

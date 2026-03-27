@@ -37,7 +37,6 @@ convengine:
 
       semantic:
         enabled: true
-        model-path: classpath:/mcp/semantic-layer.yaml
 ```
 
 Rules:
@@ -246,8 +245,9 @@ Key implementation points:
 
 ## Added Artifacts (This Branch)
 
-1. Semantic model YAML (Zapper domain):
-`src/main/resources/mcp/semantic-layer.yaml`
+1. Semantic layer DB schema + seed:
+`src/main/resources/mcp/semantic_layer_yml_ddl.sql`
+`src/main/resources/mcp/semantic_layer_yml_dml.sql`
 2. Semantic query MCP seed (Postgres):
 `src/main/resources/sql/zapper/semantic_query_mcp_seed_postgres.sql`
 3. Semantic query MCP seed (SQLite):
@@ -266,7 +266,6 @@ convengine:
       semantic:
         enabled: true
         tool-code: db.semantic.query
-        model-path: classpath:/mcp/semantic-layer.yaml
 ```
 
 ### 2) Load schema + business data + semantic MCP seed

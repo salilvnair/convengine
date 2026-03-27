@@ -13,6 +13,7 @@ It is designed for auditable state machines, not free-form assistant behavior. R
   - `db.semantic.interpret -> db.semantic.query -> postgres.query`
 - active semantic package:
   - `com.github.salilvnair.convengine.engine.mcp.query.semantic`
+- semantic model is DB-derived; no YAML file-path runtime config.
 - stale legacy semantic doc/runtime references removed.
 
 ### Semantic Runtime Hardening (v2.0.11)

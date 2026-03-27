@@ -152,9 +152,9 @@ public class StaticConfigurationCacheService {
         return loadSemanticTable("ce_semantic_concept_embedding");
     }
 
-    @Cacheable("ce_semantic_entity_override")
-    public List<Map<String, Object>> getAllSemanticEntityOverrides() {
-        return loadSemanticTable("ce_semantic_entity_override");
+    @Cacheable("ce_semantic_entity")
+    public List<Map<String, Object>> getAllSemanticEntities() {
+        return loadSemanticTable("ce_semantic_entity");
     }
 
     @Cacheable("ce_semantic_join_hint")
@@ -177,9 +177,9 @@ public class StaticConfigurationCacheService {
         return loadSemanticTable("ce_semantic_query_class");
     }
 
-    @Cacheable("ce_semantic_relationship_override")
-    public List<Map<String, Object>> getAllSemanticRelationshipOverrides() {
-        return loadSemanticTable("ce_semantic_relationship_override");
+    @Cacheable("ce_semantic_relationship")
+    public List<Map<String, Object>> getAllSemanticRelationships() {
+        return loadSemanticTable("ce_semantic_relationship");
     }
 
     @Cacheable("ce_semantic_synonym")

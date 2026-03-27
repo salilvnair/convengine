@@ -54,7 +54,6 @@ public class ConvEngineMcpConfig {
         public static class Semantic {
             private boolean enabled = false;
             private String toolCode = "db.semantic.query";
-            private String modelPath = "classpath:/mcp/semantic-layer.yml";
             private int defaultLimit = 100;
             private int maxLimit = 500;
             private String sqlDialect = "postgres";

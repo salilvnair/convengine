@@ -35,12 +35,12 @@ public class StaticTableCachePreloader {
         staticCacheService.getAllSemanticAmbiguityOptions();
         staticCacheService.getAllSemanticConcepts();
         staticCacheService.getAllSemanticEmbeddingCatalog();
-        staticCacheService.getAllSemanticEntityOverrides();
+        staticCacheService.getAllSemanticEntities();
         staticCacheService.getAllSemanticJoinHints();
         staticCacheService.getAllSemanticJoinPaths();
         staticCacheService.getAllSemanticMappings();
         staticCacheService.getAllSemanticQueryClasses();
-        staticCacheService.getAllSemanticRelationshipOverrides();
+        staticCacheService.getAllSemanticRelationships();
         staticCacheService.getAllSemanticSynonyms();
         staticCacheService.getAllSemanticValuePatterns();
         staticCacheService.getAllUserQueryKnowledge();

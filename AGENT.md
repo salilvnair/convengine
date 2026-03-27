@@ -154,11 +154,19 @@ public interface LlmClient {
 - `ce_semantic_query_class`
 - `ce_semantic_ambiguity_option`
 - `ce_semantic_concept_embedding`
-- `ce_semantic_entity_override`
+- `ce_semantic_entity`
 - `ce_semantic_join_hint`
-- `ce_semantic_relationship_override`
+- `ce_semantic_relationship`
 - `ce_semantic_value_pattern`
 - `ce_semantic_query_failures`
+- `ce_semantic_model`
+- `ce_semantic_setting`
+- `ce_semantic_source_table`
+- `ce_semantic_source_column`
+- `ce_semantic_lexicon`
+- `ce_semantic_rule_allowed_table`
+- `ce_semantic_rule_deny_operation`
+- `ce_semantic_rule_config`
 
 ## Must-Keep Table Contracts
 
