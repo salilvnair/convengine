@@ -1,6 +1,7 @@
 package com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback;
 
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
 import com.github.salilvnair.convengine.entity.CeSemanticQueryFailure;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.repo.SemanticQueryFailureRepository;
@@ -8,6 +9,7 @@ import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -30,6 +32,8 @@ public class SemanticFailureFeedbackService {
     private final AuditService auditService;
     private final ObjectProvider<LlmClient> llmClientProvider;
     private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
+    @Autowired(required = false)
+    private ConvEngineSqlTableResolver tableResolver;
 
     public void recordFailure(SemanticFailureRecord record) {
         if (record == null) {
@@ -194,11 +198,11 @@ public class SemanticFailureFeedbackService {
             return;
         }
         try {
-            jdbc.update("""
+            jdbc.update(resolveSql("""
                     UPDATE ce_semantic_query_failures
                     SET question_embedding = CAST(:embedding AS vector)
                     WHERE id = :id
-                    """, Map.of(
+                    """), Map.of(
                     "id", id,
                     "embedding", vectorLiteral(embedding)
             ));
@@ -232,5 +236,9 @@ public class SemanticFailureFeedbackService {
 
     private String stringify(UUID conversationId) {
         return conversationId == null ? null : conversationId.toString();
+    }
+
+    private String resolveSql(String sql) {
+        return tableResolver == null ? sql : tableResolver.resolveSql(sql);
     }
 }

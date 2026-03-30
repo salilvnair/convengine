@@ -2,9 +2,12 @@ package com.github.salilvnair.convengine.engine.mcp.query.semantic.model;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.SemanticTableNames;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -21,21 +24,23 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class SemanticModelDynamicOverlayService {
 
-    private static final String JOIN_HINT_TABLE = "ce_semantic_join_hint";
-    private static final String VALUE_PATTERN_TABLE = "ce_semantic_value_pattern";
-    private static final String ENTITY_TABLE = "ce_semantic_entity";
-    private static final String RELATIONSHIP_TABLE = "ce_semantic_relationship";
-    private static final String MODEL_TABLE = "ce_semantic_model";
-    private static final String SETTING_TABLE = "ce_semantic_setting";
-    private static final String SOURCE_TABLE_TABLE = "ce_semantic_source_table";
-    private static final String SOURCE_COLUMN_TABLE = "ce_semantic_source_column";
-    private static final String LEXICON_TABLE = "ce_semantic_lexicon";
-    private static final String RULE_ALLOWED_TABLE = "ce_semantic_rule_allowed_table";
-    private static final String RULE_DENY_TABLE = "ce_semantic_rule_deny_operation";
-    private static final String RULE_CONFIG_TABLE = "ce_semantic_rule_config";
+    private static final String JOIN_HINT_TABLE = SemanticTableNames.SEMANTIC_JOIN_HINT;
+    private static final String VALUE_PATTERN_TABLE = SemanticTableNames.SEMANTIC_VALUE_PATTERN;
+    private static final String ENTITY_TABLE = SemanticTableNames.SEMANTIC_ENTITY;
+    private static final String RELATIONSHIP_TABLE = SemanticTableNames.SEMANTIC_RELATIONSHIP;
+    private static final String MODEL_TABLE = SemanticTableNames.SEMANTIC_MODEL;
+    private static final String SETTING_TABLE = SemanticTableNames.SEMANTIC_SETTING;
+    private static final String SOURCE_TABLE_TABLE = SemanticTableNames.SEMANTIC_SOURCE_TABLE;
+    private static final String SOURCE_COLUMN_TABLE = SemanticTableNames.SEMANTIC_SOURCE_COLUMN;
+    private static final String LEXICON_TABLE = SemanticTableNames.SEMANTIC_LEXICON;
+    private static final String RULE_ALLOWED_TABLE = SemanticTableNames.SEMANTIC_RULE_ALLOWED_TABLE;
+    private static final String RULE_DENY_TABLE = SemanticTableNames.SEMANTIC_RULE_DENY_OPERATION;
+    private static final String RULE_CONFIG_TABLE = SemanticTableNames.SEMANTIC_RULE_CONFIG;
 
     private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
     private final ObjectMapper mapper = new ObjectMapper();
+    @Autowired(required = false)
+    private ConvEngineSqlTableResolver tableResolver;
 
     public SemanticModel apply(SemanticModel baseModel) {
         SemanticModel source = baseModel == null
@@ -85,7 +90,7 @@ public class SemanticModelDynamicOverlayService {
                 LIMIT 1
                 """;
         try {
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, Map.of());
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(resolveSql(sql), Map.of());
             return rows.isEmpty() ? Map.of() : rows.get(0);
         } catch (Exception ex) {
             log.debug("Skipping semantic model metadata DB load from table={} cause={}", MODEL_TABLE, ex.getMessage());
@@ -100,7 +105,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), setting_key
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic settings DB load from table={} cause={}", SETTING_TABLE, ex.getMessage());
             return List.of();
@@ -114,7 +119,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), table_name
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic source-table DB load from table={} cause={}", SOURCE_TABLE_TABLE, ex.getMessage());
             return List.of();
@@ -129,7 +134,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), table_name, column_name
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic source-column DB load from table={} cause={}", SOURCE_COLUMN_TABLE, ex.getMessage());
             return List.of();
@@ -143,7 +148,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), term_key, synonym_text
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic lexicon DB load from table={} cause={}", LEXICON_TABLE, ex.getMessage());
             return List.of();
@@ -157,7 +162,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), table_name
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic rule allow-list DB load from table={} cause={}", RULE_ALLOWED_TABLE, ex.getMessage());
             return List.of();
@@ -171,7 +176,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), operation_name
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic rule deny-ops DB load from table={} cause={}", RULE_DENY_TABLE, ex.getMessage());
             return List.of();
@@ -185,7 +190,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY created_at DESC
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic rule config DB load from table={} cause={}", RULE_CONFIG_TABLE, ex.getMessage());
             return List.of();
@@ -199,7 +204,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), base_table, join_table
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic join-hint DB overlay from table={} cause={}", JOIN_HINT_TABLE, ex.getMessage());
             return List.of();
@@ -213,7 +218,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), from_field, to_field
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic value-pattern DB overlay from table={} cause={}", VALUE_PATTERN_TABLE, ex.getMessage());
             return List.of();
@@ -221,13 +226,19 @@ public class SemanticModelDynamicOverlayService {
     }
 
     private List<Map<String, Object>> fetchEntityRows(NamedParameterJdbcTemplate jdbcTemplate) {
-        String sql = """
-                SELECT entity_name, description, primary_table, related_tables, synonyms, fields_json, enabled, priority
-                FROM ce_semantic_entity
-                ORDER BY COALESCE(priority, 999999), entity_name
-                """;
+        String entityTable = resolveTableName(ENTITY_TABLE);
+        String sql = "SELECT entity_name, description, primary_table, related_tables, synonyms, fields_json, enabled, priority "
+                + "FROM " + entityTable + " ORDER BY COALESCE(priority, 999999), entity_name";
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, Map.of());
+            if (!rows.isEmpty()) {
+                return rows;
+            }
+            return jdbcTemplate.queryForList(
+                    "SELECT entity_name, description, primary_table, related_tables, synonyms, fields_json FROM "
+                            + entityTable + " ORDER BY entity_name",
+                    Map.of()
+            );
         } catch (Exception ex) {
             log.debug("Skipping semantic entity DB load from table={} cause={}", ENTITY_TABLE, ex.getMessage());
             return List.of();
@@ -241,7 +252,7 @@ public class SemanticModelDynamicOverlayService {
                 ORDER BY COALESCE(priority, 999999), relationship_name
                 """;
         try {
-            return jdbcTemplate.queryForList(sql, Map.of());
+            return jdbcTemplate.queryForList(resolveSql(sql), Map.of());
         } catch (Exception ex) {
             log.debug("Skipping semantic relationship DB load from table={} cause={}", RELATIONSHIP_TABLE, ex.getMessage());
             return List.of();
@@ -658,6 +669,14 @@ public class SemanticModelDynamicOverlayService {
 
     private String firstNonBlank(String preferred, String fallback) {
         return preferred == null || preferred.isBlank() ? fallback : preferred;
+    }
+
+    private String resolveSql(String sql) {
+        return tableResolver == null ? sql : tableResolver.resolveSql(sql);
+    }
+
+    private String resolveTableName(String logicalName) {
+        return tableResolver == null ? logicalName : tableResolver.resolveTableName(logicalName);
     }
 
     private String normalizeText(Object value) {

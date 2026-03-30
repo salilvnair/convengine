@@ -5,12 +5,14 @@ import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildResponse
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildResponse;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
+import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.*;
 import com.github.salilvnair.convengine.entity.CeUserQueryKnowledge;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +31,8 @@ public class SemanticEmbeddingService {
     private final SemanticModelRegistry semanticModelRegistry;
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final LlmClient llmClient;
+    @Autowired(required = false)
+    private ConvEngineSqlTableResolver tableResolver;
 
     public SemanticEmbeddingRebuildResponse rebuildFromSemanticModel(SemanticEmbeddingRebuildRequest request) {
         SemanticEmbeddingRebuildRequest safeRequest = request == null ? new SemanticEmbeddingRebuildRequest() : request;
@@ -167,7 +171,7 @@ public class SemanticEmbeddingService {
         sql.append(" LIMIT :limit");
         params.put("limit", limit);
 
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), params);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(resolveSql(sql.toString()), params);
         int indexed = 0;
         int failed = 0;
         int skipped = 0;
@@ -191,13 +195,13 @@ public class SemanticEmbeddingService {
                 updateParams.put("embeddingJson", embeddingJson);
                 updateParams.put("embeddingModel", embeddingModel);
                 updateParams.put("embeddingVersion", embeddingVersion);
-                jdbcTemplate.update("""
+                jdbcTemplate.update(resolveSql("""
                         UPDATE ce_semantic_concept_embedding
                         SET embedding_text = CAST(:embeddingJson AS jsonb),
                             embedding_model = COALESCE(:embeddingModel, embedding_model),
                             embedding_version = COALESCE(:embeddingVersion, embedding_version)
                         WHERE id = :id
-                        """, updateParams);
+                        """), updateParams);
                 indexed++;
             } catch (Exception ex) {
                 failed++;
@@ -244,7 +248,7 @@ public class SemanticEmbeddingService {
         }
         sql.append(" ORDER BY created_at DESC LIMIT :limit");
 
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), Map.of("limit", limit));
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(resolveSql(sql.toString()), Map.of("limit", limit));
         int indexed = 0;
         int failed = 0;
         int skipped = 0;
@@ -261,13 +265,13 @@ public class SemanticEmbeddingService {
                     failed++;
                     continue;
                 }
-                jdbcTemplate.update("""
+                jdbcTemplate.update(resolveSql("""
                         UPDATE ce_semantic_query_failures
                         SET question_embedding = CAST(:embedding AS vector),
                             metadata_json = COALESCE(metadata_json, '{}'::jsonb)
                                 || jsonb_build_object('query_embedding', CAST(:embeddingJson AS jsonb))
                         WHERE id = :id
-                        """, Map.of(
+                        """), Map.of(
                         "id", id,
                         "embedding", vectorLiteral(embedding),
                         "embeddingJson", JsonUtil.toJson(toNumberList(embedding))
@@ -392,13 +396,13 @@ public class SemanticEmbeddingService {
         params.put("targetName", targetName);
         params.put("embedding", vectorLiteral(embedding));
         params.put("metadataJson", JsonUtil.toJson(metadata == null ? Map.of() : metadata));
-        jdbcTemplate.update(sql, params);
+        jdbcTemplate.update(resolveSql(sql), params);
     }
 
     private void clearNamespace(String namespace, ConvEngineMcpConfig.Db.Semantic cfg) {
         String sql = "DELETE FROM " + cfg.getVector().getTable()
                 + " WHERE " + cfg.getVector().getNamespaceColumn() + " = :namespace";
-        jdbcTemplate.update(sql, Map.of("namespace", namespace));
+        jdbcTemplate.update(resolveSql(sql), Map.of("namespace", namespace));
     }
 
     private String resolveNamespace(SemanticEmbeddingRebuildRequest request) {
@@ -433,6 +437,10 @@ public class SemanticEmbeddingService {
         }
         String trimmed = value.trim();
         return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private String resolveSql(String sql) {
+        return tableResolver == null ? sql : tableResolver.resolveSql(sql);
     }
 
     private List<Double> toNumberList(float[] values) {

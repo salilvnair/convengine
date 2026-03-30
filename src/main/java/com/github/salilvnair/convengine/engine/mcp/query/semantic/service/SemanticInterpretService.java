@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
+import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
 import com.github.salilvnair.convengine.engine.constants.ClarificationConstants;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.SemanticTableNames;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticEntity;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticField;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
@@ -30,6 +32,7 @@ import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -53,6 +56,16 @@ public class SemanticInterpretService {
 
     private static final String TOOL_CODE = "db.semantic.interpret";
     private static final String VERSION = "v2";
+    private static final String K_SEMANTIC_AMBIGUITY_OPTION = SemanticTableNames.SEMANTIC_AMBIGUITY_OPTION;
+    private static final String K_SEMANTIC_CONCEPT = SemanticTableNames.SEMANTIC_CONCEPT;
+    private static final String K_SEMANTIC_ENTITY = SemanticTableNames.SEMANTIC_ENTITY;
+    private static final String K_SEMANTIC_JOIN_HINT = SemanticTableNames.SEMANTIC_JOIN_HINT;
+    private static final String K_SEMANTIC_MAPPING = SemanticTableNames.SEMANTIC_MAPPING;
+    private static final String K_SEMANTIC_QUERY_CLASS = SemanticTableNames.SEMANTIC_QUERY_CLASS;
+    private static final String K_SEMANTIC_RELATIONSHIP = SemanticTableNames.SEMANTIC_RELATIONSHIP;
+    private static final String K_SEMANTIC_SYNONYM = SemanticTableNames.SEMANTIC_SYNONYM;
+    private static final String K_SEMANTIC_VALUE_PATTERN = SemanticTableNames.SEMANTIC_VALUE_PATTERN;
+    private static final String K_SEMANTIC_CONCEPT_EMBEDDING = SemanticTableNames.SEMANTIC_CONCEPT_EMBEDDING;
 
     private static final Pattern FENCED_JSON = Pattern.compile("(?is)```(?:json)?\\s*(\\{.*?})\\s*```");
     private static final Pattern GENERIC_FOR_PATTERN = Pattern.compile("(?i)\\bfor\\s+([A-Za-z0-9_-]{2,40})\\b");
@@ -174,6 +187,8 @@ public class SemanticInterpretService {
     private final PromptTemplateRenderer promptTemplateRenderer;
     private final SemanticModelRegistry semanticModelRegistry;
     private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
+    @Autowired(required = false)
+    private ConvEngineSqlTableResolver tableResolver;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -232,6 +247,9 @@ public class SemanticInterpretService {
 
         PromptPackage promptPackage = buildPromptPackage(question, request, conversationId, session);
         String prompt = promptPackage.combinedPrompt();
+        Map<String, Object> processTraceAudit = buildProcessTraceAudit(question, request, promptPackage, prompt);
+        audit("SEMANTIC_INTERPRET_PROCESS_TRACE", conversationId, processTraceAudit);
+        verbose(session, "SEMANTIC_INTERPRET_PROCESS_TRACE", false, processTraceAudit);
         SchemaPackage schemaPackage = resolveOutputJsonSchema();
         JsonNode llmNode = null;
         String llmRaw = null;
@@ -834,7 +852,7 @@ public class SemanticInterpretService {
                 LIMIT 1
                 """;
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList(sql, Map.of(
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql(sql), Map.of(
                     "optionKey", optionKey,
                     "entityKey", entityKey == null ? "" : entityKey,
                     "queryClassKey", queryClassKey == null ? "" : queryClassKey
@@ -1266,29 +1284,29 @@ public class SemanticInterpretService {
         boolean hasAllMarkers = base.contains("allowed_entity_keys")
                 && base.contains("allowed_fields_by_entity")
                 && base.contains("semantic_metadata")
-                && base.contains("ce_semantic_ambiguity_option")
-                && base.contains("ce_semantic_concept")
-                && base.contains("ce_semantic_entity")
-                && base.contains("ce_semantic_join_hint")
-                && base.contains("ce_semantic_mapping")
-                && base.contains("ce_semantic_query_class")
-                && base.contains("ce_semantic_relationship")
-                && base.contains("ce_semantic_synonym")
-                && base.contains("ce_semantic_value_pattern")
-                && base.contains("ce_semantic_concept_embedding");
+                && base.contains(K_SEMANTIC_AMBIGUITY_OPTION)
+                && base.contains(K_SEMANTIC_CONCEPT)
+                && base.contains(K_SEMANTIC_ENTITY)
+                && base.contains(K_SEMANTIC_JOIN_HINT)
+                && base.contains(K_SEMANTIC_MAPPING)
+                && base.contains(K_SEMANTIC_QUERY_CLASS)
+                && base.contains(K_SEMANTIC_RELATIONSHIP)
+                && base.contains(K_SEMANTIC_SYNONYM)
+                && base.contains(K_SEMANTIC_VALUE_PATTERN)
+                && base.contains(K_SEMANTIC_CONCEPT_EMBEDDING);
         boolean hasTemplateSections = base.contains("Allowed entity keys (strict):")
                 && base.contains("Allowed fields by entity (strict):")
                 && base.contains("Semantic metadata (DB-driven):")
-                && base.contains("ce_semantic_ambiguity_option:")
-                && base.contains("ce_semantic_concept:")
-                && base.contains("ce_semantic_entity:")
-                && base.contains("ce_semantic_join_hint:")
-                && base.contains("ce_semantic_mapping:")
-                && base.contains("ce_semantic_query_class:")
-                && base.contains("ce_semantic_relationship:")
-                && base.contains("ce_semantic_synonym:")
-                && base.contains("ce_semantic_value_pattern:")
-                && base.contains("ce_semantic_concept_embedding:");
+                && base.contains(K_SEMANTIC_AMBIGUITY_OPTION + ":")
+                && base.contains(K_SEMANTIC_CONCEPT + ":")
+                && base.contains(K_SEMANTIC_ENTITY + ":")
+                && base.contains(K_SEMANTIC_JOIN_HINT + ":")
+                && base.contains(K_SEMANTIC_MAPPING + ":")
+                && base.contains(K_SEMANTIC_QUERY_CLASS + ":")
+                && base.contains(K_SEMANTIC_RELATIONSHIP + ":")
+                && base.contains(K_SEMANTIC_SYNONYM + ":")
+                && base.contains(K_SEMANTIC_VALUE_PATTERN + ":")
+                && base.contains(K_SEMANTIC_CONCEPT_EMBEDDING + ":");
         if (hasAllMarkers || hasTemplateSections) {
             return base;
         }
@@ -1296,16 +1314,16 @@ public class SemanticInterpretService {
                 + "allowed_entity_keys:\n" + safeJson(allowedEntityKeys) + "\n\n"
                 + "allowed_fields_by_entity:\n" + safeJson(allowedFieldsByEntity) + "\n\n"
                 + "semantic_metadata:\n" + safeJson(semanticMetadata) + "\n\n"
-                + "ce_semantic_ambiguity_option:\n" + safeJson(semanticAmbiguityOptions) + "\n\n"
-                + "ce_semantic_concept:\n" + safeJson(semanticConcepts) + "\n\n"
-                + "ce_semantic_entity:\n" + safeJson(semanticEntities) + "\n\n"
-                + "ce_semantic_join_hint:\n" + safeJson(semanticJoinHints) + "\n\n"
-                + "ce_semantic_mapping:\n" + safeJson(semanticMappings) + "\n\n"
-                + "ce_semantic_query_class:\n" + safeJson(semanticQueryClasses) + "\n\n"
-                + "ce_semantic_relationship:\n" + safeJson(semanticRelationships) + "\n\n"
-                + "ce_semantic_synonym:\n" + safeJson(semanticSynonyms) + "\n\n"
-                + "ce_semantic_value_pattern:\n" + safeJson(semanticValuePatterns) + "\n\n"
-                + "ce_semantic_concept_embedding:\n" + safeJson(semanticEmbeddingCatalogForPrompt);
+                + K_SEMANTIC_AMBIGUITY_OPTION + ":\n" + safeJson(semanticAmbiguityOptions) + "\n\n"
+                + K_SEMANTIC_CONCEPT + ":\n" + safeJson(semanticConcepts) + "\n\n"
+                + K_SEMANTIC_ENTITY + ":\n" + safeJson(semanticEntities) + "\n\n"
+                + K_SEMANTIC_JOIN_HINT + ":\n" + safeJson(semanticJoinHints) + "\n\n"
+                + K_SEMANTIC_MAPPING + ":\n" + safeJson(semanticMappings) + "\n\n"
+                + K_SEMANTIC_QUERY_CLASS + ":\n" + safeJson(semanticQueryClasses) + "\n\n"
+                + K_SEMANTIC_RELATIONSHIP + ":\n" + safeJson(semanticRelationships) + "\n\n"
+                + K_SEMANTIC_SYNONYM + ":\n" + safeJson(semanticSynonyms) + "\n\n"
+                + K_SEMANTIC_VALUE_PATTERN + ":\n" + safeJson(semanticValuePatterns) + "\n\n"
+                + K_SEMANTIC_CONCEPT_EMBEDDING + ":\n" + safeJson(semanticEmbeddingCatalogForPrompt);
     }
 
     private List<Map<String, Object>> slimEmbeddingCatalogForPrompt(List<Map<String, Object>> rows) {
@@ -1542,22 +1560,32 @@ public class SemanticInterpretService {
         vars.put("allowed_entity_keys", allowedEntityKeys);
         vars.put("allowed_fields_by_entity", allowedFieldsByEntity);
         vars.put("semantic_metadata", semanticMetadata);
-        vars.put("ce_semantic_ambiguity_option", semanticAmbiguityOptions);
-        vars.put("ce_semantic_concept", semanticConcepts);
-        vars.put("ce_semantic_entity", semanticEntities);
-        vars.put("ce_semantic_join_hint", semanticJoinHints);
-        vars.put("ce_semantic_mapping", semanticMappings);
-        vars.put("ce_semantic_query_class", semanticQueryClasses);
-        vars.put("ce_semantic_relationship", semanticRelationships);
-        vars.put("ce_semantic_synonym", semanticSynonyms);
-        vars.put("ce_semantic_value_pattern", semanticValuePatterns);
-        vars.put("ce_semantic_concept_embedding", semanticEmbeddingCatalogForPrompt);
+        vars.put(K_SEMANTIC_AMBIGUITY_OPTION, semanticAmbiguityOptions);
+        vars.put(K_SEMANTIC_CONCEPT, semanticConcepts);
+        vars.put(K_SEMANTIC_ENTITY, semanticEntities);
+        vars.put(K_SEMANTIC_JOIN_HINT, semanticJoinHints);
+        vars.put(K_SEMANTIC_MAPPING, semanticMappings);
+        vars.put(K_SEMANTIC_QUERY_CLASS, semanticQueryClasses);
+        vars.put(K_SEMANTIC_RELATIONSHIP, semanticRelationships);
+        vars.put(K_SEMANTIC_SYNONYM, semanticSynonyms);
+        vars.put(K_SEMANTIC_VALUE_PATTERN, semanticValuePatterns);
+        vars.put(K_SEMANTIC_CONCEPT_EMBEDDING, semanticEmbeddingCatalogForPrompt);
         vars.put("ambiguity_options", ambiguityOptions);
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("promptSource", "fallback");
         meta.put("responseType", "SEMANTIC_INTERPRET");
         meta.put("intent", "SEMANTIC_QUERY");
         meta.put("state", "ANALYZE");
+        Map<String, Object> promptMutation = new LinkedHashMap<>();
+        promptMutation.put("userPromptAltered", false);
+        promptMutation.put("systemPromptAltered", false);
+        promptMutation.put("mutationType", "FALLBACK_DEFAULT");
+        promptMutation.put("notes", List.of("Fallback prompt path was used."));
+        promptMutation.put("originalUserPrompt", userPrompt);
+        promptMutation.put("finalUserPrompt", userPrompt);
+        promptMutation.put("originalSystemPrompt", systemPrompt);
+        promptMutation.put("finalSystemPrompt", systemPrompt);
+        meta.put("promptMutation", promptMutation);
         meta.put("vars", vars);
         return new PromptPackage(systemPrompt, userPrompt, meta);
     }
@@ -1648,16 +1676,16 @@ public class SemanticInterpretService {
         promptVars.put("allowed_entity_keys", safeJson(allowedEntityKeys));
         promptVars.put("allowed_fields_by_entity", safeJson(allowedFieldsByEntity));
         promptVars.put("semantic_metadata", safeJson(semanticMetadata));
-        promptVars.put("ce_semantic_ambiguity_option", safeJson(semanticAmbiguityOptions));
-        promptVars.put("ce_semantic_concept", safeJson(semanticConcepts));
-        promptVars.put("ce_semantic_entity", safeJson(semanticEntities));
-        promptVars.put("ce_semantic_join_hint", safeJson(semanticJoinHints));
-        promptVars.put("ce_semantic_mapping", safeJson(semanticMappings));
-        promptVars.put("ce_semantic_query_class", safeJson(semanticQueryClasses));
-        promptVars.put("ce_semantic_relationship", safeJson(semanticRelationships));
-        promptVars.put("ce_semantic_synonym", safeJson(semanticSynonyms));
-        promptVars.put("ce_semantic_value_pattern", safeJson(semanticValuePatterns));
-        promptVars.put("ce_semantic_concept_embedding", safeJson(semanticEmbeddingCatalogForPrompt));
+        promptVars.put(K_SEMANTIC_AMBIGUITY_OPTION, safeJson(semanticAmbiguityOptions));
+        promptVars.put(K_SEMANTIC_CONCEPT, safeJson(semanticConcepts));
+        promptVars.put(K_SEMANTIC_ENTITY, safeJson(semanticEntities));
+        promptVars.put(K_SEMANTIC_JOIN_HINT, safeJson(semanticJoinHints));
+        promptVars.put(K_SEMANTIC_MAPPING, safeJson(semanticMappings));
+        promptVars.put(K_SEMANTIC_QUERY_CLASS, safeJson(semanticQueryClasses));
+        promptVars.put(K_SEMANTIC_RELATIONSHIP, safeJson(semanticRelationships));
+        promptVars.put(K_SEMANTIC_SYNONYM, safeJson(semanticSynonyms));
+        promptVars.put(K_SEMANTIC_VALUE_PATTERN, safeJson(semanticValuePatterns));
+        promptVars.put(K_SEMANTIC_CONCEPT_EMBEDDING, safeJson(semanticEmbeddingCatalogForPrompt));
         promptVars.put("ambiguity_options", safeJson(ambiguityOptions));
 
         PromptTemplateContext ctx = PromptTemplateContext.builder()
@@ -1703,6 +1731,7 @@ public class SemanticInterpretService {
             verbose(session, "SEMANTIC_INTERPRET_PROMPT_RENDER_ERROR", true, promptError);
             return null;
         }
+        String renderedUserBeforeGuardrails = renderedUser;
         renderedUser = appendSemanticGuardrailBlock(
                 renderedUser,
                 allowedEntityKeys,
@@ -1719,6 +1748,7 @@ public class SemanticInterpretService {
                 semanticValuePatterns,
                 semanticEmbeddingCatalogForPrompt
         );
+        boolean userPromptAltered = !safeEquals(renderedUserBeforeGuardrails, renderedUser);
 
         Map<String, Object> vars = new LinkedHashMap<>();
         vars.put("question", defaultIfBlank(question, ""));
@@ -1733,16 +1763,16 @@ public class SemanticInterpretService {
         vars.put("allowed_entity_keys", allowedEntityKeys);
         vars.put("allowed_fields_by_entity", allowedFieldsByEntity);
         vars.put("semantic_metadata", semanticMetadata);
-        vars.put("ce_semantic_ambiguity_option", semanticAmbiguityOptions);
-        vars.put("ce_semantic_concept", semanticConcepts);
-        vars.put("ce_semantic_entity", semanticEntities);
-        vars.put("ce_semantic_join_hint", semanticJoinHints);
-        vars.put("ce_semantic_mapping", semanticMappings);
-        vars.put("ce_semantic_query_class", semanticQueryClasses);
-        vars.put("ce_semantic_relationship", semanticRelationships);
-        vars.put("ce_semantic_synonym", semanticSynonyms);
-        vars.put("ce_semantic_value_pattern", semanticValuePatterns);
-        vars.put("ce_semantic_concept_embedding", semanticEmbeddingCatalogForPrompt);
+        vars.put(K_SEMANTIC_AMBIGUITY_OPTION, semanticAmbiguityOptions);
+        vars.put(K_SEMANTIC_CONCEPT, semanticConcepts);
+        vars.put(K_SEMANTIC_ENTITY, semanticEntities);
+        vars.put(K_SEMANTIC_JOIN_HINT, semanticJoinHints);
+        vars.put(K_SEMANTIC_MAPPING, semanticMappings);
+        vars.put(K_SEMANTIC_QUERY_CLASS, semanticQueryClasses);
+        vars.put(K_SEMANTIC_RELATIONSHIP, semanticRelationships);
+        vars.put(K_SEMANTIC_SYNONYM, semanticSynonyms);
+        vars.put(K_SEMANTIC_VALUE_PATTERN, semanticValuePatterns);
+        vars.put(K_SEMANTIC_CONCEPT_EMBEDDING, semanticEmbeddingCatalogForPrompt);
         vars.put("ambiguity_options", ambiguityOptions);
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("promptSource", "ce_prompt_template");
@@ -1750,6 +1780,23 @@ public class SemanticInterpretService {
         meta.put("responseType", "SEMANTIC_INTERPRET");
         meta.put("intent", intent);
         meta.put("state", state);
+        List<String> notes = new ArrayList<>();
+        notes.add("Prompt rendered from ce_prompt_template.");
+        if (userPromptAltered) {
+            notes.add("Guardrail block appended to rendered user prompt.");
+        } else {
+            notes.add("Rendered user prompt already had guardrail markers.");
+        }
+        Map<String, Object> promptMutation = new LinkedHashMap<>();
+        promptMutation.put("userPromptAltered", userPromptAltered);
+        promptMutation.put("systemPromptAltered", false);
+        promptMutation.put("mutationType", userPromptAltered ? "APPEND_SEMANTIC_GUARDRAIL_BLOCK" : "NONE");
+        promptMutation.put("notes", notes);
+        promptMutation.put("originalUserPrompt", renderedUserBeforeGuardrails);
+        promptMutation.put("finalUserPrompt", renderedUser);
+        promptMutation.put("originalSystemPrompt", renderedSystem);
+        promptMutation.put("finalSystemPrompt", renderedSystem);
+        meta.put("promptMutation", promptMutation);
         meta.put("vars", vars);
         return new PromptPackage(renderedSystem, renderedUser, meta);
     }
@@ -1919,7 +1966,7 @@ public class SemanticInterpretService {
                 LIMIT 1
                 """;
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList(sql, Map.of("queryClassKey", queryClassKey));
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql(sql), Map.of("queryClassKey", queryClassKey));
             if (rows.isEmpty()) {
                 return Map.of();
             }
@@ -1941,14 +1988,14 @@ public class SemanticInterpretService {
         Set<String> out = new LinkedHashSet<>();
         if (jdbc != null) {
             try {
-                List<Map<String, Object>> rows = jdbc.queryForList("""
+                List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                         SELECT DISTINCT entity_key
                         FROM ce_semantic_mapping
                         WHERE enabled = true
                           AND entity_key IS NOT NULL
                           AND btrim(entity_key) <> ''
                         ORDER BY entity_key
-                        """, Map.of());
+                        """), Map.of());
                 for (Map<String, Object> row : rows) {
                     String key = normalizeEntityKey(asText(row.get("entity_key")));
                     if (key != null && !key.isBlank()) {
@@ -1959,7 +2006,7 @@ public class SemanticInterpretService {
                 // fallback below
             }
             try {
-                List<Map<String, Object>> conceptRows = jdbc.queryForList("""
+                List<Map<String, Object>> conceptRows = jdbc.queryForList(resolveSql("""
                         SELECT DISTINCT concept_key
                         FROM ce_semantic_concept
                         WHERE enabled = true
@@ -1967,7 +2014,7 @@ public class SemanticInterpretService {
                           AND concept_key IS NOT NULL
                           AND btrim(concept_key) <> ''
                         ORDER BY concept_key
-                        """, Map.of());
+                        """), Map.of());
                 for (Map<String, Object> row : conceptRows) {
                     String key = normalizeEntityKey(asText(row.get("concept_key")));
                     if (key != null && !key.isBlank()) {
@@ -1997,7 +2044,7 @@ public class SemanticInterpretService {
         Map<String, Set<String>> grouped = new LinkedHashMap<>();
         if (jdbc != null) {
             try {
-                List<Map<String, Object>> rows = jdbc.queryForList("""
+                List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                         SELECT entity_key, field_key
                         FROM ce_semantic_mapping
                         WHERE enabled = true
@@ -2006,7 +2053,7 @@ public class SemanticInterpretService {
                           AND btrim(entity_key) <> ''
                           AND btrim(field_key) <> ''
                         ORDER BY entity_key, COALESCE(priority, 999999)
-                        """, Map.of());
+                        """), Map.of());
                 for (Map<String, Object> row : rows) {
                     String entityKey = normalizeEntityKey(asText(row.get("entity_key")));
                     String fieldKey = normalizeField(asText(row.get("field_key")));
@@ -2438,6 +2485,14 @@ public class SemanticInterpretService {
         return dot / (Math.sqrt(magA) * Math.sqrt(magB));
     }
 
+    private String resolveSql(String sql) {
+        return tableResolver == null ? sql : tableResolver.resolveSql(sql);
+    }
+
+    private String resolveTableName(String logicalName) {
+        return tableResolver == null ? logicalName : tableResolver.resolveTableName(logicalName);
+    }
+
     private boolean queryClassMatches(String requestQueryClass, String rowQueryClass) {
         if (requestQueryClass == null || requestQueryClass.isBlank()) {
             return true;
@@ -2517,7 +2572,7 @@ public class SemanticInterpretService {
                 ORDER BY COALESCE(priority, 999999), option_label
                 """);
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList(sql.toString(), params);
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql(sql.toString()), params);
             List<Map<String, Object>> out = new ArrayList<>();
             for (Map<String, Object> row : rows) {
                 Map<String, Object> option = new LinkedHashMap<>();
@@ -2544,7 +2599,7 @@ public class SemanticInterpretService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT entity_key,
                            query_class_key,
                            field_key,
@@ -2556,7 +2611,7 @@ public class SemanticInterpretService {
                     FROM ce_semantic_ambiguity_option
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999), option_label
-                    """, Map.of());
+                    """), Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -2569,7 +2624,7 @@ public class SemanticInterpretService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT concept_key,
                            concept_kind,
                            description,
@@ -2578,7 +2633,7 @@ public class SemanticInterpretService {
                     FROM ce_semantic_concept
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999), concept_key
-                    """, Map.of());
+                    """), Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -2591,14 +2646,14 @@ public class SemanticInterpretService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT base_table AS base_table_name,
                            join_table AS join_table_name,
                            priority AS join_priority
                     FROM ce_semantic_join_hint
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999), base_table, join_table
-                    """, Map.of());
+                    """), Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -2606,20 +2661,36 @@ public class SemanticInterpretService {
     }
 
     private List<Map<String, Object>> loadSemanticEntityRows() {
+        if (staticCacheService != null) {
+            List<Map<String, Object>> cached = normalizeDbRows(staticCacheService.getAllSemanticEntities());
+            if (!cached.isEmpty()) {
+                return cached;
+            }
+        }
         NamedParameterJdbcTemplate jdbc = jdbcTemplateProvider.getIfAvailable();
         if (jdbc == null) {
             return List.of();
         }
+        String entityTable = resolveTableName(K_SEMANTIC_ENTITY);
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
-                    SELECT *
-                    FROM ce_semantic_entity
-                    WHERE enabled = true
-                    ORDER BY COALESCE(priority, 999999)
-                    """, Map.of());
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                    "SELECT * FROM " + entityTable + " WHERE enabled = true ORDER BY COALESCE(priority, 999999)",
+                    Map.of()
+            );
+            if (rows.isEmpty()) {
+                rows = jdbc.queryForList(
+                        "SELECT * FROM " + entityTable + " ORDER BY COALESCE(priority, 999999)",
+                        Map.of()
+                );
+            }
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
-            return List.of();
+            try {
+                List<Map<String, Object>> fallbackRows = jdbc.queryForList("SELECT * FROM " + entityTable, Map.of());
+                return normalizeDbRows(fallbackRows);
+            } catch (Exception fallbackIgnored) {
+                return List.of();
+            }
         }
     }
 
@@ -2629,12 +2700,12 @@ public class SemanticInterpretService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT *
                     FROM ce_semantic_relationship
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999)
-                    """, Map.of());
+                    """), Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -2647,12 +2718,12 @@ public class SemanticInterpretService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT *
                     FROM ce_semantic_value_pattern
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999)
-                    """, Map.of());
+                    """), Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -2665,7 +2736,7 @@ public class SemanticInterpretService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT concept_key,
                            entity_key,
                            field_key,
@@ -2678,7 +2749,7 @@ public class SemanticInterpretService {
                     FROM ce_semantic_mapping
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999), entity_key, field_key
-                    """, Map.of());
+                    """), Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -2691,7 +2762,7 @@ public class SemanticInterpretService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT query_class_key,
                            description,
                            base_table_name,
@@ -2702,7 +2773,7 @@ public class SemanticInterpretService {
                     FROM ce_semantic_query_class
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999), query_class_key
-                    """, Map.of());
+                    """), Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -2715,7 +2786,7 @@ public class SemanticInterpretService {
             return List.of();
         }
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT concept_key,
                            synonym_text AS synonym,
                            confidence_score AS confidence,
@@ -2723,7 +2794,7 @@ public class SemanticInterpretService {
                     FROM ce_semantic_synonym
                     WHERE enabled = true
                     ORDER BY COALESCE(priority, 999999), synonym_text
-                    """, Map.of());
+                    """), Map.of());
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -2762,7 +2833,7 @@ public class SemanticInterpretService {
                 LIMIT 200
                 """;
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList(sql, params);
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql(sql), params);
             return normalizeDbRows(rows);
         } catch (Exception ignored) {
             return List.of();
@@ -3472,6 +3543,117 @@ public class SemanticInterpretService {
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    private Map<String, Object> buildProcessTraceAudit(String question,
+                                                       SemanticInterpretRequest request,
+                                                       PromptPackage promptPackage,
+                                                       String combinedPrompt) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, Object> meta = promptPackage == null ? Map.of() : safeMap(promptPackage.meta());
+        Map<String, Object> vars = safeMap(meta.get("vars"));
+        Map<String, Object> promptMutation = safeMap(meta.get("promptMutation"));
+        List<String> notes = new ArrayList<>();
+        notes.add("Diagnostic snapshot captured before LLM call.");
+        if (Boolean.TRUE.equals(promptMutation.get("userPromptAltered"))) {
+            notes.add("User prompt was altered during interpretation preprocessing.");
+        } else {
+            notes.add("User prompt was not altered during interpretation preprocessing.");
+        }
+        Object mutationNotes = promptMutation.get("notes");
+        if (mutationNotes instanceof List<?> mutationNoteList) {
+            for (Object note : mutationNoteList) {
+                if (note != null && !String.valueOf(note).isBlank()) {
+                    notes.add(String.valueOf(note));
+                }
+            }
+        }
+        out.put("tool", TOOL_CODE);
+        out.put("version", VERSION);
+        out.put("question_original", defaultIfBlank(question, ""));
+        out.put("question_retrieval", questionForSemanticRetrieval(question, request));
+        out.put("promptSource", meta.getOrDefault("promptSource", "unknown"));
+        out.put("templateId", meta.get("templateId"));
+        out.put("responseType", meta.get("responseType"));
+        out.put("promptMutation", promptMutation);
+        Map<String, Object> semanticTableStats = collectSemanticTableStats(vars);
+        out.put("semanticTableStats", semanticTableStats);
+        List<String> emptySemanticKeys = emptySemanticKeys(semanticTableStats);
+        out.put("emptySemanticKeys", emptySemanticKeys);
+        if (!emptySemanticKeys.isEmpty()) {
+            notes.add("Some semantic sections were empty: " + String.join(", ", emptySemanticKeys));
+            notes.add("Empty-section hints: DB rows missing, enabled-filter mismatch, table-name mapping mismatch, or SQL/read exception.");
+        }
+        Map<String, Object> promptPreview = new LinkedHashMap<>();
+        promptPreview.put("systemPrompt", trimForAudit(promptPackage == null ? null : promptPackage.systemPrompt()));
+        promptPreview.put("userPrompt", trimForAudit(promptPackage == null ? null : promptPackage.userPrompt()));
+        promptPreview.put("combinedPrompt", trimForAudit(combinedPrompt));
+        out.put("promptPreview", promptPreview);
+        out.put("notes", notes);
+        return out;
+    }
+
+    private String trimForAudit(String value) {
+        if (value == null) {
+            return null;
+        }
+        int max = 8000;
+        if (value.length() <= max) {
+            return value;
+        }
+        return value.substring(0, max) + "...[truncated]";
+    }
+
+    private boolean safeEquals(String left, String right) {
+        if (left == null) {
+            return right == null;
+        }
+        return left.equals(right);
+    }
+
+    private Map<String, Object> collectSemanticTableStats(Map<String, Object> vars) {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put(K_SEMANTIC_AMBIGUITY_OPTION, sizeOfVar(vars.get(K_SEMANTIC_AMBIGUITY_OPTION)));
+        stats.put(K_SEMANTIC_CONCEPT, sizeOfVar(vars.get(K_SEMANTIC_CONCEPT)));
+        stats.put(K_SEMANTIC_ENTITY, sizeOfVar(vars.get(K_SEMANTIC_ENTITY)));
+        stats.put(K_SEMANTIC_JOIN_HINT, sizeOfVar(vars.get(K_SEMANTIC_JOIN_HINT)));
+        stats.put(K_SEMANTIC_MAPPING, sizeOfVar(vars.get(K_SEMANTIC_MAPPING)));
+        stats.put(K_SEMANTIC_QUERY_CLASS, sizeOfVar(vars.get(K_SEMANTIC_QUERY_CLASS)));
+        stats.put(K_SEMANTIC_RELATIONSHIP, sizeOfVar(vars.get(K_SEMANTIC_RELATIONSHIP)));
+        stats.put(K_SEMANTIC_SYNONYM, sizeOfVar(vars.get(K_SEMANTIC_SYNONYM)));
+        stats.put(K_SEMANTIC_VALUE_PATTERN, sizeOfVar(vars.get(K_SEMANTIC_VALUE_PATTERN)));
+        stats.put(K_SEMANTIC_CONCEPT_EMBEDDING, sizeOfVar(vars.get(K_SEMANTIC_CONCEPT_EMBEDDING)));
+        return stats;
+    }
+
+    private List<String> emptySemanticKeys(Map<String, Object> semanticTableStats) {
+        if (semanticTableStats == null || semanticTableStats.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : semanticTableStats.entrySet()) {
+            Integer size = toInt(entry.getValue(), 0);
+            if (size == null || size <= 0) {
+                out.add(entry.getKey());
+            }
+        }
+        return out;
+    }
+
+    private int sizeOfVar(Object value) {
+        if (value == null) {
+            return 0;
+        }
+        if (value instanceof List<?> list) {
+            return list.size();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.size();
+        }
+        if (value instanceof String text) {
+            return text.isBlank() ? 0 : 1;
+        }
+        return 1;
     }
 
     private String text(JsonNode node, String field) {

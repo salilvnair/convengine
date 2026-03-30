@@ -1,9 +1,10 @@
 package com.github.salilvnair.convengine.cache;
 
-import com.github.salilvnair.convengine.config.ConvEngineEntityConfig;
+import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.*;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.SemanticTableNames;
 import com.github.salilvnair.convengine.repo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,8 +43,9 @@ public class StaticConfigurationCacheService {
     private final VerboseRepository verboseRepo;
     private final CeConfigRepository ceConfigRepo;
     private final UserQueryKnowledgeRepository userQueryKnowledgeRepository;
-    private final ConvEngineEntityConfig entityConfig;
     private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
+    @Autowired(required = false)
+    private ConvEngineSqlTableResolver tableResolver;
     @Autowired
     private ObjectProvider<StaticConfigurationCacheService> selfProvider;
 
@@ -141,57 +143,57 @@ public class StaticConfigurationCacheService {
 
     @Cacheable("ce_semantic_ambiguity_option")
     public List<Map<String, Object>> getAllSemanticAmbiguityOptions() {
-        return loadSemanticTable("ce_semantic_ambiguity_option");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_AMBIGUITY_OPTION);
     }
 
     @Cacheable("ce_semantic_concept")
     public List<Map<String, Object>> getAllSemanticConcepts() {
-        return loadSemanticTable("ce_semantic_concept");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_CONCEPT);
     }
 
     @Cacheable("ce_semantic_concept_embedding")
     public List<Map<String, Object>> getAllSemanticEmbeddingCatalog() {
-        return loadSemanticTable("ce_semantic_concept_embedding");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_CONCEPT_EMBEDDING);
     }
 
     @Cacheable("ce_semantic_entity")
     public List<Map<String, Object>> getAllSemanticEntities() {
-        return loadSemanticTable("ce_semantic_entity");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_ENTITY);
     }
 
     @Cacheable("ce_semantic_join_hint")
     public List<Map<String, Object>> getAllSemanticJoinHints() {
-        return loadSemanticTable("ce_semantic_join_hint");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_JOIN_HINT);
     }
 
     @Cacheable("ce_semantic_join_path")
     public List<Map<String, Object>> getAllSemanticJoinPaths() {
-        return loadSemanticTable("ce_semantic_join_path");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_JOIN_PATH);
     }
 
     @Cacheable("ce_semantic_mapping")
     public List<Map<String, Object>> getAllSemanticMappings() {
-        return loadSemanticTable("ce_semantic_mapping");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_MAPPING);
     }
 
     @Cacheable("ce_semantic_query_class")
     public List<Map<String, Object>> getAllSemanticQueryClasses() {
-        return loadSemanticTable("ce_semantic_query_class");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_QUERY_CLASS);
     }
 
     @Cacheable("ce_semantic_relationship")
     public List<Map<String, Object>> getAllSemanticRelationships() {
-        return loadSemanticTable("ce_semantic_relationship");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_RELATIONSHIP);
     }
 
     @Cacheable("ce_semantic_synonym")
     public List<Map<String, Object>> getAllSemanticSynonyms() {
-        return loadSemanticTable("ce_semantic_synonym");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_SYNONYM);
     }
 
     @Cacheable("ce_semantic_value_pattern")
     public List<Map<String, Object>> getAllSemanticValuePatterns() {
-        return loadSemanticTable("ce_semantic_value_pattern");
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_VALUE_PATTERN);
     }
 
     // --- Helper Filter Methods ---
@@ -205,7 +207,7 @@ public class StaticConfigurationCacheService {
         if (jdbc == null || tableName == null || tableName.isBlank()) {
             return List.of();
         }
-        String resolvedTableName = resolveConfiguredTableName(tableName);
+        String resolvedTableName = tableResolver == null ? tableName : tableResolver.resolveTableName(tableName);
         try {
             return jdbc.queryForList("SELECT * FROM " + resolvedTableName, Map.of());
         } catch (Exception ex) {
@@ -213,23 +215,6 @@ public class StaticConfigurationCacheService {
                     tableName, resolvedTableName, ex.getMessage());
             return List.of();
         }
-    }
-
-    private String resolveConfiguredTableName(String logicalTableName) {
-        if (logicalTableName == null || logicalTableName.isBlank()) {
-            return logicalTableName;
-        }
-        String normalized = logicalTableName.trim();
-        String upper = normalized.toUpperCase(Locale.ROOT);
-        if (!upper.startsWith("CE_")) {
-            return normalized;
-        }
-        String key = upper.substring(3);
-        if (entityConfig == null || entityConfig.getTables() == null || entityConfig.getTables().isEmpty()) {
-            return normalized;
-        }
-        String mapped = entityConfig.getTables().get(key);
-        return (mapped == null || mapped.isBlank()) ? normalized : mapped.trim();
     }
 
     public List<CeConfig> findConfigParams(String type, String configKey) {

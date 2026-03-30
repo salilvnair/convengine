@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
+import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.mcp.McpSqlGuardrail;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.SemanticTableNames;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.CanonicalIntent;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.SemanticAmbiguity;
 import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.SemanticCompiledSql;
@@ -22,6 +24,7 @@ import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublishe
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +48,11 @@ public class SemanticLlmQueryService {
 
     private static final String TOOL_CODE = "db.semantic.query";
     private static final String VERSION = "v2-llm";
+    private static final String K_SEMANTIC_QUERY_CLASS = SemanticTableNames.SEMANTIC_QUERY_CLASS;
+    private static final String K_SEMANTIC_MAPPING = SemanticTableNames.SEMANTIC_MAPPING;
+    private static final String K_SEMANTIC_SYNONYM = SemanticTableNames.SEMANTIC_SYNONYM;
+    private static final String K_SEMANTIC_JOIN_PATH = SemanticTableNames.SEMANTIC_JOIN_PATH;
+    private static final String K_SEMANTIC_CONCEPT = SemanticTableNames.SEMANTIC_CONCEPT;
     private static final int DEFAULT_SQL_RETRY_MAX_ATTEMPTS = 3;
     private static final int DEFAULT_FAILURE_EXAMPLE_TOP_K = 3;
     private static final int DEFAULT_FAILURE_EXAMPLE_CANDIDATE_LIMIT = 120;
@@ -61,6 +69,8 @@ public class SemanticLlmQueryService {
     private final VerboseMessagePublisher verbosePublisher;
     private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
     private final ObjectMapper mapper = new ObjectMapper();
+    @Autowired(required = false)
+    private ConvEngineSqlTableResolver tableResolver;
     private String querySystemPrompt;
     private String queryUserPrompt;
     private String querySchema;
@@ -341,7 +351,7 @@ public class SemanticLlmQueryService {
         }
         String intentEntity = safeUpper(intent == null ? null : intent.entity());
         String queryClass = safeUpper(intent == null ? null : intent.queryClass());
-        Object mappingsObj = metadataScope.get("ce_semantic_mapping");
+        Object mappingsObj = metadataScope.get(K_SEMANTIC_MAPPING);
         if (!(mappingsObj instanceof List<?> rows) || rows.isEmpty()) {
             return Set.of();
         }
@@ -399,13 +409,13 @@ public class SemanticLlmQueryService {
         String queryClass = intent == null ? "" : safeUpper(intent.queryClass());
         List<String> hints = new ArrayList<>();
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT root_cause_code, reason
                     FROM ce_semantic_query_failures
                     WHERE stage_code = 'POSTGRES_QUERY_EXECUTION'
                     ORDER BY created_at DESC
                     LIMIT 50
-                    """, Map.of());
+                    """), Map.of());
             for (Map<String, Object> row : rows) {
                 String reason = text(row, "reason");
                 if (reason.contains("timestamp with time zone >= character varying")
@@ -453,14 +463,14 @@ public class SemanticLlmQueryService {
         List<Float> queryEmbedding = generateEmbedding(standaloneQuery);
         String queryClass = safeUpper(intent == null ? null : intent.queryClass());
         try {
-            List<Map<String, Object>> rows = jdbc.queryForList("""
+            List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
                     SELECT generated_sql, corrected_sql, reason, root_cause_code, metadata_json, question_embedding
                     FROM ce_semantic_query_failures
                     WHERE stage_code = 'POSTGRES_QUERY_EXECUTION'
                       AND generated_sql IS NOT NULL
                     ORDER BY created_at DESC
                     LIMIT :candidateLimit
-                    """, Map.of("candidateLimit", candidateLimit));
+                    """), Map.of("candidateLimit", candidateLimit));
             List<FailureExampleCandidate> candidates = new ArrayList<>();
             for (Map<String, Object> row : rows) {
                 String generatedSql = text(row, "generated_sql");
@@ -738,11 +748,11 @@ public class SemanticLlmQueryService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("allowed_entity_keys", entityKeys);
         out.put("allowed_fields_by_entity", fieldsByEntity);
-        out.put("ce_semantic_query_class", scopedQueryClasses);
-        out.put("ce_semantic_mapping", scopedMappings);
-        out.put("ce_semantic_synonym", scopedSynonyms);
-        out.put("ce_semantic_join_path", scopedJoinPaths);
-        out.put("ce_semantic_concept", scopedConcepts);
+        out.put(K_SEMANTIC_QUERY_CLASS, scopedQueryClasses);
+        out.put(K_SEMANTIC_MAPPING, scopedMappings);
+        out.put(K_SEMANTIC_SYNONYM, scopedSynonyms);
+        out.put(K_SEMANTIC_JOIN_PATH, scopedJoinPaths);
+        out.put(K_SEMANTIC_CONCEPT, scopedConcepts);
         return out;
     }
 
@@ -993,6 +1003,10 @@ public class SemanticLlmQueryService {
             return session.getStandaloneQuery().trim();
         }
         return fallbackQuestion == null ? "" : fallbackQuestion;
+    }
+
+    private String resolveSql(String sql) {
+        return tableResolver == null ? sql : tableResolver.resolveSql(sql);
     }
 
     private record ValidationResult(boolean valid, String reason) {
