@@ -5,6 +5,7 @@ import com.github.salilvnair.convengine.engine.constants.MatchTypeConstants;
 import com.github.salilvnair.convengine.engine.type.RuleAction;
 import com.github.salilvnair.convengine.entity.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class StaticScopeIntegrityValidator {
 
     private final StaticConfigurationCacheService staticCacheService;
@@ -48,35 +50,42 @@ public class StaticScopeIntegrityValidator {
         allowedStates.add(ConvEngineValue.UNKNOWN);
 
         List<String> violations = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
         validateScope("ce_rule", staticCacheService.getAllRules().stream().filter(CeRule::isEnabled).toList(), CeRule::getRuleId, CeRule::getIntentCode,
-                CeRule::getStateCode, allowedIntents, allowedStates, violations);
+                CeRule::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateScope("ce_pending_action", staticCacheService.getAllPendingActions().stream().filter(CePendingAction::isEnabled).toList(), CePendingAction::getPendingActionId,
-                CePendingAction::getIntentCode, CePendingAction::getStateCode, allowedIntents, allowedStates, violations);
+                CePendingAction::getIntentCode, CePendingAction::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateScope("ce_prompt_template", staticCacheService.getAllPromptTemplates().stream().filter(CePromptTemplate::isEnabled).toList(), CePromptTemplate::getTemplateId,
-                CePromptTemplate::getIntentCode, CePromptTemplate::getStateCode, allowedIntents, allowedStates, violations);
+                CePromptTemplate::getIntentCode, CePromptTemplate::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateScope("ce_response", staticCacheService.getAllResponses().stream().filter(CeResponse::isEnabled).toList(), CeResponse::getResponseId,
-                CeResponse::getIntentCode, CeResponse::getStateCode, allowedIntents, allowedStates, violations);
+                CeResponse::getIntentCode, CeResponse::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateScope("ce_container_config", staticCacheService.getAllContainerConfigs().stream().filter(CeContainerConfig::isEnabled).toList(), CeContainerConfig::getId,
                 CeContainerConfig::getIntentCode, CeContainerConfig::getStateCode, allowedIntents, allowedStates,
-                violations);
+                violations, warnings);
         validateScope("ce_output_schema", staticCacheService.getAllOutputSchemas().stream().filter(CeOutputSchema::isEnabled).toList(), CeOutputSchema::getSchemaId,
-                CeOutputSchema::getIntentCode, CeOutputSchema::getStateCode, allowedIntents, allowedStates, violations);
+                CeOutputSchema::getIntentCode, CeOutputSchema::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateScope("ce_mcp_tool", staticCacheService.getAllMcpTools().stream().filter(CeMcpTool::isEnabled).toList(), CeMcpTool::getToolId, CeMcpTool::getIntentCode,
-                CeMcpTool::getStateCode, allowedIntents, allowedStates, violations);
+                CeMcpTool::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateScope("ce_mcp_planner", staticCacheService.getAllMcpPlanners().stream().filter(CeMcpPlanner::isEnabled).toList(), CeMcpPlanner::getPlannerId,
-                CeMcpPlanner::getIntentCode, CeMcpPlanner::getStateCode, allowedIntents, allowedStates, violations);
+                CeMcpPlanner::getIntentCode, CeMcpPlanner::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateScope("ce_verbose", staticCacheService.getAllVerboses().stream().filter(CeVerbose::isEnabled).toList(), CeVerbose::getVerboseId,
-                CeVerbose::getIntentCode, CeVerbose::getStateCode, allowedIntents, allowedStates, violations);
+                CeVerbose::getIntentCode, CeVerbose::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateVerboseRows(staticCacheService.getAllVerboses().stream().filter(CeVerbose::isEnabled).toList(),
                 violations);
         validateScope("ce_intent_classifier", staticCacheService.getAllIntentClassifiers().stream().filter(CeIntentClassifier::isEnabled).toList(),
                 CeIntentClassifier::getClassifierId, CeIntentClassifier::getIntentCode, CeIntentClassifier::getStateCode,
-                allowedIntents, allowedStates, violations);
+                allowedIntents, allowedStates, violations, warnings);
 
         if (!violations.isEmpty()) {
             throw new IllegalStateException(
                     "ConvEngine static scope validation failed. Fix intent_code/state_code values. Violations: "
                             + String.join(" | ", violations));
+        }
+        if (!warnings.isEmpty()) {
+            log.warn(
+                    "ConvEngine static scope validation skipped {} rows referencing disabled/missing intents. Those rows are treated as inactive. {}",
+                    warnings.size(),
+                    String.join(" | ", warnings));
         }
     }
 
@@ -88,7 +97,8 @@ public class StaticScopeIntegrityValidator {
             ValueExtractor<T> stateExtractor,
             Set<String> allowedIntents,
             Set<String> allowedStates,
-            List<String> violations) {
+            List<String> violations,
+            List<String> warnings) {
         for (T row : rows) {
             String rowId = String.valueOf(idExtractor.id(row));
             String intent = normalize(intentExtractor.value(row));
@@ -103,7 +113,8 @@ public class StaticScopeIntegrityValidator {
                 continue;
             }
             if (!allowedIntents.contains(intent)) {
-                violations.add(table + "[" + rowId + "] invalid intent_code=" + intent);
+                warnings.add(table + "[" + rowId + "] inactive intent_code=" + intent);
+                continue;
             }
             if (!allowedStates.contains(state)) {
                 violations.add(table + "[" + rowId + "] invalid state_code=" + state);

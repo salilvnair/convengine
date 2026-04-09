@@ -376,9 +376,23 @@ public class StaticConfigurationCacheService {
 
     // Intent Classifiers
     public List<CeIntentClassifier> findEnabledIntentClassifiers() {
+        List<String> enabledIntentCodes = self().findEnabledIntents().stream()
+                .map(CeIntent::getIntentCode)
+                .filter(code -> code != null && !code.isBlank())
+                .map(code -> code.trim().toUpperCase(Locale.ROOT))
+                .toList();
         return self().getAllIntentClassifiers().stream()
                 .filter(CeIntentClassifier::isEnabled)
-                .sorted(Comparator.comparing(CeIntentClassifier::getPriority))
+                // If an intent has been disabled/removed in ce_intent, treat linked classifiers as inactive.
+                .filter(classifier -> {
+                    if (classifier.getIntentCode() == null || classifier.getIntentCode().isBlank()) {
+                        return false;
+                    }
+                    String normalizedIntent = classifier.getIntentCode().trim().toUpperCase(Locale.ROOT);
+                    return enabledIntentCodes.contains(normalizedIntent);
+                })
+                .sorted(Comparator.comparing(CeIntentClassifier::getPriority,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
     }
 
