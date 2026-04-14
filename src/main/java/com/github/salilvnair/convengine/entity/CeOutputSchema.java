@@ -32,6 +32,9 @@ public class CeOutputSchema {
     @Column(name = "description")
     private String description;
 
+    @Column(name = "schema_type")
+    private String schemaType;
+
     @Column(name = "enabled", nullable = false)
     private boolean enabled;
 

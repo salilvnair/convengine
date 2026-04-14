@@ -7,12 +7,12 @@ import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.engine.history.core.ConversationHistoryProvider;
-import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.response.service.ResponseTransformerService;
+import com.github.salilvnair.convengine.engine.response.type.ResponseTransformType;
 import com.github.salilvnair.convengine.engine.response.type.factory.ResponseTypeResolverFactory;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.ResponseType;
@@ -93,13 +93,13 @@ public class ResponseResolutionStep implements EngineStep {
         if (ResponseType.DERIVED.name().equalsIgnoreCase(resp.getResponseType())) {
             template = staticCacheService.getAllPromptTemplates().stream()
                     .filter(CePromptTemplate::isEnabled)
-                    .filter(t -> resp.getOutputFormat().equalsIgnoreCase(t.getResponseType()))
+                    .filter(t -> resp.getOutputFormat().equalsIgnoreCase(t.getOutputFormat()))
                     .filter(t -> matchesOrNull(t.getIntentCode(), session.getIntent()))
                     .filter(t -> matchesOrNull(t.getStateCode(), session.getState())
                             || matches(t.getStateCode(), ConvEngineValue.ANY))
                     .max(Comparator.comparingInt(t -> score(t, session)))
                     .orElseThrow(() -> new IllegalStateException(
-                            "No ce_prompt_template found for response_type=" +
+                            "No ce_prompt_template found for output_format=" +
                                     resp.getOutputFormat() + ", intent=" + session.getIntent() + ", state="
                                     + session.getState()));
         }
@@ -108,14 +108,15 @@ public class ResponseResolutionStep implements EngineStep {
                 .resolve(session, PromptTemplate.initFrom(template), ResponseTemplate.initFrom(resp));
 
         OutputPayload transformedOutput = responseTransformerService.transformIfApplicable(session.getPayload(),
-                session, session.getInputParams());
+                session, session.getInputParams(), ResponseTransformType.LLM);
         session.setPayload(transformedOutput);
 
-        Object payloadValue = switch (session.getPayload()) {
-            case TextPayload(String text) -> text;
-            case JsonPayload(String json) -> json;
-            case null -> null;
-        };
+        Object payloadValue = null;
+        if (session.getPayload() instanceof TextPayload textPayload) {
+            payloadValue = textPayload.text();
+        } else if (session.getPayload() instanceof JsonPayload jsonPayload) {
+            payloadValue = jsonPayload.json();
+        }
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
         outputPayload.put(ConvEnginePayloadKey.OUTPUT, payloadValue);
@@ -143,7 +144,7 @@ public class ResponseResolutionStep implements EngineStep {
         }
 
         candidates.sort((a, b) -> Integer.compare(responseScore(b, session), responseScore(a, session)));
-        return Optional.ofNullable(candidates.getFirst());
+        return Optional.ofNullable(candidates.get(0));
     }
 
     private boolean matches(String left, String right) {

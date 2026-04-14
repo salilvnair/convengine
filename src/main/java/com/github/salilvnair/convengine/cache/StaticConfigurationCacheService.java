@@ -1,14 +1,17 @@
 package com.github.salilvnair.convengine.cache;
 
+import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.*;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
+import com.github.salilvnair.convengine.engine.mcp.query.semantic.SemanticTableNames;
 import com.github.salilvnair.convengine.repo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -16,6 +19,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -38,6 +42,10 @@ public class StaticConfigurationCacheService {
     private final PolicyRepository policyRepo;
     private final VerboseRepository verboseRepo;
     private final CeConfigRepository ceConfigRepo;
+    private final UserQueryKnowledgeRepository userQueryKnowledgeRepository;
+    private final ObjectProvider<NamedParameterJdbcTemplate> jdbcTemplateProvider;
+    @Autowired(required = false)
+    private ConvEngineSqlTableResolver tableResolver;
     @Autowired
     private ObjectProvider<StaticConfigurationCacheService> selfProvider;
 
@@ -128,10 +136,85 @@ public class StaticConfigurationCacheService {
         return verboseRepo.findAll();
     }
 
+    @Cacheable("ce_user_query_knowledge")
+    public List<CeUserQueryKnowledge> getAllUserQueryKnowledge() {
+        return userQueryKnowledgeRepository.findAll();
+    }
+
+    @Cacheable("ce_semantic_ambiguity_option")
+    public List<Map<String, Object>> getAllSemanticAmbiguityOptions() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_AMBIGUITY_OPTION);
+    }
+
+    @Cacheable("ce_semantic_concept")
+    public List<Map<String, Object>> getAllSemanticConcepts() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_CONCEPT);
+    }
+
+    @Cacheable("ce_semantic_concept_embedding")
+    public List<Map<String, Object>> getAllSemanticEmbeddingCatalog() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_CONCEPT_EMBEDDING);
+    }
+
+    @Cacheable("ce_semantic_entity")
+    public List<Map<String, Object>> getAllSemanticEntities() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_ENTITY);
+    }
+
+    @Cacheable("ce_semantic_join_hint")
+    public List<Map<String, Object>> getAllSemanticJoinHints() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_JOIN_HINT);
+    }
+
+    @Cacheable("ce_semantic_join_path")
+    public List<Map<String, Object>> getAllSemanticJoinPaths() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_JOIN_PATH);
+    }
+
+    @Cacheable("ce_semantic_mapping")
+    public List<Map<String, Object>> getAllSemanticMappings() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_MAPPING);
+    }
+
+    @Cacheable("ce_semantic_query_class")
+    public List<Map<String, Object>> getAllSemanticQueryClasses() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_QUERY_CLASS);
+    }
+
+    @Cacheable("ce_semantic_relationship")
+    public List<Map<String, Object>> getAllSemanticRelationships() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_RELATIONSHIP);
+    }
+
+    @Cacheable("ce_semantic_synonym")
+    public List<Map<String, Object>> getAllSemanticSynonyms() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_SYNONYM);
+    }
+
+    @Cacheable("ce_semantic_value_pattern")
+    public List<Map<String, Object>> getAllSemanticValuePatterns() {
+        return loadSemanticTable(SemanticTableNames.SEMANTIC_VALUE_PATTERN);
+    }
+
     // --- Helper Filter Methods ---
 
     private StaticConfigurationCacheService self() {
         return selfProvider.getObject();
+    }
+
+    private List<Map<String, Object>> loadSemanticTable(String tableName) {
+        NamedParameterJdbcTemplate jdbc = jdbcTemplateProvider.getIfAvailable();
+        if (jdbc == null || tableName == null || tableName.isBlank()) {
+            return List.of();
+        }
+        String resolvedTableName = tableResolver == null ? tableName : tableResolver.resolveTableName(tableName);
+        try {
+            return jdbc.queryForList("SELECT * FROM " + resolvedTableName, Map.of());
+        } catch (Exception ex) {
+            log.debug("Static semantic cache load skipped for table={} resolved={} cause={}",
+                    tableName, resolvedTableName, ex.getMessage());
+            return List.of();
+        }
     }
 
     public List<CeConfig> findConfigParams(String type, String configKey) {
@@ -223,6 +306,16 @@ public class StaticConfigurationCacheService {
                 .min(Comparator.comparing(CeOutputSchema::getPriority));
     }
 
+    public Optional<CeOutputSchema> findFirstOutputSchema(String intentCode, String stateCode, String schemaType) {
+        String expected = normalizeSchemaType(schemaType);
+        return self().getAllOutputSchemas().stream()
+                .filter(CeOutputSchema::isEnabled)
+                .filter(s -> s.getIntentCode() != null && s.getIntentCode().equalsIgnoreCase(intentCode))
+                .filter(s -> s.getStateCode() != null && s.getStateCode().equalsIgnoreCase(stateCode))
+                .filter(s -> normalizeSchemaType(s.getSchemaType()).equalsIgnoreCase(expected))
+                .min(Comparator.comparing(CeOutputSchema::getPriority));
+    }
+
     public Optional<CeOutputSchema> findOutputSchemaById(Long schemaId) {
         if (schemaId == null) {
             return Optional.empty();
@@ -238,7 +331,7 @@ public class StaticConfigurationCacheService {
             String stateCode) {
         return self().getAllPromptTemplates().stream()
                 .filter(CePromptTemplate::isEnabled)
-                .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
+                .filter(p -> p.getOutputFormat() != null && p.getOutputFormat().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(p -> p.getStateCode() != null && p.getStateCode().equalsIgnoreCase(stateCode))
                 .max(Comparator.comparing(CePromptTemplate::getCreatedAt));
@@ -247,7 +340,7 @@ public class StaticConfigurationCacheService {
     public Optional<CePromptTemplate> findFirstPromptTemplate(String responseType, String intentCode) {
         return self().getAllPromptTemplates().stream()
                 .filter(CePromptTemplate::isEnabled)
-                .filter(p -> p.getResponseType() != null && p.getResponseType().equalsIgnoreCase(responseType))
+                .filter(p -> p.getOutputFormat() != null && p.getOutputFormat().equalsIgnoreCase(responseType))
                 .filter(p -> p.getIntentCode() != null && p.getIntentCode().equalsIgnoreCase(intentCode))
                 .filter(p -> p.getStateCode() != null && p.getStateCode().equalsIgnoreCase(ConvEngineValue.ANY))
                 .max(Comparator.comparing(CePromptTemplate::getCreatedAt));
@@ -283,9 +376,23 @@ public class StaticConfigurationCacheService {
 
     // Intent Classifiers
     public List<CeIntentClassifier> findEnabledIntentClassifiers() {
+        List<String> enabledIntentCodes = self().findEnabledIntents().stream()
+                .map(CeIntent::getIntentCode)
+                .filter(code -> code != null && !code.isBlank())
+                .map(code -> code.trim().toUpperCase(Locale.ROOT))
+                .toList();
         return self().getAllIntentClassifiers().stream()
                 .filter(CeIntentClassifier::isEnabled)
-                .sorted(Comparator.comparing(CeIntentClassifier::getPriority))
+                // If an intent has been disabled/removed in ce_intent, treat linked classifiers as inactive.
+                .filter(classifier -> {
+                    if (classifier.getIntentCode() == null || classifier.getIntentCode().isBlank()) {
+                        return false;
+                    }
+                    String normalizedIntent = classifier.getIntentCode().trim().toUpperCase(Locale.ROOT);
+                    return enabledIntentCodes.contains(normalizedIntent);
+                })
+                .sorted(Comparator.comparing(CeIntentClassifier::getPriority,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
     }
 
@@ -299,11 +406,20 @@ public class StaticConfigurationCacheService {
 
     // MCP Tools
     public List<CeMcpTool> findEnabledMcpTools(String intentCode, String stateCode) {
-        return self().getAllMcpTools().stream()
+        Map<String, CeMcpTool> bestByCode = new LinkedHashMap<>();
+        self().getAllMcpTools().stream()
                 .filter(CeMcpTool::isEnabled)
                 .filter(t -> isEligibleMcpScopeCode(t.getIntentCode(), intentCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getStateCode(), stateCode))
-                .toList(); // Not explicitly ordered in previous JPQL
+                .forEach(tool -> {
+                    String code = tool.getToolCode() == null ? "" : tool.getToolCode().trim().toLowerCase(Locale.ROOT);
+                    CeMcpTool existing = bestByCode.get(code);
+                    if (existing == null
+                            || mcpToolSpecificityScore(tool, intentCode, stateCode) > mcpToolSpecificityScore(existing, intentCode, stateCode)) {
+                        bestByCode.put(code, tool);
+                    }
+                });
+        return bestByCode.values().stream().toList();
     }
 
     public Optional<CeMcpTool> findMcpTool(String toolCode, String intentCode, String stateCode) {
@@ -312,7 +428,7 @@ public class StaticConfigurationCacheService {
                 .filter(t -> t.getToolCode() != null && t.getToolCode().equalsIgnoreCase(toolCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getIntentCode(), intentCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getStateCode(), stateCode))
-                .findFirst();
+                .max(Comparator.comparingInt(t -> mcpToolSpecificityScore(t, intentCode, stateCode)));
     }
 
     public Optional<CeMcpDbTool> findMcpDbTool(String toolCode) {
@@ -452,6 +568,23 @@ public class StaticConfigurationCacheService {
         return score;
     }
 
+    private int mcpToolSpecificityScore(CeMcpTool tool, String intentCode, String stateCode) {
+        int score = 0;
+        if (tool.getIntentCode() != null
+                && !tool.getIntentCode().isBlank()
+                && intentCode != null
+                && tool.getIntentCode().equalsIgnoreCase(intentCode)) {
+            score += 2;
+        }
+        if (tool.getStateCode() != null
+                && !tool.getStateCode().isBlank()
+                && stateCode != null
+                && tool.getStateCode().equalsIgnoreCase(stateCode)) {
+            score += 1;
+        }
+        return score;
+    }
+
     private void addRulesForKey(Map<String, List<CeRule>> lookup, List<CeRule> rules,
             String intentCode, String stateCode, String phase) {
         List<CeRule> bucket = lookup.get(buildRuleLookupKey(intentCode, stateCode, phase));
@@ -473,5 +606,12 @@ public class StaticConfigurationCacheService {
             return ConvEngineValue.ANY;
         }
         return value.trim().toUpperCase();
+    }
+
+    private String normalizeSchemaType(String value) {
+        if (value == null || value.isBlank()) {
+            return "SCHEMA_JSON";
+        }
+        return value.trim().toUpperCase(Locale.ROOT);
     }
 }

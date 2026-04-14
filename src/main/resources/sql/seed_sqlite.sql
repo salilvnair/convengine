@@ -205,6 +205,128 @@ INSERT INTO ce_config
 (config_id, config_type, config_key, config_value, enabled)
 VALUES(21, 'DialogueActStep', 'REGEX_GREETING', '^(\\s)*(hi|hello|hey|greetings|good morning|good afternoon|good evening|howdy)(\\s)*$', 1);
 
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(24, 'DefaultSemanticAstGenerator', 'SYSTEM_PROMPT', 'You are a semantic SQL AST planner.
+Return JSON only.
+Do not generate SQL text.
+Use semantic field keys only.
+Use where as boolean tree.
+Use exists for existence checks and not_exists true for anti existence.
+Use subquery_filters for scalar subquery comparisons.
+Use windows only for ROW_NUMBER ranking when needed.', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(25, 'DefaultSemanticAstGenerator', 'USER_PROMPT', 'Question: {{question}}
+Selected entity: {{selected_entity}}
+Selected entity description: {{selected_entity_description}}
+Allowed fields for selected entity: {{selected_entity_fields_json}}
+Allowed values by field (selected entity only): {{selected_entity_allowed_values_json}}
+Supported filter operators: {{supported_filter_operators_json}}
+Operator usage guide: {{supported_filter_operators_usage}}
+Relevant metrics: {{relevant_metrics_json}}
+Matched intent rules (max 2): {{matched_intent_rules_json}}
+Relevant value patterns: {{relevant_value_patterns_json}}
+Relevant relationships: {{relevant_relationships_json}}
+Relevant join hints: {{relevant_join_hints_json}}
+Relevant synonyms: {{relevant_synonyms_json}}
+Relevant rules: {{relevant_rules_json}}
+Allowed entities: {{allowed_entities}}
+Candidate entities: {{candidate_entities_json}}
+Candidate tables: {{candidate_tables_json}}
+Join path: {{join_path_json}}
+Guidance:
+- Use ONLY fields from Allowed fields for selected entity.
+- If question field does not belong to selected entity, switch to the correct allowed entity.
+- If a field has allowed_values, only use those values in filters.
+- Do NOT invent field names.
+- Prefer supported operators from "Supported filter operators".
+- If no supported operator fits, you may derive a new operator token in UPPER_SNAKE_CASE and use it in op.
+- For derived/unknown operators, keep value explicit and deterministic; do not emit SQL.
+Context JSON: {{context_json}}', 1);
+
+INSERT INTO ce_config
+(config_id, config_type, config_key, config_value, enabled)
+VALUES(26, 'DefaultSemanticAstGenerator', 'SCHEMA_PROMPT', '{
+  "type":"object",
+  "additionalProperties":false,
+  "required":["astVersion","entity","select","projections","filters","where","exists","subquery_filters","sort","group_by","metrics","windows","having","limit","offset","distinct","join_hints"],
+  "properties":{
+    "astVersion":{"type":"string","enum":["v1"]},
+    "entity":{"type":"string"},
+    "select":{"type":"array","items":{"type":"string"}},
+    "projections":{
+      "type":"array",
+      "items":{"type":"object","additionalProperties":false,"required":["field","alias"],"properties":{"field":{"type":"string"},"alias":{"type":["string","null"]}}}
+    },
+    "filters":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "additionalProperties":false,
+        "required":["field","op","value"],
+        "properties":{
+          "field":{"type":"string"},
+          "op":{"type":"string"},
+          "value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}
+        }
+      }
+    },
+    "where":{"$ref":"#/$defs/filter_group"},
+    "exists":{
+      "type":"array",
+      "items":{"type":"object","additionalProperties":false,"required":["entity","where","not_exists"],"properties":{"entity":{"type":"string"},"where":{"$ref":"#/$defs/filter_group"},"not_exists":{"type":"boolean"}}}
+    },
+    "subquery_filters":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "additionalProperties":false,
+        "required":["field","op","subquery"],
+        "properties":{
+          "field":{"type":"string"},
+          "op":{"type":"string"},
+          "subquery":{
+            "type":"object",
+            "additionalProperties":false,
+            "required":["entity","select_field","where","group_by","having","limit"],
+            "properties":{
+              "entity":{"type":"string"},
+              "select_field":{"type":"string"},
+              "where":{"$ref":"#/$defs/filter_group"},
+              "group_by":{"type":"array","items":{"type":"string"}},
+              "having":{"$ref":"#/$defs/filter_group"},
+              "limit":{"type":"integer"}
+            }
+          }
+        }
+      }
+    },
+    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction","nulls"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]},"nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}}}},
+    "group_by":{"type":"array","items":{"type":"string"}},
+    "metrics":{"type":"array","items":{"type":"string"}},
+    "windows":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["name","function","partition_by","order_by"],"properties":{"name":{"type":["string","null"]},"function":{"type":"string","enum":["ROW_NUMBER"]},"partition_by":{"type":"array","items":{"type":"string"}},"order_by":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","direction","nulls"],"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["ASC","DESC"]},"nulls":{"type":["string","null"],"enum":["FIRST","LAST",null]}}}}}}},
+    "having":{"$ref":"#/$defs/filter_group"},
+    "limit":{"type":"integer"},
+    "offset":{"type":"integer"},
+    "distinct":{"type":"boolean"},
+    "join_hints":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["leftField","rightField","joinType"],"properties":{"leftField":{"type":"string"},"rightField":{"type":"string"},"joinType":{"type":"string"}}}}
+  },
+  "$defs":{
+    "filter_group":{
+      "type":"object",
+      "additionalProperties":false,
+      "required":["op","conditions","groups"],
+      "properties":{
+        "op":{"type":"string","enum":["AND","OR","NOT"]},
+        "conditions":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["field","op","value"],"properties":{"field":{"type":"string"},"op":{"type":"string"},"value":{"type":["string","number","integer","boolean","null","array"],"items":{"type":["string","number","integer","boolean","null"]}}}}},
+        "groups":{"type":"array","items":{"$ref":"#/$defs/filter_group"}}
+      }
+    }
+  }
+}', 1);
+
 INSERT OR REPLACE INTO ce_verbose
 (verbose_id, intent_code, state_code, step_match, step_value, determinant, rule_id, tool_code, message, error_message, priority, enabled)
 VALUES
@@ -227,4 +349,6 @@ VALUES
 (17, 'ANY', 'ANY', 'EXACT', 'ResponseTypeResolverFactory', 'RESPONSE_TYPE_RESOLVER_SELECTED', NULL, NULL, 'Selected response strategy.', 'Unable to select response strategy.', 25, 1),
 (18, 'ANY', 'ANY', 'EXACT', 'ResponseTypeResolverFactory', 'RESPONSE_TYPE_RESOLVER_NOT_FOUND', NULL, NULL, 'No response strategy matched.', 'No response type resolver found.', 10, 1),
 (19, 'ANY', 'ANY', 'EXACT', 'OutputFormatResolverFactory', 'OUTPUT_FORMAT_RESOLVER_SELECTED', NULL, NULL, 'Selected response output formatter.', 'Unable to select output formatter.', 25, 1),
-(20, 'ANY', 'ANY', 'EXACT', 'OutputFormatResolverFactory', 'OUTPUT_FORMAT_RESOLVER_NOT_FOUND', NULL, NULL, 'No output formatter matched.', 'No output format resolver found.', 10, 1);
+(20, 'ANY', 'ANY', 'EXACT', 'OutputFormatResolverFactory', 'OUTPUT_FORMAT_RESOLVER_NOT_FOUND', NULL, NULL, 'No output formatter matched.', 'No output format resolver found.', 10, 1),
+(21, 'ANY', 'ANY', 'EXACT', 'McpDbExecutor', 'MCP_DB_SQL_EXECUTION', NULL, NULL, 'Executing MCP database query.', 'MCP database query failed.', 15, 1),
+(22, 'ANY', 'ANY', 'EXACT', 'DbkgQueryTemplateStepExecutor', 'DBKG_QUERY_SQL_EXECUTION', NULL, NULL, 'Running Database Knowledge Graph query template.', 'Database Knowledge Graph query template failed.', 15, 1);

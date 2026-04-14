@@ -21,8 +21,8 @@ public class CePromptTemplate {
     private Long templateId;
     @Column(name = "intent_code", nullable = false)
     private String intentCode;
-    @Column(name = "response_type")
-    private String responseType;
+    @Column(name = "output_format")
+    private String outputFormat;
     @Column(name = "state_code", nullable = false)
     private String stateCode;
     @Column(name = "system_prompt")

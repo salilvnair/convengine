@@ -20,7 +20,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Component
-@Order(Ordered.LOWEST_PRECEDENCE)
+@Order()
 public class DefaultConvEngineSchemaResolver implements ConvEngineSchemaResolver {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -104,7 +104,7 @@ public class DefaultConvEngineSchemaResolver implements ConvEngineSchemaResolver
                 return "{}";
             }
             ObjectNode cleaned = MAPPER.createObjectNode();
-            node.fields().forEachRemaining(entry -> {
+            node.properties().forEach(entry -> {
                 JsonNode value = entry.getValue();
                 if (value == null || value.isNull()) {
                     return;

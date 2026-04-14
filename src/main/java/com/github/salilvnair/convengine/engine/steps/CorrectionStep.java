@@ -7,15 +7,16 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.constants.CorrectionConstants;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
+import com.github.salilvnair.convengine.engine.constants.SchemaTypeConstants;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineSyntaxConstants;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.constants.RoutingDecisionConstants;
 import com.github.salilvnair.convengine.engine.dialogue.DialogueAct;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunBefore;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaComputation;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolver;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolverFactory;
@@ -265,7 +266,7 @@ public class CorrectionStep implements EngineStep {
             String label = key;
             Object value = entry.getValue();
             if (value instanceof Map<?, ?> map) {
-                Object description = map.get("description");
+                Object description = map.get(SchemaTypeConstants.DESCRIPTION);
                 if (description instanceof String descriptionText && !descriptionText.isBlank()) {
                     String normalizedDescription = normalizeKey(descriptionText);
                     if (normalizedDescription.length() > lookup.length()) {
@@ -316,7 +317,7 @@ public class CorrectionStep implements EngineStep {
         Object details = schemaFieldDetails.get(fieldKey);
         String type = null;
         if (details instanceof Map<?, ?> map) {
-            Object typeNode = map.get("type");
+            Object typeNode = map.get(SchemaTypeConstants.TYPE_NODE);
             if (typeNode instanceof JsonNode jsonNode) {
                 if (jsonNode.isTextual()) {
                     type = jsonNode.asText();
@@ -328,7 +329,7 @@ public class CorrectionStep implements EngineStep {
             }
         }
 
-        if ("integer".equalsIgnoreCase(type)) {
+        if (SchemaTypeConstants.TYPE_INTEGER.equalsIgnoreCase(type)) {
             String digits = raw.replaceAll("[^0-9-]", "");
             if (digits.isBlank()) {
                 return null;
@@ -339,7 +340,7 @@ public class CorrectionStep implements EngineStep {
                 return null;
             }
         }
-        if ("number".equalsIgnoreCase(type)) {
+        if (SchemaTypeConstants.TYPE_NUMBER.equalsIgnoreCase(type)) {
             String digits = raw.replaceAll("[^0-9.-]", "");
             if (digits.isBlank()) {
                 return null;
@@ -350,7 +351,7 @@ public class CorrectionStep implements EngineStep {
                 return null;
             }
         }
-        if ("boolean".equalsIgnoreCase(type)) {
+        if (SchemaTypeConstants.TYPE_BOOLEAN.equalsIgnoreCase(type)) {
             if (ConvEngineSyntaxConstants.BOOLEAN_TRUE.equalsIgnoreCase(raw)
                     || ConvEngineSyntaxConstants.YES_LITERAL.equalsIgnoreCase(raw)) {
                 return true;

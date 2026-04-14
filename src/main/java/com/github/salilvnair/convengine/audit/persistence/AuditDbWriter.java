@@ -1,9 +1,11 @@
 package com.github.salilvnair.convengine.audit.persistence;
 
 import com.github.salilvnair.convengine.config.ConvEngineAuditConfig;
+import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
 import com.github.salilvnair.convengine.entity.CeAudit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -22,6 +24,8 @@ public class AuditDbWriter {
 
     private final JdbcTemplate jdbcTemplate;
     private final ConvEngineAuditConfig auditConfig;
+    @Autowired(required = false)
+    private ConvEngineSqlTableResolver tableResolver;
     private static final DateTimeFormatter SQLITE_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
     private volatile DbDialect dbDialect;
 
@@ -36,9 +40,10 @@ public class AuditDbWriter {
 
     public void insertSingle(CeAudit row) {
         DbDialect dialect = resolveDialect();
+        String auditTable = resolveTableName("ce_audit");
         String sql = dialect == DbDialect.POSTGRES
-                ? "INSERT INTO ce_audit (conversation_id, stage, payload_json, created_at) VALUES (?, ?, CAST(? AS jsonb), ?)"
-                : "INSERT INTO ce_audit (conversation_id, stage, payload_json, created_at) VALUES (?, ?, ?, ?)";
+                ? "INSERT INTO " + auditTable + " (conversation_id, stage, payload_json, created_at) VALUES (?, ?, CAST(? AS jsonb), ?)"
+                : "INSERT INTO " + auditTable + " (conversation_id, stage, payload_json, created_at) VALUES (?, ?, ?, ?)";
         jdbcTemplate.update(sql, ps -> bindAuditInsert(ps, row, dialect));
     }
 
@@ -49,9 +54,10 @@ public class AuditDbWriter {
         int configuredBatchSize = auditConfig.getPersistence() == null ? 200 : auditConfig.getPersistence().getJdbcBatchSize();
         int batchSize = Math.max(1, configuredBatchSize);
         DbDialect dialect = resolveDialect();
+        String auditTable = resolveTableName("ce_audit");
         String sql = dialect == DbDialect.POSTGRES
-                ? "INSERT INTO ce_audit (conversation_id, stage, payload_json, created_at) VALUES (?, ?, CAST(? AS jsonb), ?)"
-                : "INSERT INTO ce_audit (conversation_id, stage, payload_json, created_at) VALUES (?, ?, ?, ?)";
+                ? "INSERT INTO " + auditTable + " (conversation_id, stage, payload_json, created_at) VALUES (?, ?, CAST(? AS jsonb), ?)"
+                : "INSERT INTO " + auditTable + " (conversation_id, stage, payload_json, created_at) VALUES (?, ?, ?, ?)";
         for (int i = 0; i < records.size(); i += batchSize) {
             List<CeAudit> chunk = records.subList(i, Math.min(i + batchSize, records.size()));
             jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
@@ -119,6 +125,10 @@ public class AuditDbWriter {
         } else {
             ps.setObject(4, row.getCreatedAt());
         }
+    }
+
+    private String resolveTableName(String logicalTableName) {
+        return tableResolver == null ? logicalTableName : tableResolver.resolveTableName(logicalTableName);
     }
 
     private enum DbDialect {

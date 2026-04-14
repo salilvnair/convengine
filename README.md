@@ -6,7 +6,21 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `2.0.9`
+- Current library version: `2.0.12`
+
+### Semantic Runtime Simplification (v2.0.12)
+- active semantic chain:
+  - `db.semantic.interpret -> db.semantic.query -> postgres.query`
+- active semantic package:
+  - `com.github.salilvnair.convengine.engine.mcp.query.semantic`
+- semantic model is DB-derived; no YAML file-path runtime config.
+- stale legacy semantic doc/runtime references removed.
+
+### Semantic Runtime Hardening (v2.0.11)
+- SQL generation retry loop with configurable attempts.
+- failure-memory feedback loop via `ce_semantic_query_failures`.
+- corrected SQL persistence and embedding-based similar-failure recall.
+- better timestamp/date parameter handling in query generation/execution path.
 
 ### Hybrid Prompt Rendering, Correction Routing, and Consumer Verbose Adapter (v2.0.9)
 - **Thymeleaf-backed prompt and verbose rendering**: Prompt templates and DB-backed `ce_verbose` messages now resolve through the shared `ThymeleafTemplateRenderer`, with session-aware variables and support for legacy `{{...}}`, `#{...}`, and `[${...}]` styles.
@@ -24,6 +38,7 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - **Verbose and audit coverage expansion**:
   - added LLM input/output/error verbose stages across dialogue act, intent, schema extraction, MCP planning, and response generation
   - `MCP_TOOL_CALL` now emits richer tool/action/intent/state metadata
+  - `MCP_DB_SQL_EXECUTION` emits audit + `ce_verbose` events with SQL text, bind params, row counts, and rows
   - new `ConvEngineVerboseAdapter` lets consumer hooks, transformers, and custom beans publish DB-resolved or direct UI verbose events
 - **Constant hygiene and control-path cleanup**:
   - centralized routing, correction, syntax, pending-action, guardrail, response/output, and verbose keys in constants
@@ -56,12 +71,24 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - **[api-processor](https://github.com/salilvnair/api-processor) native MCP path**: Added `HttpApiApiProcessorToolHandler` so consumers can execute MCP HTTP tools directly through `RestWebServiceFacade` (`prepareRequest -> delegate.invoke -> processResponse`) and return mapped responses to ConvEngine.
 - **Intent/state-scoped planner prompts**: Added `ce_mcp_planner` table and runtime selection in `McpPlanner` so each use case can own planner prompts by `intent_code` + `state_code` instead of globally overriding `ce_config`.
 
-### Advanced DB Knowledge MCP (v2.0.7)
-- **DB tool extension SPI**: Added `DbToolHandler` so `DB` tools can be implemented per `tool_code` before fallback to legacy `ce_mcp_db_tool.sql_template`.
-- **Knowledge graph handler**: Added optional `DbKnowledgeGraphToolHandler` (enabled with `convengine.mcp.db.knowledge.enabled=true`) that reads two consumer-owned metadata tables:
-  - query knowledge catalog (scenario description + prepared SQL/API hints)
-  - schema knowledge catalog (table/column semantics)
-- **Similarity ranking output**: `DbKnowledgeGraphService` tokenizes user question and returns ranked `queryKnowledge` + `schemaKnowledge` + `insights` (`suggestedPreparedQueries`, `suggestedTables`) to help MCP answer similar/variant questions consistently.
+### Current Semantic Runtime (latest branch updates)
+- **Active chain**:
+  - `db.semantic.interpret`
+  - `db.semantic.query`
+  - `postgres.query`
+- **DB tool execution contract**:
+  - Java `DbToolHandler` implementations are preferred (`PostgresQueryToolHandler` and semantic handlers).
+  - `ce_mcp_db_tool` remains required only for SQL-template fallback tools (`McpDbExecutor` path).
+- **Read-only SQL guardrail hardening**: `McpSqlGuardrail` blocks non-read-only/multi-statement SQL while allowing safe single-statement SELECT/WITH usage.
+- **SQL observability**: dynamic SQL execution emits richer audit/verbose payloads (SQL, params, row_count, rows preview, error metadata).
+- **MCP execution telemetry flags**:
+  - `context.mcp.finalAnswerDetermined`
+  - `context.mcp.toolExecutionAbrupted`
+  - `context.mcp.toolExecutionAbruptionLimit`
+- **DB schema inspection APIs**:
+  - `GET /api/v1/db/inspect-schema`
+  - `POST /api/v1/db/agent`
+  - request schema defaults from `convengine.schema.active` when omitted.
 
 ### Cache Diagnostics & Proxy Hardening (v2.0.6)
 - **Proxy hygiene**: `StaticConfigurationCacheService` now routes every helper through the proxied bean so `@Cacheable` saves the static `ce_*` collections instead of re-running SQL after warmup.
@@ -147,6 +174,8 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - `GET /api/v1/conversation/audit/{conversationId}/trace`
 - `GET /api/v1/conversation/stream/{conversationId}`
 - `POST /api/v1/conversation/experimental/generate-sql` (feature-flagged)
+- `GET /api/v1/db/inspect-schema`
+- `POST /api/v1/db/agent`
 
 ## Runtime Step Pipeline
 
@@ -201,11 +230,11 @@ Main runtime stages:
 ### `ce_response`
 
 - `response_type`: `EXACT`, `DERIVED`
-- `output_format`: `TEXT`, `JSON`
+- `output_format`: `TEXT`, `JSON`, `SCHEMA_JSON`, `SEMANTIC_INTERPRET`
 
 ### `ce_prompt_template`
 
-- `response_type`: `TEXT`, `JSON`, `SCHEMA_JSON`
+- `response_type`: `TEXT`, `JSON`, `SCHEMA_JSON`, `SEMANTIC_INTERPRET`
 - `interaction_mode`: `NORMAL`, `IDLE`, `COLLECT`, `CONFIRM`, `PROCESSING`, `FINAL`, `ERROR`, `DISAMBIGUATE`, `FOLLOW_UP`, `PENDING_ACTION`, `REVIEW`
 - `interaction_contract`: JSON text for extensible turn behavior. Recommended shape:
   `{"allows":["affirm","edit","retry","reset"],"expects":["structured_input"]}`
@@ -226,6 +255,9 @@ Main runtime stages:
 
 - `step_match`: `EXACT`, `REGEX`, `JSON_PATH`
 - `determinant`: use emitted runtime determinants such as `STEP_ENTER`, `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, `DIALOGUE_ACT_LLM_ERROR`, `MCP_TOOL_CALL`, `RESOLVE_RESPONSE_LLM_OUTPUT`
+- SQL observability determinants:
+  - `MCP_DB_SQL_EXECUTION` from `McpDbExecutor`
+  - metadata includes `sql`, `params`, `row_count`, and `rows`
 
 ## Flow Configuration (application.yml)
 
@@ -233,13 +265,50 @@ Flow behavior is file-configured from consumer app config.
 
 ```yaml
 convengine:
+  schema:
+    active: v2
+  flow:
+    dialogue-act:
+      resolute: REGEX_THEN_LLM # REGEX_ONLY | REGEX_THEN_LLM | LLM_ONLY
+    llm-threshold: 0.90
+  interaction-policy:
+    execute-pending-on-affirm: true
+    reject-pending-on-negate: true
+    fill-pending-slot-on-non-new-request: true
+    require-resolved-intent-and-state: true
+    matrix:
+      "PENDING_ACTION:AFFIRM": EXECUTE_PENDING_ACTION
+      "PENDING_ACTION:NEGATE": REJECT_PENDING_ACTION
+      "PENDING_SLOT:QUESTION": FILL_PENDING_SLOT
+  action-lifecycle:
+    enabled: true
+    ttl-turns: 3
+    ttl-minutes: 30
+  disambiguation:
+    enabled: true
+    max-options: 5
+  guardrail:
+    enabled: true
+    sanitize-input: true
+    require-approval-for-sensitive-actions: false
+    approval-gate-fail-closed: false
+    sensitive-patterns: []
+  state-graph:
+    enabled: true
+    soft-block-on-violation: false
+    allowed-transitions: {}
+  tool-orchestration:
+    enabled: true
+  memory:
+    enabled: true
+    summary-max-chars: 1200
+    recent-turns-for-summary: 3
   mcp:
     db:
-      knowledge:
-        enabled: false
-        tool-code: db.knowledge.graph
-        query-catalog-table: ce_mcp_query_knowledge
-        schema-catalog-table: ce_mcp_schema_knowledge
+      query:
+        mode: semantic
+      semantic:
+        enabled: true
     http-api:
       defaults:
         connect-timeout-ms: 2000
@@ -251,54 +320,17 @@ convengine:
         circuit-breaker-enabled: true
         circuit-failure-threshold: 5
         circuit-open-ms: 30000
-    flow:
-      dialogue-act:
-        resolute: REGEX_THEN_LLM # REGEX_ONLY | REGEX_THEN_LLM | LLM_ONLY
-      llm-threshold: 0.90
-    interaction-policy:
-      execute-pending-on-affirm: true
-      reject-pending-on-negate: true
-      fill-pending-slot-on-non-new-request: true
-      require-resolved-intent-and-state: true
-      matrix:
-        "PENDING_ACTION:AFFIRM": EXECUTE_PENDING_ACTION
-        "PENDING_ACTION:NEGATE": REJECT_PENDING_ACTION
-        "PENDING_SLOT:QUESTION": FILL_PENDING_SLOT
-    action-lifecycle:
-      enabled: true
-      ttl-turns: 3
-      ttl-minutes: 30
-    disambiguation:
-      enabled: true
-      max-options: 5
-    guardrail:
-      enabled: true
-      sanitize-input: true
-      require-approval-for-sensitive-actions: false
-      approval-gate-fail-closed: false
-      sensitive-patterns: []
-    state-graph:
-      enabled: true
-      soft-block-on-violation: false
-      allowed-transitions: {}
-    tool-orchestration:
-      enabled: true
-    memory:
-      enabled: true
-      summary-max-chars: 1200
-      recent-turns-for-summary: 3
 ```
 
 Consumer contract details:
 
-- `docs/consumer-contract-v2.md`
 - Canonical MCP example seed packs:
   - `src/main/resources/sql/mcp_planner_seed.sql` (Postgres)
   - `src/main/resources/sql/mcp_planner_seed_postgres.sql` (Postgres alias)
   - `src/main/resources/sql/mcp_planner_seed_sqlite.sql` (SQLite)
-- Optional advanced DB knowledge seed packs:
-  - `src/main/resources/sql/seed_mcp_advanced_postgres.sql`
-  - `src/main/resources/sql/seed_mcp_advanced_sqlite.sql`
+- Semantic metadata seed packs:
+  - `src/main/resources/mcp/semantic_v2/ddl.sql`
+  - `src/main/resources/mcp/semantic_v2/dml.sql`
 
 ## Streaming Configuration
 
@@ -360,9 +392,12 @@ Required consumer bean:
 
 ```java
 public interface LlmClient {
-  String generateText(String hint, String contextJson);
-  String generateJson(String hint, String jsonSchema, String contextJson);
-  float[] generateEmbedding(String input);
+  String generateText(EngineSession session, String hint, String contextJson);
+  String generateJson(EngineSession session, String hint, String jsonSchema, String contextJson);
+  float[] generateEmbedding(EngineSession session, String input);
+  default String generateJsonStrict(EngineSession session, String hint, String jsonSchema, String context) {
+    return generateJson(session, hint, jsonSchema, context);
+  }
 }
 ```
 

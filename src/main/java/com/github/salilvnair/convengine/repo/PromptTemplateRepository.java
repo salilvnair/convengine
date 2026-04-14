@@ -5,17 +5,4 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
-public interface PromptTemplateRepository extends JpaRepository<CePromptTemplate, Long> {
-    Optional<CePromptTemplate>
-    findFirstByEnabledTrueAndResponseTypeAndIntentCodeOrderByCreatedAtDesc(
-            String responseType,
-            String intentCode
-    );
-
-    Optional<CePromptTemplate>
-    findFirstByEnabledTrueAndResponseTypeAndIntentCodeAndStateCodeOrderByCreatedAtDesc(
-            String responseType,
-            String intentCode,
-            String stateCode
-    );
-}
+public interface PromptTemplateRepository extends JpaRepository<CePromptTemplate, Long> { }

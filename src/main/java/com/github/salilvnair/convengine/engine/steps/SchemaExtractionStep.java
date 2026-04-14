@@ -1,5 +1,8 @@
 package com.github.salilvnair.convengine.engine.steps;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
@@ -7,7 +10,7 @@ import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaComputation;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolver;
 import com.github.salilvnair.convengine.engine.schema.ConvEngineSchemaResolverFactory;
@@ -34,6 +37,8 @@ import java.util.Map;
 @Component
 @RequiresConversationPersisted
 public class SchemaExtractionStep implements EngineStep {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private final StaticConfigurationCacheService staticCacheService;
     private final PromptTemplateRenderer renderer;
     private final LlmClient llm;
@@ -152,6 +157,7 @@ public class SchemaExtractionStep implements EngineStep {
         String extractedJson;
         try {
             extractedJson = llm.generateJson(
+                    session,
                     systemPrompt + "\n\n" + userPrompt,
                     schema.getJsonSchema(),
                     safeJson(session.getContextJson()));
@@ -170,6 +176,7 @@ public class SchemaExtractionStep implements EngineStep {
                 llmOutputPayload);
 
         String merged = schemaResolver.mergeContextJson(session.getContextJson(), extractedJson);
+        merged = clearStaleMcpContextIfIdentifiersUpdated(merged, extractedJson);
         session.setContextJson(merged);
         session.getConversation().setContextJson(merged);
 
@@ -227,7 +234,12 @@ public class SchemaExtractionStep implements EngineStep {
 
     private java.util.Optional<CeOutputSchema> resolveSchema(EngineSession session) {
         if (session.getResolvedSchema() != null) {
-            return java.util.Optional.of(session.getResolvedSchema());
+            CeOutputSchema resolved = session.getResolvedSchema();
+            String schemaType = resolved.getSchemaType();
+            if (schemaType == null || schemaType.isBlank() || "SCHEMA_JSON".equalsIgnoreCase(schemaType)) {
+                return java.util.Optional.of(resolved);
+            }
+            return java.util.Optional.empty();
         }
         String intent = session.getIntent();
         String state = session.getState();
@@ -235,8 +247,8 @@ public class SchemaExtractionStep implements EngineStep {
             return java.util.Optional.empty();
         }
         return resolveSchemaByPersistedId(session)
-                .or(() -> staticCacheService.findFirstOutputSchema(intent, state))
-                .or(() -> staticCacheService.findFirstOutputSchema(intent, ConvEngineValue.ANY));
+                .or(() -> staticCacheService.findFirstOutputSchema(intent, state, "SCHEMA_JSON"))
+                .or(() -> staticCacheService.findFirstOutputSchema(intent, ConvEngineValue.ANY, "SCHEMA_JSON"));
     }
 
     private java.util.Optional<CeOutputSchema> resolveSchemaByPersistedId(EngineSession session) {
@@ -245,7 +257,10 @@ public class SchemaExtractionStep implements EngineStep {
         if (schemaId == null) {
             return java.util.Optional.empty();
         }
-        return staticCacheService.findOutputSchemaById(schemaId);
+        return staticCacheService.findOutputSchemaById(schemaId)
+                .filter(s -> s.getSchemaType() == null
+                        || s.getSchemaType().isBlank()
+                        || "SCHEMA_JSON".equalsIgnoreCase(s.getSchemaType()));
     }
 
     private Long toLong(Object value) {
@@ -274,5 +289,45 @@ public class SchemaExtractionStep implements EngineStep {
 
     private int priorityOf(CeOutputSchema schema) {
         return schema.getPriority() == null ? Integer.MAX_VALUE : schema.getPriority();
+    }
+
+    private String clearStaleMcpContextIfIdentifiersUpdated(String mergedContextJson, String extractedJson) {
+        if (!hasFreshExtractedValues(extractedJson)) {
+            return mergedContextJson;
+        }
+        try {
+            JsonNode root = JsonUtil.parseOrNull(safeJson(mergedContextJson));
+            if (!(root instanceof ObjectNode objectNode)) {
+                return mergedContextJson;
+            }
+            objectNode.remove("mcp");
+            return MAPPER.writeValueAsString(objectNode);
+        } catch (Exception e) {
+            return mergedContextJson;
+        }
+    }
+
+    private boolean hasFreshExtractedValues(String extractedJson) {
+        try {
+            JsonNode extracted = JsonUtil.parseOrNull(extractedJson);
+            if (!extracted.isObject()) {
+                return false;
+            }
+            java.util.Iterator<Map.Entry<String, JsonNode>> fields = extracted.properties().iterator();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                JsonNode value = field.getValue();
+                if (value == null || value.isNull()) {
+                    continue;
+                }
+                if (value.isTextual() && value.asText().isBlank()) {
+                    continue;
+                }
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

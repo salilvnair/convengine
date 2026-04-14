@@ -32,6 +32,18 @@ public class StaticTableCachePreloader {
         staticCacheService.getAllMcpPlanners();
         staticCacheService.getAllPolicies();
         staticCacheService.getAllVerboses();
+        staticCacheService.getAllSemanticAmbiguityOptions();
+        staticCacheService.getAllSemanticConcepts();
+        staticCacheService.getAllSemanticEmbeddingCatalog();
+        staticCacheService.getAllSemanticEntities();
+        staticCacheService.getAllSemanticJoinHints();
+        staticCacheService.getAllSemanticJoinPaths();
+        staticCacheService.getAllSemanticMappings();
+        staticCacheService.getAllSemanticQueryClasses();
+        staticCacheService.getAllSemanticRelationships();
+        staticCacheService.getAllSemanticSynonyms();
+        staticCacheService.getAllSemanticValuePatterns();
+        staticCacheService.getAllUserQueryKnowledge();
         staticScopeIntegrityValidator.validateOrThrow();
 
         log.info("ConvEngine: Static configuration preload complete.");

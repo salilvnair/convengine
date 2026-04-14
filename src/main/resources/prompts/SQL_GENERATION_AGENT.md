@@ -49,7 +49,7 @@ Never generate runtime table data:
 
 ### `ce_prompt_template`
 
-- Has `template_id`, `intent_code`, `state_code`, `response_type`, `system_prompt`, `user_prompt`, `temperature`, `enabled`
+- Has `template_id`, `intent_code`, `state_code`, `output_format`, `system_prompt`, `user_prompt`, `temperature`, `enabled`
 - No `template_code`
 
 ### `ce_response`

@@ -24,7 +24,7 @@ public final class RuleConditionEvaluator {
             return false;
         }
 
-        if (matches.size() == 1 && matches.getFirst() instanceof Boolean b) {
+        if (matches.size() == 1 && matches.get(0) instanceof Boolean b) {
             return b;
         }
 

@@ -84,6 +84,7 @@ public class TextOutputFormatResolver implements OutputFormatResolver {
                 String text;
                 try {
                         text = llm.generateText(
+                                        session,
                                         systemPrompt + "\n\n" + userPrompt + "\n\n" +
                                                         safe(response.getDerivationHint()),
                                         JsonUtil.toJson(session.contextDict()));

@@ -65,5 +65,23 @@ public class CeLlmCallLog {
         if (stateCode == null || stateCode.isBlank()) {
             stateCode = "UNKNOWN";
         }
+        if (provider == null || provider.isBlank()) {
+            provider = "UNKNOWN";
+        }
+        if (model == null || model.isBlank()) {
+            model = "UNKNOWN";
+        }
+        if (promptText == null) {
+            promptText = "";
+        }
+        if (userContext == null) {
+            userContext = "{}";
+        }
+        if (success == null) {
+            success = Boolean.FALSE;
+        }
+        if (createdAt == null) {
+            createdAt = OffsetDateTime.now();
+        }
     }
 }

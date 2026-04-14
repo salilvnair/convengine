@@ -14,13 +14,14 @@ import java.util.Map;
 @AllArgsConstructor
 @NoArgsConstructor
 public class PromptTemplateContext {
-    @PromptVar({ "context", "contextJson" })
+    @PromptVar({ "context", "contextJson", "context_json" })
     private String context;
 
     @PromptVar({ "user_input", "userInput", "user_text", "userText", "input_text", "inputText", "input", "user_message", "userMessage" })
     private String userInput;
 
-    @PromptVar({ "resolved_user_input", "resolvedUserInput", "resolved_input", "resolvedInput", "effective_input",
+    @PromptVar({ "resolved_user_input", "resolvedUserInput", "resolved_input", "resolvedInput", "effective_input","effectiveInput",
+            "effective_user_input", "effectiveUserInput",
             "effectiveInput", "final_user_input", "finalUserInput" })
     private String resolvedUserInput;
 
@@ -51,6 +52,51 @@ public class PromptTemplateContext {
 
     @PromptVar({ "mcp_observations", "observations", "mcpObservations" })
     private String mcpObservations;
+
+    @PromptVar({ "question", "query_question", "queryQuestion" })
+    private String question;
+
+    @PromptVar({ "selected_entity", "selectedEntity", "entity" })
+    private String selectedEntity;
+
+    @PromptVar({ "selected_entity_description", "selectedEntityDescription" })
+    private String selectedEntityDescription;
+
+    @PromptVar({ "selected_entity_fields_json", "selectedEntityFieldsJson" })
+    private String selectedEntityFieldsJson;
+
+    @PromptVar({ "selected_entity_allowed_values_json", "selectedEntityAllowedValuesJson" })
+    private String selectedEntityAllowedValuesJson;
+
+    @PromptVar({ "allowed_entities", "allowedEntities", "allowed_entities_json", "allowedEntitiesJson" })
+    private String allowedEntitiesJson;
+
+    @PromptVar({ "candidate_entities_json", "candidateEntitiesJson" })
+    private String candidateEntitiesJson;
+
+    @PromptVar({ "candidate_tables_json", "candidateTablesJson" })
+    private String candidateTablesJson;
+
+    @PromptVar({ "join_path_json", "joinPathJson" })
+    private String joinPathJson;
+
+    @PromptVar({ "current_date", "currentDate" })
+    private String currentDate;
+
+    @PromptVar({ "current_datetime", "currentDateTime" })
+    private String currentDateTime;
+
+    @PromptVar({ "current_year", "currentYear" })
+    private String currentYear;
+
+    @PromptVar({ "current_timezone", "currentTimezone" })
+    private String currentTimezone;
+
+    @PromptVar({ "current_system_datetime", "currentSystemDateTime" })
+    private String currentSystemDateTime;
+
+    @PromptVar({ "current_system_timezone", "currentSystemTimezone" })
+    private String currentSystemTimezone;
 
     private Map<String, Object> extra;
 

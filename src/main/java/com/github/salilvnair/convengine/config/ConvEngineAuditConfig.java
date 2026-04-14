@@ -19,6 +19,8 @@ public class ConvEngineAuditConfig {
     private Level level = Level.ALL;
     private Set<String> includeStages = new LinkedHashSet<>();
     private Set<String> excludeStages = new LinkedHashSet<>();
+    private Set<String> includeIntents = new LinkedHashSet<>();
+    private Set<String> excludeIntents = new LinkedHashSet<>();
     private RateLimit rateLimit = new RateLimit();
     private Dispatch dispatch = new Dispatch();
     private Persistence persistence = new Persistence();

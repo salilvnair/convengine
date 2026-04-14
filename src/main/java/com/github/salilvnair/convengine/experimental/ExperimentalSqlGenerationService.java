@@ -82,8 +82,8 @@ public class ExperimentalSqlGenerationService {
                 - Add at least one valid INSERT per required table unless explicitly skipped by include_mcp=false.
                 - Ensure values align to implemented enums:
                   ce_response.response_type: EXACT | DERIVED
-                  ce_response.output_format: TEXT | JSON
-                  ce_prompt_template.response_type: TEXT | JSON | SCHEMA_JSON
+                  ce_response.output_format: TEXT | JSON | SCHEMA_JSON
+                  ce_prompt_template.output_format: TEXT | JSON | SCHEMA_JSON
                   ce_rule.rule_type: EXACT | REGEX | JSON_PATH
                   ce_rule.phase: PRE_RESPONSE_RESOLUTION | POST_AGENT_INTENT | POST_AGENT_MCP | POST_TOOL_EXECUTION
                   ce_rule.state_code: NULL | ANY | <STATE_CODE>
@@ -132,6 +132,7 @@ public class ExperimentalSqlGenerationService {
         );
         try {
             raw = llmClient.generateText(
+                    null,
                     systemPrompt.formatted(
                             expectedTablesCsv(expectedTables),
                             agentWiki

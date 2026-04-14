@@ -77,9 +77,7 @@ public class ThymeleafTemplateRenderer {
 
         if (variables != null && !variables.isEmpty()) {
             merged.put("metadata", variables);
-            for (Map.Entry<String, Object> entry : variables.entrySet()) {
-                merged.put(entry.getKey(), entry.getValue());
-            }
+            merged.putAll(variables);
         } else {
             merged.putIfAbsent("metadata", Map.of());
         }
@@ -129,15 +127,15 @@ public class ThymeleafTemplateRenderer {
     }
 
     private String normalizeTemplate(String template) {
-        String normalized = replacePattern(template, LEGACY_VAR_PATTERN, "[[${$1}]]");
-        normalized = replacePattern(normalized, LEGACY_EXPR_PATTERN, "[[${$1}]]");
-        normalized = replacePattern(normalized, SINGLE_BRACKET_EXPR_PATTERN, "[[${$1}]]");
+        String normalized = replacePattern(template, LEGACY_VAR_PATTERN, "[(${$1})]");
+        normalized = replacePattern(normalized, LEGACY_EXPR_PATTERN, "[(${$1})]");
+        normalized = replacePattern(normalized, SINGLE_BRACKET_EXPR_PATTERN, "[(${$1})]");
         return normalized;
     }
 
     private String replacePattern(String input, Pattern pattern, String replacement) {
         Matcher matcher = pattern.matcher(input);
-        StringBuffer out = new StringBuffer();
+        StringBuilder out = new StringBuilder();
         while (matcher.find()) {
             String resolvedReplacement = replacement.replace("$1", matcher.group(1).trim());
             matcher.appendReplacement(out, Matcher.quoteReplacement(resolvedReplacement));

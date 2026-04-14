@@ -10,9 +10,9 @@ import com.github.salilvnair.convengine.engine.dialogue.InteractionPolicyDecisio
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunBefore;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.entity.CePendingAction;
 import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
@@ -102,8 +102,8 @@ public class DisambiguationStep implements EngineStep {
             return new StepResult.Continue();
         }
 
-        int bestPriority = candidates.getFirst().getPriority() == null ? Integer.MAX_VALUE
-                : candidates.getFirst().getPriority();
+        int bestPriority = candidates.get(0).getPriority() == null ? Integer.MAX_VALUE
+                : candidates.get(0).getPriority();
         List<CePendingAction> top = candidates.stream()
                 .filter(c -> (c.getPriority() == null ? Integer.MAX_VALUE : c.getPriority()) == bestPriority)
                 .toList();
@@ -180,7 +180,7 @@ public class DisambiguationStep implements EngineStep {
             String systemPrompt = renderer.render(llmSystemPrompt, promptContext);
             String userPrompt = renderer.render(llmUserPrompt, promptContext);
             LlmInvocationContext.set(session.getConversationId(), session.getIntent(), session.getState());
-            String llmQuestion = llm.generateText(systemPrompt + "\n\n" + userPrompt, session.getContextJson());
+            String llmQuestion = llm.generateText(session, systemPrompt + "\n\n" + userPrompt, session.getContextJson());
             if (llmQuestion == null || llmQuestion.isBlank()) {
                 return new QuestionResult(fallbackQuestion, "TEMPLATE");
             }

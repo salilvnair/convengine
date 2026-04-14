@@ -2,8 +2,8 @@ package com.github.salilvnair.convengine.engine.steps;
 
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.ConversationBootstrapStep;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.ConversationBootstrapStep;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.service.ConversationCacheService;
 import lombok.RequiredArgsConstructor;

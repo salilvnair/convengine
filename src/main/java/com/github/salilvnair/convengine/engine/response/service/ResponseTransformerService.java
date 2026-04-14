@@ -3,6 +3,7 @@ package com.github.salilvnair.convengine.engine.response.service;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineErrorCode;
 import com.github.salilvnair.convengine.engine.exception.ConversationEngineException;
 import com.github.salilvnair.convengine.engine.response.annotation.ResponseTransformer;
+import com.github.salilvnair.convengine.engine.response.type.ResponseTransformType;
 import com.github.salilvnair.convengine.engine.response.transformer.ResponseTransformerHandler;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.model.OutputPayload;
@@ -36,7 +37,7 @@ public class ResponseTransformerService {
 
             }
             registry.put(
-                    new Key(ann.intent(), ann.state()),
+                    new Key(ann.intent(), ann.state(), ann.responseType()),
                     handler
             );
         }
@@ -45,10 +46,11 @@ public class ResponseTransformerService {
     public OutputPayload transformIfApplicable(
             OutputPayload responsePayload,
             EngineSession session,
-            Map<String, Object> inputParams
+            Map<String, Object> inputParams,
+            ResponseTransformType responseType
     ) {
         ResponseTransformerHandler handler =
-                registry.get(new Key(session.getIntent(), session.getState()));
+                registry.get(new Key(session.getIntent(), session.getState(), responseType));
 
         if (handler == null) {
             return responsePayload;
@@ -62,5 +64,5 @@ public class ResponseTransformerService {
     }
 
     // ---- key ----
-    record Key(String intent, String state) {}
+    record Key(String intent, String state, ResponseTransformType responseType) {}
 }

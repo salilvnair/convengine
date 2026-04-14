@@ -1,5 +1,12 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool CASCADE;
 DROP TABLE IF EXISTS ce_mcp_planner CASCADE;
+DROP TABLE IF EXISTS ce_semantic_entity CASCADE;
+DROP TABLE IF EXISTS ce_semantic_relationship CASCADE;
+DROP TABLE IF EXISTS ce_semantic_join_hint CASCADE;
+DROP TABLE IF EXISTS ce_semantic_value_pattern CASCADE;
+DROP TABLE IF EXISTS ce_user_query_knowledge CASCADE;
+DROP TABLE IF EXISTS ce_mcp_user_feedback CASCADE;
+DROP TABLE IF EXISTS ce_mcp_user_query_knowledge CASCADE;
 DROP TABLE IF EXISTS ce_conversation_history CASCADE;
 DROP TABLE IF EXISTS ce_audit CASCADE;
 DROP TABLE IF EXISTS ce_pending_action CASCADE;
@@ -16,6 +23,8 @@ DROP TABLE IF EXISTS ce_intent CASCADE;
 DROP TABLE IF EXISTS ce_conversation CASCADE;
 DROP TABLE IF EXISTS ce_container_config CASCADE;
 DROP TABLE IF EXISTS ce_config CASCADE;
+
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE ce_config (
                            config_id int4 NOT NULL,
@@ -79,10 +88,10 @@ CREATE INDEX ix_ce_intent_enabled_priority ON public.ce_intent USING btree (enab
 
 CREATE TABLE ce_intent_classifier (
                                       classifier_id bigserial NOT NULL,
-                                      intent_code text NOT NULL,
-                                      state_code text DEFAULT 'UNKNOWN'::text NOT NULL,
                                       rule_type text NOT NULL,
                                       pattern text NOT NULL,
+                                      intent_code text NOT NULL,
+                                      state_code text DEFAULT 'UNKNOWN'::text NOT NULL,
                                       priority int4 NOT NULL,
                                       enabled bool DEFAULT true NULL,
                                       description text NULL,
@@ -131,13 +140,14 @@ CREATE TABLE ce_output_schema (
                                   schema_id bigserial NOT NULL,
                                   intent_code text NOT NULL,
                                   state_code text NOT NULL,
+                                  schema_type text DEFAULT 'SCHEMA_JSON' NOT NULL,
                                   json_schema jsonb NOT NULL,
                                   description text NULL,
                                   enabled bool DEFAULT true NULL,
                                   priority int4 NOT NULL,
                                   CONSTRAINT ce_output_schema_pkey PRIMARY KEY (schema_id)
 );
-CREATE INDEX idx_ce_output_schema_lookup ON public.ce_output_schema USING btree (intent_code, state_code, enabled, priority);
+CREATE INDEX idx_ce_output_schema_lookup ON public.ce_output_schema USING btree (intent_code, state_code, schema_type, enabled, priority);
 
 CREATE TABLE ce_policy (
                            policy_id bigserial NOT NULL,
@@ -156,7 +166,7 @@ CREATE TABLE ce_prompt_template (
                                     template_id bigserial NOT NULL,
                                     intent_code text NOT NULL,
                                     state_code text NOT NULL,
-                                    response_type text NOT NULL,
+                                    output_format text NOT NULL,
                                     system_prompt text NOT NULL,
                                     user_prompt text NOT NULL,
                                     temperature numeric(3, 2) DEFAULT 0.0 NOT NULL,
@@ -168,7 +178,7 @@ CREATE TABLE ce_prompt_template (
                                     CONSTRAINT ce_prompt_template_intent_not_blank CHECK (btrim(intent_code) <> ''),
                                     CONSTRAINT ce_prompt_template_state_not_blank CHECK (btrim(state_code) <> '')
 );
-CREATE INDEX idx_ce_prompt_template_lookup ON public.ce_prompt_template USING btree (response_type, intent_code, state_code, enabled);
+CREATE INDEX idx_ce_prompt_template_lookup ON public.ce_prompt_template USING btree (output_format, intent_code, state_code, enabled);
 
 CREATE TABLE ce_response (
                              response_id bigserial NOT NULL,
@@ -299,3 +309,109 @@ CREATE TABLE ce_mcp_planner (
                                 CONSTRAINT ce_mcp_planner_state_not_blank CHECK (btrim(state_code) <> '')
 );
 CREATE INDEX idx_ce_mcp_planner_scope ON public.ce_mcp_planner USING btree (enabled, intent_code, state_code, planner_id);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
+                                id BIGSERIAL PRIMARY KEY,
+                                query_text VARCHAR(1000) NOT NULL,
+                                description VARCHAR(2000),
+                                prepared_sql TEXT,
+                                tags VARCHAR(2000),
+                                api_hints VARCHAR(2000),
+                                embedding TEXT,
+                                created_at timestamptz DEFAULT now() NOT NULL
+);
+CREATE INDEX idx_ce_mcp_user_query_knowledge_query_text ON public.ce_mcp_user_query_knowledge USING btree (query_text);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
+                                feedback_id BIGSERIAL PRIMARY KEY,
+                                conversation_id uuid NOT NULL,
+                                feedback_type VARCHAR(32) NOT NULL,
+                                message_id VARCHAR(128),
+                                intent_code VARCHAR(255),
+                                state_code VARCHAR(255),
+                                user_query TEXT,
+                                assistant_response TEXT,
+                                mcp_tool_code VARCHAR(255),
+                                captured_query_knowledge_count INTEGER DEFAULT 0 NOT NULL,
+                                applied_query_knowledge_json jsonb,
+                                metadata_json jsonb,
+                                created_at timestamptz DEFAULT now() NOT NULL,
+                                CONSTRAINT ce_mcp_user_feedback_conversation_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ce_mcp_user_feedback_conversation ON public.ce_mcp_user_feedback USING btree (conversation_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
+                                id BIGSERIAL PRIMARY KEY,
+                                conversation_id uuid,
+                                feedback_id BIGINT,
+                                feedback_type VARCHAR(32),
+                                tool_code VARCHAR(255),
+                                intent_code VARCHAR(255),
+                                state_code VARCHAR(255),
+                                query_text VARCHAR(1000) NOT NULL,
+                                description VARCHAR(2000),
+                                prepared_sql TEXT,
+                                tags VARCHAR(2000),
+                                api_hints VARCHAR(2000),
+                                embedding TEXT,
+                                metadata_json jsonb,
+                                created_at timestamptz DEFAULT now() NOT NULL,
+                                CONSTRAINT ce_user_query_knowledge_feedback_fkey FOREIGN KEY (feedback_id) REFERENCES ce_mcp_user_feedback(feedback_id) ON DELETE SET NULL,
+                                CONSTRAINT ce_user_query_knowledge_conversation_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE SET NULL
+);
+CREATE INDEX idx_ce_user_query_knowledge_query_text ON public.ce_user_query_knowledge USING btree (query_text);
+CREATE INDEX idx_ce_user_query_knowledge_tool_code ON public.ce_user_query_knowledge USING btree (tool_code, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_join_hint (
+                                id BIGSERIAL PRIMARY KEY,
+                                base_table VARCHAR(255) NOT NULL,
+                                join_table VARCHAR(255) NOT NULL,
+                                priority INTEGER DEFAULT 100 NOT NULL,
+                                enabled BOOLEAN DEFAULT true NOT NULL,
+                                created_at timestamptz DEFAULT now() NOT NULL
+);
+CREATE INDEX idx_ce_semantic_join_hint_lookup
+    ON public.ce_semantic_join_hint USING btree (enabled, base_table, priority, join_table);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_entity (
+                                id BIGSERIAL PRIMARY KEY,
+                                entity_name VARCHAR(255) NOT NULL,
+                                description TEXT,
+                                primary_table VARCHAR(255),
+                                related_tables VARCHAR(2000),
+                                synonyms VARCHAR(2000),
+                                fields_json jsonb,
+                                priority INTEGER DEFAULT 100 NOT NULL,
+                                enabled BOOLEAN DEFAULT true NOT NULL,
+                                created_at timestamptz DEFAULT now() NOT NULL
+);
+CREATE INDEX idx_ce_semantic_entity_lookup
+    ON public.ce_semantic_entity USING btree (enabled, entity_name, priority);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_relationship (
+                                id BIGSERIAL PRIMARY KEY,
+                                relationship_name VARCHAR(255) NOT NULL,
+                                description TEXT,
+                                from_table VARCHAR(255) NOT NULL,
+                                from_column VARCHAR(255) NOT NULL,
+                                to_table VARCHAR(255) NOT NULL,
+                                to_column VARCHAR(255) NOT NULL,
+                                relation_type VARCHAR(100),
+                                priority INTEGER DEFAULT 100 NOT NULL,
+                                enabled BOOLEAN DEFAULT true NOT NULL,
+                                created_at timestamptz DEFAULT now() NOT NULL
+);
+CREATE INDEX idx_ce_semantic_relationship_lookup
+    ON public.ce_semantic_relationship USING btree (enabled, relationship_name, priority);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_value_pattern (
+                                id BIGSERIAL PRIMARY KEY,
+                                from_field VARCHAR(255) NOT NULL,
+                                to_field VARCHAR(255) NOT NULL,
+                                value_starts_with VARCHAR(2000) NOT NULL,
+                                priority INTEGER DEFAULT 100 NOT NULL,
+                                enabled BOOLEAN DEFAULT true NOT NULL,
+                                created_at timestamptz DEFAULT now() NOT NULL
+);
+CREATE INDEX idx_ce_semantic_value_pattern_lookup
+    ON public.ce_semantic_value_pattern USING btree (enabled, from_field, to_field, priority);

@@ -1,5 +1,12 @@
 DROP TABLE IF EXISTS ce_mcp_db_tool;
 DROP TABLE IF EXISTS ce_mcp_planner;
+DROP TABLE IF EXISTS ce_semantic_entity;
+DROP TABLE IF EXISTS ce_semantic_relationship;
+DROP TABLE IF EXISTS ce_semantic_join_hint;
+DROP TABLE IF EXISTS ce_semantic_value_pattern;
+DROP TABLE IF EXISTS ce_user_query_knowledge;
+DROP TABLE IF EXISTS ce_mcp_user_feedback;
+DROP TABLE IF EXISTS ce_mcp_user_query_knowledge;
 DROP TABLE IF EXISTS ce_conversation_history;
 DROP TABLE IF EXISTS ce_audit;
 DROP TABLE IF EXISTS ce_pending_action;
@@ -69,10 +76,10 @@ CREATE INDEX ix_ce_intent_enabled_priority ON ce_intent (enabled, priority, inte
 
 CREATE TABLE ce_intent_classifier (
   classifier_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  intent_code TEXT NOT NULL,
-  state_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(state_code) <> ''),
   rule_type TEXT NOT NULL,
   pattern TEXT NOT NULL,
+  intent_code TEXT NOT NULL,
+  state_code TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (trim(state_code) <> ''),
   priority INTEGER NOT NULL,
   enabled BOOLEAN DEFAULT 1,
   description TEXT
@@ -112,12 +119,13 @@ CREATE TABLE ce_output_schema (
   schema_id INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_code TEXT NOT NULL,
   state_code TEXT NOT NULL,
+  schema_type TEXT NOT NULL DEFAULT 'SCHEMA_JSON',
   json_schema TEXT NOT NULL,
   description TEXT,
   enabled BOOLEAN DEFAULT 1,
   priority INTEGER NOT NULL
 );
-CREATE INDEX idx_ce_output_schema_lookup ON ce_output_schema (intent_code, state_code, enabled, priority);
+CREATE INDEX idx_ce_output_schema_lookup ON ce_output_schema (intent_code, state_code, schema_type, enabled, priority);
 
 CREATE TABLE ce_policy (
   policy_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,7 +143,7 @@ CREATE TABLE ce_prompt_template (
   template_id INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
   state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
-  response_type TEXT NOT NULL,
+  output_format TEXT NOT NULL,
   system_prompt TEXT NOT NULL,
   user_prompt TEXT NOT NULL,
   temperature NUMERIC(3,2) NOT NULL DEFAULT 0.0,
@@ -144,7 +152,7 @@ CREATE TABLE ce_prompt_template (
   enabled BOOLEAN NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
-CREATE INDEX idx_ce_prompt_template_lookup ON ce_prompt_template (response_type, intent_code, state_code, enabled);
+CREATE INDEX idx_ce_prompt_template_lookup ON ce_prompt_template (output_format, intent_code, state_code, enabled);
 
 CREATE TABLE ce_response (
   response_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,3 +262,104 @@ CREATE TABLE ce_mcp_planner (
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
 CREATE INDEX idx_ce_mcp_planner_scope ON ce_mcp_planner (enabled, intent_code, state_code, planner_id);
+
+
+CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
+                                                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                          query_text TEXT NOT NULL,
+                                                          description TEXT,
+                                                          prepared_sql TEXT,
+                                                          tags TEXT,
+                                                          api_hints TEXT,
+                                                          embedding TEXT,
+                                                          created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_mcp_user_query_knowledge_query_text ON ce_mcp_user_query_knowledge (query_text);
+
+CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
+                                                   feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                   conversation_id TEXT NOT NULL,
+                                                   feedback_type TEXT NOT NULL,
+                                                   message_id TEXT,
+                                                   intent_code TEXT,
+                                                   state_code TEXT,
+                                                   user_query TEXT,
+                                                   assistant_response TEXT,
+                                                   mcp_tool_code TEXT,
+                                                   captured_query_knowledge_count INTEGER NOT NULL DEFAULT 0,
+                                                   applied_query_knowledge_json TEXT,
+                                                   metadata_json TEXT,
+                                                   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+                                                   FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ce_mcp_user_feedback_conversation ON ce_mcp_user_feedback (conversation_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
+                                                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                   conversation_id TEXT,
+                                                   feedback_id INTEGER,
+                                                   feedback_type TEXT,
+                                                   tool_code TEXT,
+                                                   intent_code TEXT,
+                                                   state_code TEXT,
+                                                   query_text TEXT NOT NULL,
+                                                   description TEXT,
+                                                   prepared_sql TEXT,
+                                                   tags TEXT,
+                                                   api_hints TEXT,
+                                                   embedding TEXT,
+                                                   metadata_json TEXT,
+                                                   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_user_query_knowledge_query_text ON ce_user_query_knowledge (query_text);
+CREATE INDEX idx_ce_user_query_knowledge_tool_code ON ce_user_query_knowledge (tool_code, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_join_hint (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     base_table TEXT NOT NULL,
+                                                     join_table TEXT NOT NULL,
+                                                     priority INTEGER NOT NULL DEFAULT 100,
+                                                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_semantic_join_hint_lookup ON ce_semantic_join_hint (enabled, base_table, priority, join_table);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_entity (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     entity_name TEXT NOT NULL,
+                                                     description TEXT,
+                                                     primary_table TEXT,
+                                                     related_tables TEXT,
+                                                     synonyms TEXT,
+                                                     fields_json TEXT,
+                                                     priority INTEGER NOT NULL DEFAULT 100,
+                                                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_semantic_entity_lookup ON ce_semantic_entity (enabled, entity_name, priority);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_relationship (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     relationship_name TEXT NOT NULL,
+                                                     description TEXT,
+                                                     from_table TEXT NOT NULL,
+                                                     from_column TEXT NOT NULL,
+                                                     to_table TEXT NOT NULL,
+                                                     to_column TEXT NOT NULL,
+                                                     relation_type TEXT,
+                                                     priority INTEGER NOT NULL DEFAULT 100,
+                                                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_semantic_relationship_lookup ON ce_semantic_relationship (enabled, relationship_name, priority);
+
+CREATE TABLE IF NOT EXISTS ce_semantic_value_pattern (
+                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                     from_field TEXT NOT NULL,
+                                                     to_field TEXT NOT NULL,
+                                                     value_starts_with TEXT NOT NULL,
+                                                     priority INTEGER NOT NULL DEFAULT 100,
+                                                     enabled BOOLEAN NOT NULL DEFAULT 1,
+                                                     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+);
+CREATE INDEX idx_ce_semantic_value_pattern_lookup ON ce_semantic_value_pattern (enabled, from_field, to_field, priority);

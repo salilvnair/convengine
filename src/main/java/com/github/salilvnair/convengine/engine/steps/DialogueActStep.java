@@ -11,9 +11,9 @@ import com.github.salilvnair.convengine.llm.context.LlmInvocationContext;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunAfter;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.MustRunBefore;
-import com.github.salilvnair.convengine.engine.pipeline.annotation.RequiresConversationPersisted;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
+import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunBefore;
+import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.helper.CeConfigResolver;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
@@ -329,7 +329,7 @@ public class DialogueActStep implements EngineStep {
                     inputPayload);
             String out;
             try {
-                out = llm.generateJson(systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
+                out = llm.generateJson(session, systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
             } catch (Exception e) {
                 Map<String, Object> errorPayload = new LinkedHashMap<>();
                 errorPayload.put(ConvEnginePayloadKey.MESSAGE, String.valueOf(e.getMessage()));

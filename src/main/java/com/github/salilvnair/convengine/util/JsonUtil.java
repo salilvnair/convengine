@@ -98,7 +98,7 @@ public final class JsonUtil {
 
             ObjectNode targetObject = (ObjectNode) target;
 
-            source.fields().forEachRemaining(entry -> {
+            source.properties().forEach(entry -> {
                 String fieldName = entry.getKey();
                 JsonNode sourceValue = entry.getValue();
                 JsonNode targetValue = targetObject.get(fieldName);

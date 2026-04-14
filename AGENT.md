@@ -1,89 +1,131 @@
-
 # ConvEngine (Java) - AGENT.md
 
 ## Overview
 
 ConvEngine is a deterministic, configuration-driven conversational workflow engine.
 
-It is not an open-ended chatbot runtime. Business behavior is declared in `ce_*` tables and executed by an auditable step pipeline.
+It is not an unconstrained chatbot runtime. Business behavior is declared in `ce_*` tables, constrained by config, and executed by an auditable step pipeline.
 
-Current library baseline: `1.0.15`.
+Current library baseline: `2.0.12`.
 
-## Release Notes (Latest)
+## Current Release Line (`2.0.0` to `2.0.12`)
 
-### 1.0.15
-- `SchemaExtractionStep` was refactored to a thin orchestrator; schema-heavy calculations moved to schema resolver provider contract.
-- Added provider-owned computation contract:
-  - `ConvEngineSchemaComputation`
-  - `ConvEngineSchemaResolver#compute(...)`
-  - `ConvEngineSchemaResolver#sanitizeExtractedJson(...)`
-  - `ConvEngineSchemaResolver#mergeContextJson(...)`
-- `DefaultConvEngineSchemaResolver` now owns sanitization, merge, completeness, missing-fields, and missing-field-options behavior.
-- Provider override model is now clean and explicit:
-  - consumers can register their own `ConvEngineSchemaResolver` bean
-  - higher precedence via Spring `@Order` is respected by resolver factory selection.
-- Centralized input param keys in `ConvEngineInputParamKey`; removed hardcoded `putInputParam("...")` keys across step/intent/rule flows.
-- Centralized fixed audit stages in `ConvEngineAuditStage`; migrated fixed literals across engine, MCP, response, and intent components.
-- Added centralized payload map keys in `ConvEnginePayloadKey`; replaced payload key string literals (`payload.put("...")`) across ConvEngine.
+### `2.0.0` foundation
+- step-pipeline architecture became the core execution model
+- rule-first behavior model (`ce_rule`) became the main transition mechanism
+- pending actions, tool orchestration, state graph, memory, and replay scaffolding became part of the runtime
 
-### 1.0.14
-- Added `ce_rule.state_code` support (`NULL`, `ANY`, exact match) to scope rule execution by state and reduce unnecessary evaluations.
-- Audit persistence strategy split with synchronous conversation history persistence guarantees.
+### `2.0.6`
+- static cache reliability and diagnostics improved
+- cache analysis / refresh operational tooling became part of the expected runtime model
+
+### `2.0.7`
+- `ce_mcp_planner` introduced scoped MCP planner prompts
+- `ce_mcp_tool` / `ce_mcp_planner` scope validation became strict (`ANY`, `UNKNOWN`, or exact; no null/blank wildcard rows)
+- richer MCP lifecycle metadata was added under `context.mcp.*`
+- advanced HTTP MCP handler models were added
+
+### `2.0.8`
+- `ce_verbose` introduced as a first-class runtime progress/error control table
+- stream envelope added explicit `AUDIT` / `VERBOSE` event support
+- `EngineSession.stepInfos` added deterministic step telemetry
+- MCP schema-incomplete skip behavior became explicit and auditable
+
+### `2.0.9`
+- `CorrectionStep` became a real routing step in the main pipeline
+- `ce_prompt_template.interaction_mode` and `interaction_contract` became actual runtime routing inputs
+- prompt and verbose rendering consolidated through the shared Thymeleaf-backed renderer
+- `DialogueActStep` added richer audit checkpoints and `POST_DIALOGUE_ACT` rule interaction
+
+### `2.0.10`
+- Introduced semantic metadata-driven query pipeline foundation (`ce_semantic_*`).
+
+### `2.0.11`
+- Semantic runtime hardening:
+  - query retry loop
+  - failure-memory storage + correction tracking (`ce_semantic_query_failures`)
+  - improved timestamp and SQL safety handling
+
+### `2.0.12`
+- Semantic simplification baseline:
+  - single semantic path: `db.semantic.interpret -> db.semantic.query -> postgres.query`
+  - active package namespace is `com.github.salilvnair.convengine.engine.mcp.query.semantic`
+  - stale legacy semantic docs/surfaces removed
 
 ## Runtime Architecture
 
 ### Request entry and engine flow
 1. `ConversationController.message(...)` receives request and builds `EngineContext`.
 2. `DefaultConversationalEngine.process(...)` opens `EngineSession` from `EngineSessionFactory`.
-3. `EnginePipelineFactory` builds a DAG-ordered pipeline.
-4. Pipeline executes steps in order.
-5. `PersistConversationStep` and `PipelineEndGuardStep` finalize output and timings.
-6. Controller maps `EngineResult` to API DTO and returns.
+3. `EnginePipelineFactory` builds the DAG-ordered pipeline.
+4. Pipeline executes steps in runtime order.
+5. `PersistConversationStep` persists final conversation state.
+6. `PipelineEndGuardStep` closes timings and terminal guards.
+7. Controller maps `EngineResult` to API DTO and returns.
 
-### Canonical pipeline (current)
+## Canonical Pipeline (Current 27 Steps)
+
 1. `LoadOrCreateConversationStep`
-2. `ResetConversationStep`
-3. `PersistConversationBootstrapStep`
-4. `AuditUserInputStep`
-5. `PolicyEnforcementStep`
-6. `IntentResolutionStep`
-7. `ResetResolvedIntentStep`
-8. `FallbackIntentStateStep`
-9. `AddContainerDataStep`
-10. `McpToolStep`
-11. `SchemaExtractionStep`
-12. `AutoAdvanceStep`
-13. `RulesStep`
-14. `ResponseResolutionStep`
-15. `PersistConversationStep`
-16. `PipelineEndGuardStep`
+2. `CacheInspectAuditStep`
+3. `ResetConversationStep`
+4. `PersistConversationBootstrapStep`
+5. `AuditUserInputStep`
+6. `PolicyEnforcementStep`
+7. `DialogueActStep`
+8. `InteractionPolicyStep`
+9. `CorrectionStep`
+10. `ActionLifecycleStep`
+11. `DisambiguationStep`
+12. `GuardrailStep`
+13. `IntentResolutionStep`
+14. `ResetResolvedIntentStep`
+15. `FallbackIntentStateStep`
+16. `AddContainerDataStep`
+17. `PendingActionStep`
+18. `ToolOrchestrationStep`
+19. `McpToolStep`
+20. `SchemaExtractionStep`
+21. `AutoAdvanceStep`
+22. `RulesStep`
+23. `StateGraphStep`
+24. `ResponseResolutionStep`
+25. `MemoryStep`
+26. `PersistConversationStep`
+27. `PipelineEndGuardStep`
 
-Order is enforced via step annotations (`@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`) and DAG validation.
+Order is enforced by step annotations, dependency rules, and DAG validation. Do not document or code against the older shortened pipeline.
 
-## API Surface
+## Core Operating Model
 
-### REST APIs
-- `POST /api/v1/conversation/message`
-- `GET /api/v1/conversation/audit/{conversationId}`
-- `GET /api/v1/conversation/audit/{conversationId}/trace`
-- `POST /api/v1/conversation/experimental/generate-sql` (feature-flagged)
+1. Bootstrap and restore conversation state
+2. Apply early reset / policy / guard boundaries
+3. Resolve dialogue act before intent when possible
+4. Route correction / confirmation / retry in place
+5. Resolve or maintain intent + state
+6. Extract structured fields by schema
+7. Compute transitions via rules and policy
+8. Execute direct tools or planner-driven MCP when eligible
+9. Resolve final output by exact/derived response mapping
+10. Persist runtime state, history, audit, and timing metadata
 
-### SSE stream API
-- `GET /api/v1/conversation/stream/{conversationId}`
-- Emits event name = audit stage (plus `CONNECTED` on subscribe).
+## Consumer LLM Contract
 
-### Typical stream stages
-- `CONNECTED`
-- `USER_INPUT`
-- `STEP_ENTER`
-- `STEP_EXIT`
-- `STEP_ERROR`
-- `ASSISTANT_OUTPUT`
-- `ENGINE_RETURN`
+`LlmClient` must use `EngineSession` as the first argument for all model calls:
+
+```java
+public interface LlmClient {
+    String generateText(EngineSession session, String hint, String contextJson);
+    String generateJson(EngineSession session, String hint, String jsonSchema, String contextJson);
+    float[] generateEmbedding(EngineSession session, String input);
+    default String generateJsonStrict(EngineSession session, String hint, String jsonSchema, String context) {
+        return generateJson(session, hint, jsonSchema, context);
+    }
+}
+```
 
 ## Data Model Contracts
 
-### Non-transactional behavior tables
+### Static control-plane tables
 - `ce_config`
 - `ce_container_config`
 - `ce_intent`
@@ -93,31 +135,79 @@ Order is enforced via step annotations (`@MustRunAfter`, `@MustRunBefore`, `@Req
 - `ce_prompt_template`
 - `ce_response`
 - `ce_rule`
+- `ce_pending_action`
 - `ce_mcp_tool`
 - `ce_mcp_db_tool`
+- `ce_mcp_planner`
+- `ce_verbose`
 
-### Runtime/transactional tables
+### Runtime / transactional tables
 - `ce_conversation`
 - `ce_audit`
 - `ce_conversation_history`
 - `ce_llm_call_log`
 
-### Important schema truths
+### Semantic control-plane tables
+- `ce_semantic_concept`
+- `ce_semantic_synonym`
+- `ce_semantic_mapping`
+- `ce_semantic_query_class`
+- `ce_semantic_ambiguity_option`
+- `ce_semantic_concept_embedding`
+- `ce_semantic_entity`
+- `ce_semantic_join_hint`
+- `ce_semantic_relationship`
+- `ce_semantic_value_pattern`
+- `ce_semantic_query_failures`
+- `ce_semantic_model`
+- `ce_semantic_setting`
+- `ce_semantic_source_table`
+- `ce_semantic_source_column`
+- `ce_semantic_lexicon`
+- `ce_semantic_rule_allowed_table`
+- `ce_semantic_rule_deny_operation`
+- `ce_semantic_rule_config`
 
-`ce_prompt_template` uses:
-- `template_id` (PK)
+## Must-Keep Table Contracts
+
+### `ce_prompt_template`
+
+Columns include:
+- `template_id`
 - `intent_code`
 - `state_code`
-- `response_type`
+- `output_format`
 - `system_prompt`
 - `user_prompt`
 - `temperature`
+- `interaction_mode`
+- `interaction_contract`
 - `enabled`
 
-There is no `template_code` in current DDL.
+There is no `template_code`.
 
-`ce_response` uses:
-- `response_id` (PK)
+`interaction_mode` is the coarse turn semantic bucket. Supported values:
+- `NORMAL`
+- `IDLE`
+- `COLLECT`
+- `CONFIRM`
+- `PROCESSING`
+- `FINAL`
+- `ERROR`
+- `DISAMBIGUATE`
+- `FOLLOW_UP`
+- `PENDING_ACTION`
+- `REVIEW`
+
+`interaction_contract` is extensible JSON text. Recommended shape:
+- `{"allows":["affirm","edit","retry","reset"],"expects":["structured_input"]}`
+
+Use `interaction_mode` for broad semantics and `interaction_contract` for fine-grained behavior. `CorrectionStep` depends on this contract.
+
+### `ce_response`
+
+Columns include:
+- `response_id`
 - `intent_code`
 - `state_code`
 - `output_format`
@@ -127,126 +217,56 @@ There is no `template_code` in current DDL.
 - `json_schema`
 - `priority`
 - `enabled`
+- `description`
 
-There is no `prompt_template_code` in current DDL.
-
-## Enum / Value Matrix (Current)
-
-This file is for contributors and internal agents working on ConvEngine.
-
-## What ConvEngine Is
-
-ConvEngine is a deterministic conversational orchestration engine.
-
-- It is configuration-first (`ce_*` tables + app config).
-- It is step-pipeline driven.
-- It is audit-first by design.
-
-Do not treat ConvEngine as an unconstrained chatbot runtime.
-
-## Current Baseline
-
-- Library version: `2.0.9`
-- Property namespace for flow tuning: `convengine.flow.*`
-
-## Core Operating Model
-
-1. Resolve/maintain intent + state
-2. Extract structured fields by schema
-3. Compute transitions via rules and policy
-4. Resolve output by exact/derived response mapping
-5. Dispatch async background persistence (`ce_conversation`, `ce_llm_call_log`, `ce_conversation_history`) + publish audit timeline
-
-## Source of Truth Order
-
-When implementing behavior:
-
-1. `src/main/resources/sql/ddl.sql` (schema truth)
-2. `ce_*` table contracts (data behavior)
-3. Step pipeline contracts
-4. API/controller mapping
-5. Docs
-
-If docs/examples conflict with DDL, DDL wins.
-
-## Must-Keep Contracts
-
-### `ce_prompt_template`
-
-Columns include:
-
-- `template_id`, `intent_code`, `state_code`, `response_type`, `system_prompt`, `user_prompt`, `temperature`, `interaction_mode`, `interaction_contract`, `enabled`
-
-`interaction_mode` is the coarse semantic bucket for the turn. Supported values:
-
-- `NORMAL`, `IDLE`, `COLLECT`, `CONFIRM`, `PROCESSING`, `FINAL`, `ERROR`, `DISAMBIGUATE`, `FOLLOW_UP`, `PENDING_ACTION`, `REVIEW`
-
-`interaction_contract` is JSON text used for extensible capabilities and expectations. Recommended shape:
-
-- `{"allows":["affirm","edit","retry","reset"],"expects":["structured_input"]}`
-
-No `template_code`.
-
-### `ce_response`
-
-Columns include:
-
-- `response_id`, `intent_code`, `state_code`, `output_format`, `response_type`, `exact_text`, `derivation_hint`, `json_schema`, `priority`, `enabled`, `description`
-
-No `prompt_template_code`.
+There is no `prompt_template_code`.
 
 ### `ce_rule`
 
+Current important values:
 - `rule_type`: `EXACT | REGEX | JSON_PATH`
-- `phase`: `PRE_RESPONSE_RESOLUTION | POST_AGENT_INTENT | POST_SCHEMA_EXTRACTION | PRE_AGENT_MCP | POST_AGENT_MCP | POST_TOOL_EXECUTION`
-- `state_code`: `ANY | UNKNOWN | exact`
-- `action`: `SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK | SET_INPUT_PARAM`
+- `phase`:
+  - `POST_DIALOGUE_ACT`
+  - `POST_SCHEMA_EXTRACTION`
+  - `PRE_AGENT_MCP`
+  - `PRE_RESPONSE_RESOLUTION`
+  - `POST_AGENT_INTENT`
+  - `POST_AGENT_MCP`
+  - `POST_TOOL_EXECUTION`
+
+Current action surface:
+- `SET_INTENT`
+- `SET_STATE`
+- `SET_DIALOGUE_ACT`
+- `SET_JSON`
+- `GET_CONTEXT`
+- `GET_SCHEMA_JSON`
+- `GET_SESSION`
+- `SET_TASK`
+- `SET_INPUT_PARAM`
+
+Use `ce_rule` before adding Java branching.
 
 ### `ce_pending_action`
 
 Catalog of action candidates by intent/state/action key.
 
-Catalog of action candidates by intent/state/action key. 
-When creating `CePendingAction` rows, ensure they are paired with a corresponding Tool/Task executing the logic, and ensure `InteractionPolicy` configuration accurately maps `PENDING_ACTION:AFFIRM` to execution.
+Important:
+- runtime lifecycle is not stored in this table
+- runtime lifecycle (`OPEN`, `IN_PROGRESS`, `EXECUTED`, `REJECTED`, `EXPIRED`) lives in context as `pending_action_runtime`
 
-Runtime lifecycle (`OPEN`, `IN_PROGRESS`, `EXECUTED`, `REJECTED`, `EXPIRED`) is maintained in context (`pending_action_runtime`), not in this table.
+### `ce_mcp_tool`
 
-## Step Design Rules
-
-- Keep steps composable and side-effect scoped.
-- Prefer validation/audit in steps over hidden mutation.
-- For safety steps (guardrail/state graph), fail-soft unless explicitly configured fail-closed.
-- Keep order constraints explicit with annotations.
-
-## Rule-First Philosophy
-
-Before adding Java branching:
-
-- check if behavior can be expressed via `ce_rule`
-- check phase-specific rules (`POST_AGENT_INTENT`, `POST_SCHEMA_EXTRACTION`, `PRE_AGENT_MCP`, `POST_AGENT_MCP`, `POST_TOOL_EXECUTION`)
-- check whether action can be `SET_TASK` or `SET_INPUT_PARAM`
-
-## Audit Expectations
-
-Any non-trivial decision should emit a stage event.
-
-At minimum ensure visibility for:
-
-- dialogue act
-- interaction policy decision
-- pending action lifecycle/skip/execute/reject/fail
-- guardrail allow/deny
-- disambiguation requirement
-- state graph validation/violation
-- tool orchestration request/result/error
-
-## MCP + Tooling
-
-Tool routing is by `tool_group` with executor adapters.
-**CRITICAL**: All tools must use explicit scope values. Use `intent_code` / `state_code` with concrete values or `ANY` / `UNKNOWN`. Do not use null scope values.
+Critical current contract:
+- `intent_code` is mandatory
+- `state_code` is mandatory
+- null/blank scope is invalid
+- valid scope values are:
+  - exact configured values
+  - `ANY`
+  - `UNKNOWN`
 
 Supported canonical groups:
-
 - `DB`
 - `HTTP_API`
 - `WORKFLOW_ACTION`
@@ -255,61 +275,189 @@ Supported canonical groups:
 - `NOTIFICATION`
 - `FILES`
 
-Prefer adapters/interfaces; avoid hardcoding transport logic in steps.
+For semantic catalog, tool code is fixed as `db.semantic.catalog` and should be registered through `ce_mcp_tool` rows. Do not document or implement a separate YAML `tool-code` property for semantic catalog.
 
-### MCP extensions (v2.0.7)
+### `ce_mcp_planner`
 
-- `DB` now supports per-tool handlers via `DbToolHandler` before fallback to `ce_mcp_db_tool.sql_template`.
-- MCP planner prompts are now use-case scoped in `ce_mcp_planner` (`intent_code` + `state_code`) with legacy `ce_config` fallback.
-- Optional built-in DB knowledge graph tool (`DbKnowledgeGraphToolHandler`) can read consumer-managed query/schema knowledge tables (`convengine.mcp.db.knowledge.*`) and return ranked semantic matches.
-- `HTTP_API` now supports `HttpApiRequestingToolHandler` and framework-managed invocation via `HttpApiToolInvoker` for retries, backoff, circuit breaker, timeout, auth provider injection, and response mapping.
+Planner prompt selection order:
+1. exact `intent_code + state_code`
+2. exact `intent_code + ANY`
+3. `ANY + ANY`
+4. legacy `ce_config` fallback
 
-### CE verbose + stream envelope extensions (v2.0.8)
+Like `ce_mcp_tool`, scope is explicit and validated at startup.
 
-- New control-plane table `ce_verbose` drives user-facing runtime progress and error messaging by `intent_code`, `state_code`, `step_match`, `step_value`, and `determinant`.
-- New standalone SQL assets:
-  - `src/main/resources/sql/verbose_ddl.sql`
-  - `src/main/resources/sql/verbose_seed.sql`
-  plus merged rows in all dialect main `ddl_*` and `seed_*` files.
-- `EngineSession` now carries `stepInfos` (`StepInfo`) with step enter/exit/error timings and outcomes; preserve this shape when extending session metadata.
-- Streaming payload contract changed: `AuditStreamEventResponse` now includes `eventType` and optional `verbose` payload. Both SSE and STOMP can emit `AUDIT` and `VERBOSE`.
-- MCP now supports deterministic schema-incomplete skip (`MCP_SKIPPED_SCHEMA_INCOMPLETE`, `STATUS_SKIPPED_SCHEMA_INCOMPLETE`) in `McpToolStep`.
+### `ce_verbose`
 
-### Prompt + correction extensions (v2.0.9)
+Current contract:
+- startup validated
+- statically cached
+- matched by:
+  - `intent_code`
+  - `state_code`
+  - `determinant`
+  - `step_match`
+  - `step_value`
+  - optional `rule_id`
+  - optional `tool_code`
+  - `priority`
 
-- Prompt rendering is now shared through `ThymeleafTemplateRenderer`; use Thymeleaf text expressions in prompts and `ce_verbose` messages when you need conditional/default rendering. Legacy `{{var}}` forms still work.
-- `PromptTemplateContext` and session prompt vars now include `standalone_query` and `resolved_user_input`.
-- `DialogueAct` now includes `ANSWER`.
-- `DialogueActStep` now audits `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, and `DIALOGUE_ACT_LLM_ERROR` whenever the LLM path is used.
-- `DialogueActStep` now exposes regex and LLM candidate dialogue-act values in session input params and runs `POST_DIALOGUE_ACT` rules before `InteractionPolicyStep`.
-- `CorrectionStep` runs before intent/schema resolution and can route confirmation affirmations forward without re-extracting schema and patch single-field confirmation edits in-place.
-- Use `routing_decision` (not `turn_mode`) for downstream flow routing.
-- Consumers can emit UI verbose events directly through `ConvEngineVerboseAdapter` from hooks, transformers, and custom beans.
+`step_match` must be:
+- `EXACT`
+- `REGEX`
+- `JSON_PATH`
+
+Do not document or seed invalid `step_match` values.
+
+Current SQL observability determinants:
+- `MCP_DB_SQL_EXECUTION` on `McpDbExecutor`
+
+Both publish metadata with:
+- `sql`
+- `params`
+- `row_count`
+- `rows`
+
+## Step Design Rules
+
+- Keep steps composable and side-effect scoped.
+- Prefer explicit audit and deterministic mutation over hidden behavior.
+- Keep order constraints explicit with annotations and DAG rules.
+- For safety steps (`PolicyEnforcementStep`, `GuardrailStep`, `StateGraphStep`), fail-soft unless config explicitly requires fail-closed behavior.
+- Do not move domain logic into step classes when the behavior belongs in `ce_rule`, `ce_prompt_template`, or semantic metadata tables.
+
+## Rule-First Philosophy
+
+Before adding Java branching:
+- check if behavior can be expressed in `ce_rule`
+- check the correct phase first
+- check whether the behavior belongs in:
+  - `SET_INPUT_PARAM`
+  - `SET_TASK`
+  - `SET_DIALOGUE_ACT`
+  - `SET_JSON`
+- check whether the prompt contract (`interaction_mode`, `interaction_contract`) already models the intended routing
+
+## Audit Expectations
+
+Any non-trivial decision should emit a visible audit stage.
+
+At minimum preserve visibility for:
+- dialogue act classification
+- interaction policy decisions
+- correction routing
+- pending action lifecycle / execution / rejection
+- guardrail allow / deny
+- disambiguation requirements
+- state graph validation / violation
+- direct tool orchestration request / result / error
+- MCP planner input / output / tool call / tool result / final answer
+- response resolution selection
+
+## MCP + Tooling
+
+There are two distinct tool paths:
+
+### Direct tool path
+- `ToolOrchestrationStep`
+- one request-driven tool
+- writes `context.mcp.toolExecution.*`
+- runs `POST_TOOL_EXECUTION` rules
+
+### Planner MCP path
+- `McpToolStep`
+- planner loop (`CALL_TOOL` / `ANSWER`)
+- writes `context.mcp.observations[]`
+- writes `context.mcp.finalAnswer`
+- writes MCP loop execution flags:
+  - `context.mcp.finalAnswerDetermined`
+  - `context.mcp.toolExecutionAbrupted`
+  - `context.mcp.toolExecutionAbruptionLimit`
+- runs `PRE_AGENT_MCP` and `POST_AGENT_MCP` rule phases around the MCP lifecycle
+
+### MCP guardrails
+
+Current MCP next-tool guard model:
+- controlled by `convengine.mcp.guardrail.*`
+- `failClosed` can block if allowed-next rules are missing
+- blocked-next behavior must remain deterministic and auditable
+
+## Semantic Query MCP Runtime
+
+The active semantic MCP chain is:
+
+1. `db.semantic.interpret`
+2. `db.semantic.query`
+3. `postgres.query`
+4. planner `ANSWER`
+
+Design rules:
+
+- keep business semantics in `ce_semantic_*` metadata tables
+- keep query shape rules in `ce_semantic_query_class`
+- keep mappings in `ce_semantic_mapping`
+- keep clarification options in `ce_semantic_ambiguity_option`
+- keep failure memory in `ce_semantic_query_failures`
+- keep runtime SQL read-only and guarded
+
+## Prompt and Rendering Rules
+
+- Prompt and verbose rendering should use the shared Thymeleaf-backed renderer path.
+- Do not add parallel ad hoc renderers for prompts or verbose messages.
+- Legacy `{{var}}` still works, but the native path is the shared renderer.
+- Prompt/session variables now include:
+  - `session`
+  - `inputParams`
+  - `rawInputParams`
+  - `context`
+  - `schema`
+  - `schemaJson`
+  - `promptVars`
+  - `standalone_query`
+  - `resolved_user_input`
+
+## MCP DB Extension Points
+
+### `postgres.query` SQL normalization
+- Interface: `PostgresQueryInterceptor`
+- Default fallback: `DefaultPostgresQueryInterceptor` (lowest precedence)
+- Interceptor chain runs before SQL guardrail and execution.
+
+## Framework Performance Patterns
+
+Do not reintroduce synchronous configuration-table lookups into the request path.
+
+- Static configuration tables should resolve through the cache layer.
+- Runtime state persistence should remain isolated from the core decision path.
+- Async persistence and event fan-out should remain the preferred model for heavy writes.
+
+## Source of Truth Order
+
+When implementing or documenting behavior:
+1. DDL / SQL resources (`src/main/resources/sql/**`)
+2. `ce_*` table contracts
+3. Step pipeline contracts
+4. API/controller mapping
+5. Docs
+
+If docs/examples conflict with DDL or actual step order, DDL and code win.
 
 ## Documentation Discipline
 
 When behavior changes:
-
 1. Update `README.md`
 2. Update this `AGENT.md`
-3. Update `src/main/resources/prompts/SQL_GENERATION_AGENT.md` if SQL contracts changed
-4. Keep examples runnable and enum-accurate
-
-## Framework Performance Patterns (v2.0.7+)
-
-Do not introduce synchronous Relational DB reads/writes into the core engine lifecycle path:
-- **Static Configuration**: All `ce_*` configuration tables must be resolved via the `StaticConfigurationCacheService` interface, NOT direct JpaRepository `.find()` hits. The application strictly maintains a 0-latency pre-loaded RAM cache.
-- **Transactional State**: The primary `ce_conversation` mutation must be isolated via `ConversationCacheService` using Spring Cache mechanisms. Never call `conversationRepository.save()` sequentially on the primary NLP thread.
-- **Async Execution**: Delegate all database `INSERT` commands to parallel executor methods (e.g. `AsyncConversationPersistenceService`, `AsyncLlmCallLogPersistenceService`, `AsyncConversationHistoryPersistenceService`) firing in fire-and-forget topologies.
+3. Update related docs and examples
+4. Keep SQL assets, docs, and runtime enum values aligned
 
 ## Release Hygiene Checklist
 
-- DDL/seed aligned
-- Rule phase enum aligned across code/docs
-- Dialogue-act post-processing rule phase and action enum aligned across code/docs
+- DDL and seed scripts aligned
+- Rule phases aligned across code, docs, and examples
+- Step list aligned to the real 27-step runtime
 - New input param keys centralized in constants
-- New audit stages centralized in enum
-- `ce_verbose` docs/examples aligned with actual emitted determinants
-- No stale config prefixes in docs (`convengine.flow.*` only)
-- `ce_verbose` rows validated for `step_match` (`EXACT|REGEX|JSON_PATH`) and non-empty `step_value`/`determinant`
-- Prompt and verbose rendering changes should reuse `ThymeleafTemplateRenderer`; do not add parallel ad hoc renderers
+- New audit stages centralized in enums/constants
+- MCP scope rules documented with current strict behavior
+- `ce_verbose` docs and seeds aligned with real determinants and matcher types
+- Semantic docs and seeds aligned with the current metadata table set
+- Prompt and verbose rendering continue to use the shared renderer path
