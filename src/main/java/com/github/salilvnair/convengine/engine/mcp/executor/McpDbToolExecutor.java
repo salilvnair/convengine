@@ -47,7 +47,7 @@ public class McpDbToolExecutor implements McpToolExecutor {
                     "McpDbToolExecutor can execute only DB tools. toolCode=" + toolCode + ", toolGroup=" + toolGroup);
         }
         CeMcpDbTool dbTool = registry.requireDbTool(toolCode);
-        return dbExecutor.execute(dbTool, args);
+        return dbExecutor.execute(dbTool, args, session);
     }
 
     private String normalizeResult(Object value) {
