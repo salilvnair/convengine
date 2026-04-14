@@ -39,11 +39,8 @@ public class McpDbExecutor {
             Params:
             {{params_json}}
 
-            Runtime schema details:
-            {{schema_json}}
-
-            Semantic hints:
-            {{semantic_json}}
+            LLM Context JSON:
+            {{context_json}}
 
             Execution error:
             {{error_message}}
@@ -126,20 +123,38 @@ public class McpDbExecutor {
                 DEFAULT_DB_SQL_PREFLIGHT_USER_PROMPT);
         String schemaResponseJson = configResolver.resolveString(this, CFG_DB_SQL_PREFLIGHT_SCHEMA_JSON,
                 DEFAULT_DB_SQL_PREFLIGHT_SCHEMA_JSON);
+        String llmContextJson = buildRepairContextJson(sql, paramsJson, schemaJsonForPrompt, semanticJson,
+                String.valueOf(error == null ? "" : error.getMessage()));
         String prompt = systemPrompt + "\n\n" + applyPromptVars(userPromptTemplate, Map.of(
                 "sql_before", sql == null ? "" : sql,
                 "params_json", paramsJson,
                 "schema_json", schemaJsonForPrompt,
                 "semantic_json", semanticJson,
+                "context_json", llmContextJson,
                 "error_message", String.valueOf(error == null ? "" : error.getMessage())
         ));
-        String repaired = extractSqlFromJsonOrFallback(prompt, schemaResponseJson);
+        String repaired = extractSqlFromJsonOrFallback(prompt, schemaResponseJson, llmContextJson);
         return normalizeSql(repaired);
     }
 
-    private String extractSqlFromJsonOrFallback(String prompt, String schemaJson) {
+    private String buildRepairContextJson(
+            String sql,
+            String paramsJson,
+            String schemaJsonForPrompt,
+            String semanticJson,
+            String errorMessage) {
+        Map<String, Object> context = new HashMap<>();
+        context.put("original_sql", sql == null ? "" : sql);
+        context.put("params_json", paramsJson);
+        context.put("runtime_schema_details", schemaJsonForPrompt);
+        context.put("semantic_hints", semanticJson);
+        context.put("error_message", errorMessage == null ? "" : errorMessage);
+        return toJsonSafe(context);
+    }
+
+    private String extractSqlFromJsonOrFallback(String prompt, String schemaJson, String contextJson) {
         try {
-            String out = llmClient.generateJsonStrict(prompt, schemaJson, "{}");
+            String out = llmClient.generateJsonStrict(prompt, schemaJson, contextJson == null ? "{}" : contextJson);
             Map<?, ?> parsed = mapper.readValue(out, Map.class);
             Object sql = parsed.get("sql");
             if (sql != null && !String.valueOf(sql).isBlank()) {
@@ -148,7 +163,7 @@ public class McpDbExecutor {
         } catch (Exception ignored) {
             // fallback path below
         }
-        return llmClient.generateText(prompt, "{}");
+        return llmClient.generateText(prompt, contextJson == null ? "{}" : contextJson);
     }
 
     private String applyPromptVars(String template, Map<String, String> vars) {

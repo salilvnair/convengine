@@ -50,6 +50,9 @@ Runtime schema details:
 Semantic hints:
 {{semantic_json}}
 
+LLM Context JSON:
+{{context_json}}
+
 Execution error:
 {{error_message}}',
     true,
