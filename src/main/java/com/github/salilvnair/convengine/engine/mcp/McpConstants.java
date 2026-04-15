@@ -78,7 +78,7 @@ public final class McpConstants {
     public static final String NULL_LITERAL = "null";
 
     public static final String FALLBACK_UNSAFE_NEXT_STEP = "I couldn't decide the next tool step safely.";
-    public static final String FALLBACK_TOOL_ERROR = "Tool execution failed safely. Can you narrow the request?";
+    public static final String FALLBACK_TOOL_ERROR = "Tool execution failed";
     public static final String FALLBACK_PLAN_ERROR = "I couldn't plan tool usage safely. Can you rephrase your question?";
     public static final String FALLBACK_GUARDRAIL_BLOCKED = "Tool sequence guardrail blocked this action. Please rephrase or provide missing details.";
     public static final String AUDIT_STAGE_MCP_CONTEXT_CLEARED = "MCP_CONTEXT_CLEARED";

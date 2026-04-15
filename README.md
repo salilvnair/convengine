@@ -163,6 +163,12 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - Rule engine with ordered priorities and execution phases
 - Configurable response resolution (`EXACT` and `DERIVED`)
 - MCP tool planning + execution loop
+- Framework DB SQL preflight for MCP DB tools (semantic mapping/join-hint validation, table/column metadata validation, and optional numeric value normalization via `convengine.mcp.db.preflight.*`)
+- Semantic preflight can also pull source metadata from `ce_semantic_source_table` and `ce_semantic_source_column` (configurable) and pass it as LLM repair context.
+- Optional LLM SQL repair loop for failed DB tool queries (`convengine.mcp.db.preflight.sql-auto-repair-enabled`, `convengine.mcp.db.preflight.sql-auto-repair-max-retries`)
+- Preflight now emits dedicated audit stages with `_meta`, SQL before/after, params, and schema/semantic knowledge context (`MCP_DB_PREFLIGHT`, `MCP_DB_PREFLIGHT_REPAIR`)
+- SQL preflight repair prompts can be driven from `ce_config` (`McpDbExecutor` keys `DB_SQL_PREFLIGHT_SYSTEM_PROMPT`, `DB_SQL_PREFLIGHT_USER_PROMPT`, `DB_SQL_PREFLIGHT_SCHEMA_JSON`); see `src/main/resources/sql/db_preflight_sql.sql`.
+- Runtime schema/semantic repair data is also passed in LLM `contextJson` (not only user prompt placeholders), matching other framework LLM invocation patterns.
 - Database-driven verbose progress/error messaging (`ce_verbose`)
 - Full audit timeline and trace API
 - SSE and STOMP streaming support (`AUDIT` + `VERBOSE` envelope types)

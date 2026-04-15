@@ -237,6 +237,9 @@ public class SemanticLlmQueryService {
             errorPayload.put("question", safeQuestion);
             errorPayload.put("errorClass", ex.getClass().getName());
             errorPayload.put("errorMessage", ex.getMessage());
+            errorPayload.put("rootCauseClass", rootCauseClass(ex));
+            errorPayload.put("rootCauseMessage", rootCauseMessage(ex));
+            errorPayload.put("errorStackTrace", stackTraceOf(ex));
             audit("SEMANTIC_QUERY_LLM_ERROR", conversationId, errorPayload, session, true);
             throw new IllegalStateException("LLM query agent failed: " + ex.getMessage(), ex);
         }
@@ -1058,5 +1061,41 @@ public class SemanticLlmQueryService {
                     payload == null ? Map.of() : payload
             );
         }
+    }
+
+    private String stackTraceOf(Exception ex) {
+        if (ex == null) {
+            return "";
+        }
+        try {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+            ex.printStackTrace(pw);
+            pw.flush();
+            return sw.toString();
+        } catch (Exception ignored) {
+            return ex.toString();
+        }
+    }
+
+    private String rootCauseClass(Exception ex) {
+        Throwable root = rootCause(ex);
+        return root == null ? null : root.getClass().getName();
+    }
+
+    private String rootCauseMessage(Exception ex) {
+        Throwable root = rootCause(ex);
+        return root == null ? null : root.getMessage();
+    }
+
+    private Throwable rootCause(Throwable t) {
+        if (t == null) {
+            return null;
+        }
+        Throwable cur = t;
+        while (cur.getCause() != null && cur.getCause() != cur) {
+            cur = cur.getCause();
+        }
+        return cur;
     }
 }

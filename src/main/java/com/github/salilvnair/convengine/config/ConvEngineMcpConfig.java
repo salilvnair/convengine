@@ -31,6 +31,7 @@ public class ConvEngineMcpConfig {
     public static class Db {
         private Query query = new Query();
         private Semantic semantic = new Semantic();
+        private Preflight preflight = new Preflight();
         private String sqlGuardrailTable = "";
         /**
          * Optional schema-introspection allow-list.
@@ -140,6 +141,74 @@ public class ConvEngineMcpConfig {
                 private int maxEntityOptions = 2;
             }
 
+        }
+
+        @Getter
+        @Setter
+        public static class Preflight {
+            /**
+             * Enables framework-side SQL preflight validation/coercion before DB execution.
+             */
+            private boolean enabled = true;
+            /**
+             * If true, fail query execution when referenced tables/columns are unknown.
+             */
+            private boolean strictSchema = true;
+            /**
+             * If true, attempt numeric coercion for bound params and simple SQL literals.
+             */
+            private boolean coerceNumeric = true;
+            /**
+             * Validate SQL against runtime semantic tables before physical DB metadata checks.
+             */
+            private Semantic semantic = new Semantic();
+            /**
+             * Optional domain mappings by column key.
+             * Key can be "table.column" or just "column" (lowercase recommended).
+             * Example:
+             * {
+             *   "zp_request_trans_data.status": {"FAILED":"120","ERROR":"130"},
+             *   "status": {"FAILED":"120"}
+             * }
+             */
+            private Map<String, Map<String, String>> valueMappings = new LinkedHashMap<>();
+            /**
+             * If true, failed SQL execution can be retried with LLM-based SQL correction.
+             */
+            private boolean sqlAutoRepairEnabled = true;
+            /**
+             * Maximum correction retries after initial execution attempt.
+             */
+            private int sqlAutoRepairMaxRetries = 3;
+
+            @Getter
+            @Setter
+            public static class Semantic {
+                private boolean enabled = true;
+                /**
+                 * If true, fail when table/column is not represented in semantic mapping rows.
+                 */
+                private boolean strictMapping = true;
+                /**
+                 * If true, fail when join pair is missing in semantic join hints.
+                 */
+                private boolean strictJoinPath = true;
+
+                private String mappingTable = "ce_semantic_mapping";
+                private String mappingTableColumn = "mapped_table";
+                private String mappingColumnColumn = "mapped_column";
+
+                private String joinHintTable = "ce_semantic_join_hint";
+                private String joinLeftTableColumn = "left_table";
+                private String joinRightTableColumn = "right_table";
+
+                private String sourceTableCatalogTable = "ce_semantic_source_table";
+                private String sourceTableNameColumn = "table_name";
+
+                private String sourceColumnCatalogTable = "ce_semantic_source_column";
+                private String sourceColumnTableNameColumn = "table_name";
+                private String sourceColumnNameColumn = "column_name";
+            }
         }
     }
 

@@ -30,7 +30,9 @@ import com.github.salilvnair.convengine.llm.core.LlmClient;
 import com.github.salilvnair.convengine.prompt.context.PromptTemplateContext;
 import com.github.salilvnair.convengine.prompt.renderer.PromptTemplateRenderer;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -38,6 +40,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -52,6 +56,7 @@ import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class SemanticInterpretService {
 
     private static final String TOOL_CODE = "db.semantic.interpret";
@@ -72,6 +77,8 @@ public class SemanticInterpretService {
     private static final Pattern VALUE_AFTER_OPERATOR_PATTERN = Pattern.compile("(?i)\\b[\\w.]+\\s*(?:=|is)\\s*['\"]?([A-Za-z0-9_-]{2,40})['\"]?");
     private static final Pattern QUOTED_TOKEN_PATTERN = Pattern.compile("['\"]([A-Za-z0-9_-]{2,40})['\"]");
     private static final Pattern GENERIC_TOKEN_PATTERN = Pattern.compile("\\b([A-Z][A-Z0-9_-]{2,20})\\b");
+    private static final DateTimeFormatter ISO_OFFSET_SECOND = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
+    private static final List<String> ARCHIVAL_ENTITY_SUFFIXES = List.of("_LOG", "_HISTORY", "_EVENT", "_SNAPSHOT");
 
     private static final String OUTPUT_JSON_SCHEMA = """
             {
@@ -190,6 +197,63 @@ public class SemanticInterpretService {
     @Autowired(required = false)
     private ConvEngineSqlTableResolver tableResolver;
 
+    @PostConstruct
+    public void validateSemanticMetadataOnStartup() {
+        NamedParameterJdbcTemplate jdbc = jdbcTemplateProvider.getIfAvailable();
+        if (jdbc == null) {
+            return;
+        }
+        try {
+            List<Map<String, Object>> queryClassRows = jdbc.queryForList(resolveSql("""
+                    SELECT query_class_key
+                    FROM ce_semantic_query_class
+                    WHERE enabled = true
+                    """), Map.of());
+            List<Map<String, Object>> mappingRows = jdbc.queryForList(resolveSql("""
+                    SELECT query_class_key, entity_key, field_key
+                    FROM ce_semantic_mapping
+                    WHERE enabled = true
+                    """), Map.of());
+            if (mappingRows.isEmpty()) {
+                log.warn("Semantic metadata validation skipped strict checks: no enabled rows found in ce_semantic_mapping.");
+                return;
+            }
+            Map<String, Set<String>> fieldsByQueryClass = new LinkedHashMap<>();
+            for (Map<String, Object> row : mappingRows) {
+                String queryClassKey = normalizeQueryClass(asText(row.get("query_class_key")));
+                String fieldKey = normalizeField(asText(row.get("field_key")));
+                if (queryClassKey == null || queryClassKey.isBlank() || fieldKey == null || fieldKey.isBlank()) {
+                    continue;
+                }
+                fieldsByQueryClass.computeIfAbsent(queryClassKey, k -> new LinkedHashSet<>()).add(fieldKey);
+            }
+            List<String> errors = new ArrayList<>();
+            List<String> warnings = new ArrayList<>();
+            for (Map<String, Object> row : queryClassRows) {
+                String queryClassKey = normalizeQueryClass(asText(row.get("query_class_key")));
+                if (queryClassKey == null || queryClassKey.isBlank()) {
+                    continue;
+                }
+                Set<String> fields = fieldsByQueryClass.getOrDefault(queryClassKey, Set.of());
+                if (fields.isEmpty()) {
+                    warnings.add("No enabled mapping rows found for query class: " + queryClassKey);
+                    continue;
+                }
+                validateDirectionalPairs(fields, queryClassKey, errors);
+            }
+            if (!errors.isEmpty()) {
+                throw new IllegalStateException("Semantic metadata validation failed: " + String.join(" | ", errors));
+            }
+            if (!warnings.isEmpty()) {
+                log.warn("Semantic metadata validation warnings: {}", String.join(" | ", warnings));
+            }
+        } catch (IllegalStateException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Semantic metadata validation failed during startup.", ex);
+        }
+    }
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     public SemanticInterpretResponse interpret(SemanticInterpretRequest request, EngineSession session) {
@@ -281,6 +345,9 @@ public class SemanticInterpretService {
             errorAudit.put("tool", TOOL_CODE);
             errorAudit.put("errorClass", ex.getClass().getName());
             errorAudit.put("errorMessage", ex.getMessage());
+            errorAudit.put("rootCauseClass", rootCauseClass(ex));
+            errorAudit.put("rootCauseMessage", rootCauseMessage(ex));
+            errorAudit.put("errorStackTrace", stackTraceOf(ex));
             audit("SEMANTIC_INTERPRET_LLM_ERROR", conversationId, errorAudit);
             verbose(session, "SEMANTIC_INTERPRET_LLM_ERROR", true, errorAudit);
         }
@@ -464,6 +531,7 @@ public class SemanticInterpretService {
         }
 
         String safeEntity = normalizeEntityKey(intent.entity());
+        safeEntity = normalizeUserFacingEntity(safeEntity, question);
         List<String> allowedEntities = loadAllowedEntityKeys();
         if (!allowedEntities.isEmpty() && !allowedEntities.contains(safeEntity)) {
             List<SemanticAmbiguityOption> options = new ArrayList<>();
@@ -483,18 +551,20 @@ public class SemanticInterpretService {
         }
 
         Set<String> allowedFields = allowedFieldSetForEntity(safeEntity);
+        Set<String> queryClassAllowedFields = allowedFieldSetForQueryClass(intent.queryClass());
         if (!allowedFields.isEmpty()) {
             List<SemanticFilter> filtered = new ArrayList<>();
             for (SemanticFilter filter : safeFilters) {
                 if (filter == null || filter.field() == null) {
                     continue;
                 }
-                if (!allowedFields.contains(filter.field().toLowerCase(Locale.ROOT))) {
+                String normalizedField = filter.field().toLowerCase(Locale.ROOT);
+                if (!allowedFields.contains(normalizedField) && !queryClassAllowedFields.contains(normalizedField)) {
                     ambiguities.add(new SemanticAmbiguity(
                             "FIELD",
                             "field_not_allowed",
                             "Filter field is not in allowed_fields_by_entity for " + safeEntity,
-                            true,
+                            false,
                             List.of()
                     ));
                     continue;
@@ -508,12 +578,13 @@ public class SemanticInterpretService {
                 if (sort == null || sort.field() == null) {
                     continue;
                 }
-                if (!allowedFields.contains(sort.field().toLowerCase(Locale.ROOT))) {
+                String normalizedField = sort.field().toLowerCase(Locale.ROOT);
+                if (!allowedFields.contains(normalizedField) && !queryClassAllowedFields.contains(normalizedField)) {
                     ambiguities.add(new SemanticAmbiguity(
                             "FIELD",
                             "sort_not_allowed",
                             "Sort field is not in allowed_fields_by_entity for " + safeEntity,
-                            true,
+                            false,
                             List.of()
                     ));
                     continue;
@@ -545,7 +616,7 @@ public class SemanticInterpretService {
         );
 
         double confidence = parsed.confidence();
-        if (!ambiguities.isEmpty()) {
+        if (hasRequiredAmbiguity(ambiguities)) {
             confidence = Math.min(confidence, 0.74d);
         } else if (!safeFilters.isEmpty()) {
             confidence = Math.max(confidence, 0.90d);
@@ -585,6 +656,13 @@ public class SemanticInterpretService {
         ambiguities = applyPlaceholderToAmbiguities(ambiguities, placeholderValue);
         String clarificationQuestion = replacePlaceholderToken(parsed.clarificationQuestion(), placeholderValue);
         if (unsupported) {
+            needsClarification = false;
+            clarificationQuestion = unsupportedAmbiguityMessage(ambiguities);
+        }
+        if (needsClarification && !hasSelectableAmbiguityOptions(ambiguities)) {
+            String reason = requiredAmbiguityMessageOrDefault(ambiguities,
+                    "Request cannot be clarified because no resolution options are available.");
+            ambiguities = ensureUnsupportedAmbiguity(ambiguities, reason);
             needsClarification = false;
             clarificationQuestion = unsupportedAmbiguityMessage(ambiguities);
         }
@@ -1138,6 +1216,9 @@ public class SemanticInterpretService {
 
     private SemanticTimeRange parseTimeRange(String normalizedQuestion, SemanticInterpretRequest request) {
         String timezone = requestTimezone(request);
+        if (containsAny(normalizedQuestion, "last 24 hours", "past 24 hours", "previous 24 hours", "last 24 hrs", "past 24 hrs", "last 24 hr", "past 24 hr", "last 24h", "past 24h")) {
+            return rolling24HoursRange(timezone);
+        }
         if (containsAny(normalizedQuestion, "today")) {
             return new SemanticTimeRange("RELATIVE", "TODAY", timezone, null, null);
         }
@@ -1163,6 +1244,12 @@ public class SemanticInterpretService {
             timezone = defaultTimezone();
         }
         String value = timeRange.value() == null ? null : timeRange.value().trim().toUpperCase(Locale.ROOT);
+        if ("P1D".equals(value) || "LAST_24H".equals(value) || "LAST24H".equals(value) || "LAST_24_HOUR".equals(value)) {
+            value = "LAST_24_HOURS";
+        }
+        if ("RELATIVE".equals(kind) && "LAST_24_HOURS".equals(value)) {
+            return rolling24HoursRange(timezone);
+        }
         return new SemanticTimeRange(kind, value, timezone, timeRange.from(), timeRange.to());
     }
 
@@ -1724,6 +1811,9 @@ public class SemanticInterpretService {
             promptError.put("state", state);
             promptError.put("errorClass", ex.getClass().getName());
             promptError.put("errorMessage", ex.getMessage());
+            promptError.put("rootCauseClass", rootCauseClass(ex));
+            promptError.put("rootCauseMessage", rootCauseMessage(ex));
+            promptError.put("errorStackTrace", stackTraceOf(ex));
             promptError.put("system_prompt_template", template.getSystemPrompt());
             promptError.put("user_prompt_template", template.getUserPrompt());
             promptError.put("promptVars", promptVars);
@@ -2541,6 +2631,47 @@ public class SemanticInterpretService {
         return out;
     }
 
+    private Set<String> allowedFieldSetForQueryClass(String queryClassKey) {
+        String safeQueryClass = normalizeQueryClass(queryClassKey);
+        if (safeQueryClass == null || safeQueryClass.isBlank() || "UNRESOLVED".equalsIgnoreCase(safeQueryClass)) {
+            return Set.of();
+        }
+        Set<String> out = new LinkedHashSet<>();
+        NamedParameterJdbcTemplate jdbc = jdbcTemplateProvider.getIfAvailable();
+        if (jdbc != null) {
+            try {
+                List<Map<String, Object>> rows = jdbc.queryForList(resolveSql("""
+                        SELECT field_key
+                        FROM ce_semantic_mapping
+                        WHERE enabled = true
+                          AND UPPER(query_class_key) = UPPER(:queryClassKey)
+                          AND field_key IS NOT NULL
+                          AND btrim(field_key) <> ''
+                        """), Map.of("queryClassKey", safeQueryClass));
+                for (Map<String, Object> row : rows) {
+                    String fieldKey = normalizeField(asText(row.get("field_key")));
+                    if (fieldKey != null && !fieldKey.isBlank()) {
+                        out.add(fieldKey.toLowerCase(Locale.ROOT));
+                    }
+                }
+            } catch (Exception ignored) {
+                // fallback below
+            }
+        }
+        if (!out.isEmpty()) {
+            return out;
+        }
+        Map<String, Object> queryClassConfig = loadQueryClassConfig(safeQueryClass);
+        List<Object> configuredFields = parseJsonArray(queryClassConfig.get("allowedFilterFields"));
+        for (Object value : configuredFields) {
+            String fieldKey = normalizeField(String.valueOf(value));
+            if (fieldKey != null && !fieldKey.isBlank()) {
+                out.add(fieldKey.toLowerCase(Locale.ROOT));
+            }
+        }
+        return out;
+    }
+
     private List<Map<String, Object>> loadAmbiguityOptions(String queryClassKey,
                                                            String entityKeyHint,
                                                            String question,
@@ -3269,6 +3400,29 @@ public class SemanticInterpretService {
         return withUnderscore.toUpperCase(Locale.ROOT);
     }
 
+    private String normalizeUserFacingEntity(String entityKey, String question) {
+        String normalized = normalizeEntityKey(entityKey);
+        String lowerQuestion = question == null ? "" : question.toLowerCase(Locale.ROOT);
+        if (lowerQuestion.contains(" log") || lowerQuestion.contains(" history")
+                || lowerQuestion.contains(" event") || lowerQuestion.contains(" snapshot")) {
+            return normalized;
+        }
+        List<String> allowed = loadAllowedEntityKeys();
+        if (allowed.isEmpty() || !allowed.contains(normalized)) {
+            return normalized;
+        }
+        for (String suffix : ARCHIVAL_ENTITY_SUFFIXES) {
+            if (!normalized.endsWith(suffix) || normalized.length() <= suffix.length()) {
+                continue;
+            }
+            String primary = normalized.substring(0, normalized.length() - suffix.length());
+            if (!primary.isBlank() && allowed.contains(primary)) {
+                return primary;
+            }
+        }
+        return normalized;
+    }
+
     private String normalizeField(String field) {
         if (field == null || field.isBlank()) {
             return "unknown";
@@ -3340,6 +3494,37 @@ public class SemanticInterpretService {
             }
         }
         return false;
+    }
+
+    private boolean hasSelectableAmbiguityOptions(List<SemanticAmbiguity> ambiguities) {
+        if (ambiguities == null || ambiguities.isEmpty()) {
+            return false;
+        }
+        for (SemanticAmbiguity ambiguity : ambiguities) {
+            if (ambiguity == null || ambiguity.options() == null || ambiguity.options().isEmpty()) {
+                continue;
+            }
+            for (SemanticAmbiguityOption option : ambiguity.options()) {
+                if (option != null
+                        && option.key() != null && !option.key().isBlank()
+                        && option.label() != null && !option.label().isBlank()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private String requiredAmbiguityMessageOrDefault(List<SemanticAmbiguity> ambiguities, String fallback) {
+        if (ambiguities != null) {
+            for (SemanticAmbiguity ambiguity : ambiguities) {
+                if (ambiguity != null && Boolean.TRUE.equals(ambiguity.required())
+                        && ambiguity.message() != null && !ambiguity.message().isBlank()) {
+                    return ambiguity.message();
+                }
+            }
+        }
+        return fallback;
     }
 
     private boolean hasUnsupportedAmbiguity(List<SemanticAmbiguity> ambiguities) {
@@ -3414,6 +3599,60 @@ public class SemanticInterpretService {
             }
         }
         return null;
+    }
+
+    private SemanticTimeRange rolling24HoursRange(String timezone) {
+        String zoneIdText = (timezone == null || timezone.isBlank()) ? defaultTimezone() : timezone.trim();
+        ZoneId zoneId = ZoneId.of(zoneIdText);
+        ZonedDateTime now = ZonedDateTime.now(zoneId).withNano(0);
+        ZonedDateTime from = now.minusHours(24);
+        return new SemanticTimeRange(
+                "RELATIVE",
+                "LAST_24_HOURS",
+                zoneId.getId(),
+                from.format(ISO_OFFSET_SECOND),
+                now.format(ISO_OFFSET_SECOND)
+        );
+    }
+
+    private void validateDirectionalPairs(Set<String> fields, String queryClassKey, List<String> errors) {
+        if (fields == null || fields.isEmpty()) {
+            return;
+        }
+        Set<String> rawFields = new LinkedHashSet<>();
+        Set<String> lookupLower = new LinkedHashSet<>();
+        for (String field : fields) {
+            if (field != null && !field.isBlank()) {
+                rawFields.add(field);
+                lookupLower.add(field.toLowerCase(Locale.ROOT));
+            }
+        }
+        for (String field : rawFields) {
+            if (field.startsWith("from_") && field.length() > "from_".length()) {
+                String counterpart = "to_" + field.substring("from_".length());
+                if (!lookupLower.contains(counterpart.toLowerCase(Locale.ROOT))) {
+                    errors.add("Query class " + queryClassKey + " has '" + field + "' without counterpart '" + counterpart + "'");
+                }
+            }
+            if (field.startsWith("to_") && field.length() > "to_".length()) {
+                String counterpart = "from_" + field.substring("to_".length());
+                if (!lookupLower.contains(counterpart.toLowerCase(Locale.ROOT))) {
+                    errors.add("Query class " + queryClassKey + " has '" + field + "' without counterpart '" + counterpart + "'");
+                }
+            }
+            if (field.startsWith("from") && field.length() > 4 && Character.isUpperCase(field.charAt(4))) {
+                String counterpart = "to" + field.substring(4);
+                if (!lookupLower.contains(counterpart.toLowerCase(Locale.ROOT))) {
+                    errors.add("Query class " + queryClassKey + " has '" + field + "' without counterpart '" + counterpart + "'");
+                }
+            }
+            if (field.startsWith("to") && field.length() > 2 && Character.isUpperCase(field.charAt(2))) {
+                String counterpart = "from" + field.substring(2);
+                if (!lookupLower.contains(counterpart.toLowerCase(Locale.ROOT))) {
+                    errors.add("Query class " + queryClassKey + " has '" + field + "' without counterpart '" + counterpart + "'");
+                }
+            }
+        }
     }
 
     private boolean containsAny(String text, String... patterns) {
@@ -3491,6 +3730,42 @@ public class SemanticInterpretService {
             return;
         }
         auditService.audit(stage, conversationId, payload == null ? Map.of() : payload);
+    }
+
+    private String stackTraceOf(Exception ex) {
+        if (ex == null) {
+            return "";
+        }
+        try {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+            ex.printStackTrace(pw);
+            pw.flush();
+            return sw.toString();
+        } catch (Exception ignored) {
+            return ex.toString();
+        }
+    }
+
+    private String rootCauseClass(Exception ex) {
+        Throwable root = rootCause(ex);
+        return root == null ? null : root.getClass().getName();
+    }
+
+    private String rootCauseMessage(Exception ex) {
+        Throwable root = rootCause(ex);
+        return root == null ? null : root.getMessage();
+    }
+
+    private Throwable rootCause(Throwable t) {
+        if (t == null) {
+            return null;
+        }
+        Throwable cur = t;
+        while (cur.getCause() != null && cur.getCause() != cur) {
+            cur = cur.getCause();
+        }
+        return cur;
     }
 
     private void verbose(EngineSession session, String determinant, boolean error, Map<String, Object> payload) {

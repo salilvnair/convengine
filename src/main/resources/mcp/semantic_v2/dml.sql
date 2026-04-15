@@ -381,7 +381,16 @@ VALUES
   ('STATUS_TEAM1_QUEUE', 'DISCONNECT_REQUEST', 'status', 'zp_disco_request', 'status', 'EQ', '{"STATUS_TEAM1_QUEUE":[700]}'::jsonb, 'LIST_REQUESTS', true, 100),
   ('STATUS_TEAM2_QUEUE', 'DISCONNECT_REQUEST', 'status', 'zp_disco_request', 'status', 'EQ', '{"STATUS_TEAM2_QUEUE":[800]}'::jsonb, 'LIST_REQUESTS', true, 100),
   ('STATUS_TEAM2_SELF', 'DISCONNECT_TRANS', 'status', 'zp_disco_trans_data', 'status', 'EQ', '{"STATUS_TEAM2_SELF":[810]}'::jsonb, 'LIST_REQUESTS', true, 100),
-  ('STATUS_APPROVE_SUBMIT', 'DISCONNECT_TRANS', 'status', 'zp_disco_trans_data', 'status', 'EQ', '{"STATUS_APPROVE_SUBMIT":[835,840]}'::jsonb, 'LIST_REQUESTS', true, 100)
+  ('STATUS_APPROVE_SUBMIT', 'DISCONNECT_TRANS', 'status', 'zp_disco_trans_data', 'status', 'EQ', '{"STATUS_APPROVE_SUBMIT":[835,840]}'::jsonb, 'LIST_REQUESTS', true, 100),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'requestId', 'zp_disco_request', 'request_id', 'EQ', NULL, 'AGGREGATE', true, 290),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'customerName', 'zp_disco_request', 'customer_name', 'ILIKE', NULL, 'AGGREGATE', true, 291),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'customerId', 'zp_disco_request', 'customer_id', 'EQ', NULL, 'AGGREGATE', true, 292),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'status', 'zp_disco_request', 'status', 'EQ', NULL, 'AGGREGATE', true, 293),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'assignedTeam', 'zp_disco_request', 'assigned_team', 'EQ', NULL, 'AGGREGATE', true, 294),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'createdAt', 'zp_disco_request', 'created_at', 'EQ', NULL, 'AGGREGATE', true, 295),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'created_at', 'zp_disco_request', 'created_at', 'EQ', NULL, 'AGGREGATE', true, 296),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'updatedAt', 'zp_disco_request', 'updated_at', 'EQ', NULL, 'AGGREGATE', true, 297),
+  ('DISCONNECT_REQUEST', 'DISCONNECT_REQUEST', 'updated_at', 'zp_disco_request', 'updated_at', 'EQ', NULL, 'AGGREGATE', true, 298)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO ce_semantic_join_path (left_entity_key, right_entity_key, join_expression, join_priority, confidence_score, enabled)
@@ -422,6 +431,37 @@ ON CONFLICT (query_class_key) DO UPDATE SET
   enabled = EXCLUDED.enabled,
   priority = EXCLUDED.priority;
 
+INSERT INTO ce_semantic_query_class (
+  query_class_key,
+  description,
+  base_table_name,
+  ast_skeleton_json,
+  allowed_filter_fields_json,
+  default_select_fields_json,
+  default_sort_fields_json,
+  enabled,
+  priority
+) VALUES (
+  'AGGREGATE',
+  'Count/aggregate disconnect requests',
+  'zp_disco_request',
+  '{"queryClass":"AGGREGATE"}'::jsonb,
+  '["customer","customerName","customerId","status","assignedTeam","assigned_team","createdAt","created_at"]'::jsonb,
+  '["requestId"]'::jsonb,
+  '["updatedAt DESC"]'::jsonb,
+  true,
+  100
+)
+ON CONFLICT (query_class_key) DO UPDATE SET
+  description = EXCLUDED.description,
+  base_table_name = EXCLUDED.base_table_name,
+  ast_skeleton_json = EXCLUDED.ast_skeleton_json,
+  allowed_filter_fields_json = EXCLUDED.allowed_filter_fields_json,
+  default_select_fields_json = EXCLUDED.default_select_fields_json,
+  default_sort_fields_json = EXCLUDED.default_sort_fields_json,
+  enabled = EXCLUDED.enabled,
+  priority = EXCLUDED.priority;
+
 INSERT INTO ce_semantic_ambiguity_option (
   entity_key,
   query_class_key,
@@ -448,3 +488,48 @@ SET system_prompt = system_prompt || E'\n- Ambiguity option labels/mapped filter
 WHERE intent_code = 'SEMANTIC_QUERY'
   AND output_format = 'SEMANTIC_INTERPRET'
   AND enabled = true;
+
+-- DB SQL reconcile prompt overrides for PostgresQueryToolHandler.
+INSERT INTO ce_config(config_type, config_key, config_value, enabled)
+VALUES
+  ('PostgresQueryToolHandler', 'DB_SQL_RECONCILE_SYSTEM_PROMPT', 'You are a DB SQL schema/type reconciliation assistant for ConvEngine MCP DB tools.
+Validate SQL against provided semantic metadata and runtime DB schema.
+Focus on type-safe predicates and parameter compatibility.
+Keep query semantics unchanged.
+Never invent table/column names.
+For numeric columns, prefer CAST(:param AS <numeric-type>) when ambiguity can happen.
+For transition-log outputs, deduplicate to one row per (request_id, scenario_id) using DISTINCT ON.
+Use deterministic ordering with request_id, scenario_id, to_logged_at DESC, to_log_id DESC.
+Preserve named params and return JSON only.', true),
+  ('PostgresQueryToolHandler', 'DB_SQL_RECONCILE_USER_PROMPT', 'Candidate SQL:
+{{sql_before}}
+
+Params:
+{{params_json}}
+
+Preflight diagnostics:
+{{preflight_json}}
+
+Runtime schema details:
+{{schema_json}}
+
+Semantic hints:
+{{semantic_json}}
+
+Task:
+- Fix type mismatches and unsafe comparisons.
+- Keep joins/filters semantics unchanged.
+- Enforce dedup for transition logs: one row per (request_id, scenario_id) via DISTINCT ON + deterministic ordering.
+- Keep params unchanged.
+- Return SQL only.', true),
+  ('PostgresQueryToolHandler', 'DB_SQL_RECONCILE_SCHEMA_JSON', '{
+  "type":"object",
+  "required":["sql"],
+  "properties":{
+    "sql":{"type":"string"}
+  },
+  "additionalProperties":false
+}', true)
+ON CONFLICT (config_type, config_key) DO UPDATE
+SET config_value = EXCLUDED.config_value,
+    enabled = EXCLUDED.enabled;

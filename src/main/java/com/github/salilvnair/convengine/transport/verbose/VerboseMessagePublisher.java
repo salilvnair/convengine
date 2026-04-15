@@ -36,7 +36,7 @@ public class VerboseMessagePublisher {
                 () -> {
                     if (error) {
                         dispatcher.dispatch(session.getConversationId(),
-                                com.github.salilvnair.convengine.api.dto.VerboseStreamPayload.builder()
+                                VerboseStreamPayload.builder()
                                         .eventType(VerboseConstants.EVENT_TYPE_VERBOSE_PROGRESS)
                                         .stepName(stepName)
                                         .determinant(determinant)

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.github.salilvnair.convengine.api.dto.VerboseStreamPayload;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.engine.constants.CorrectionConstants;
@@ -370,12 +369,20 @@ public class McpToolStep implements EngineStep {
                 Map<String, Object> toolErrorPayload = mapOf(
                         "tool_code", toolCode,
                         "tool_group", toolGroup,
+                        "args", args,
                         "error", String.valueOf(e.getMessage()));
                 toolErrorPayload.putAll(errorDetails);
+                if (args != null && args.get("preflight_diagnostics") != null) {
+                    toolErrorPayload.put("preflight_diagnostics", args.get("preflight_diagnostics"));
+                }
+                if (args != null && args.get("root_cause_message") != null) {
+                    toolErrorPayload.put("root_cause_message", args.get("root_cause_message"));
+                }
                 audit.audit(
                         ConvEngineAuditStage.MCP_TOOL_ERROR,
                         session.getConversationId(),
                         toolErrorPayload);
+                writeToolExecutionErrorToContext(session, toolErrorPayload);
                 String toolErrorMessage = resolveToolErrorMessage(session, toolCode, toolErrorPayload);
                 writeFinalAnswerToContext(session, toolErrorMessage);
                 finalAnswerDetermined = true;
@@ -384,9 +391,17 @@ public class McpToolStep implements EngineStep {
                 session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, McpConstants.STATUS_TOOL_ERROR);
                 writeLifecycleToContext(session, McpConstants.STATUS_TOOL_ERROR, McpConstants.OUTCOME_ERROR,
                         true, false, true, plan.action(), toolCode, toolGroup, args,
-                        String.valueOf(e.getMessage()));
+                        String.valueOf(toolErrorPayload.getOrDefault("root_cause_message", e.getMessage())));
                 verbosePublisher.publish(session, "McpToolStep", "MCP_TOOL_CALL", null, toolCode, true,
                         toolErrorPayload);
+                audit.audit("MCP_TOOL_ROOT_CAUSE", session.getConversationId(), mapOf(
+                        "tool_code", toolCode,
+                        "tool_group", toolGroup,
+                        "error_message", toolErrorPayload.get("error_message"),
+                        "root_cause_message", toolErrorPayload.get("root_cause_message"),
+                        "preflight_diagnostics", toolErrorPayload.get("preflight_diagnostics"),
+                        "args", args
+                ));
                 break;
             }
         }
@@ -473,11 +488,7 @@ public class McpToolStep implements EngineStep {
     }
 
     private String resolveToolErrorMessage(EngineSession session, String toolCode, Map<String, Object> metadata) {
-        return verbosePublisher
-                .resolve(session, "McpToolStep", "MCP_TOOL_CALL", null, toolCode, true, metadata)
-                .map(VerboseStreamPayload::getText)
-                .filter(text -> !text.isBlank())
-                .orElse(McpConstants.FALLBACK_TOOL_ERROR);
+        return McpConstants.FALLBACK_TOOL_ERROR;
     }
 
     // -------------------------------------------------
@@ -743,6 +754,37 @@ public class McpToolStep implements EngineStep {
         }
     }
 
+    private void writeToolExecutionErrorToContext(EngineSession session, Map<String, Object> toolErrorPayload) {
+        if (session == null || toolErrorPayload == null || toolErrorPayload.isEmpty()) {
+            return;
+        }
+        try {
+            ObjectNode root = ensureContextObject(session);
+            ObjectNode mcp = root.withObject(McpConstants.CONTEXT_KEY_MCP);
+            ObjectNode err = mcp.withObject(McpConstants.CONTEXT_KEY_TOOL_EXECUTION_ERROR);
+            Object value = toolErrorPayload.get("tool_code");
+            if (value != null) err.put("toolCode", String.valueOf(value));
+            value = toolErrorPayload.get("tool_group");
+            if (value != null) err.put("toolGroup", String.valueOf(value));
+            value = toolErrorPayload.get("error_message");
+            if (value != null) err.put("errorMessage", String.valueOf(value));
+            value = toolErrorPayload.get("root_cause_message");
+            if (value != null) err.put("rootCauseMessage", String.valueOf(value));
+            value = toolErrorPayload.get("root_cause_class");
+            if (value != null) err.put("rootCauseClass", String.valueOf(value));
+            Object preflight = toolErrorPayload.get("preflight_diagnostics");
+            if (preflight != null) {
+                err.set("preflightDiagnostics", mapper.valueToTree(preflight));
+            }
+            Object args = toolErrorPayload.get("args");
+            if (args != null) {
+                err.set("args", mapper.valueToTree(args));
+            }
+            session.setContextJson(mapper.writeValueAsString(root));
+        } catch (Exception ignored) {
+        }
+    }
+
     private Map<String, Object> buildErrorDetails(Exception error) {
         Map<String, Object> details = mapOf(
                 "error_class", error == null ? null : error.getClass().getName(),
@@ -750,7 +792,6 @@ public class McpToolStep implements EngineStep {
         Throwable root = rootCause(error);
         details.put("root_cause_class", root == null ? null : root.getClass().getName());
         details.put("root_cause_message", root == null ? null : root.getMessage());
-        details.put("error_stack_trace", stackTrace(error));
         return details;
     }
 
@@ -1334,16 +1375,6 @@ public class McpToolStep implements EngineStep {
             }
         }
         return null;
-    }
-
-    private String stackTrace(Throwable error) {
-        if (error == null) {
-            return null;
-        }
-        java.io.StringWriter writer = new java.io.StringWriter();
-        java.io.PrintWriter printer = new java.io.PrintWriter(writer);
-        error.printStackTrace(printer);
-        return writer.toString();
     }
 
     private Throwable rootCause(Throwable error) {
