@@ -44,8 +44,19 @@ public class BuilderStudioRunner {
      * One-shot agent call — used by {@code POST /builder-studio/agent} from
      * the client-side graph runner. The browser is orchestrating; we just
      * invoke the LLM with the supplied prompts.
+     *
+     * <p>The controller hands us a plain {@link Map} (see the class javadoc
+     * on {@link BuilderStudioController} for why); we re-wrap it to a
+     * fasterxml tree so the rest of this class can keep using the existing
+     * {@code path(...)} / {@code asText(...)} helpers.
      */
-    public String callAgent(JsonNode agent, String input) {
+    public String callAgent(Map<String, Object> agent, String input) {
+        if (agent == null) return "";
+        return callAgentByNode(mapper.valueToTree(agent), input);
+    }
+
+    /** Tree-shaped overload used by {@link #runGraph} once we've wrapped the DTO. */
+    public String callAgentByNode(JsonNode agent, String input) {
         if (agent == null) return "";
         String systemPrompt = agent.path("systemPrompt").asText("");
         String userPrompt = agent.path("userPrompt").asText("{{input}}");
@@ -75,7 +86,9 @@ public class BuilderStudioRunner {
      */
     public RunResponse runGraph(BuilderStudioController.RunRequest req) {
         RunResponse resp = new RunResponse();
-        JsonNode wf = req.getWorkflow();
+        // Lift the Map-shaped workflow into a fasterxml tree — all the
+        // walker logic below was written against JsonNode.
+        JsonNode wf = req.getWorkflow() == null ? null : mapper.valueToTree(req.getWorkflow());
         if (wf == null || !wf.hasNonNull("nodes")) {
             resp.setError("workflow.nodes is required");
             return resp;
@@ -182,7 +195,7 @@ public class BuilderStudioRunner {
             case "response":
                 return interpolate(values.path("data").asText(""), input);
             case "agent":
-                return callAgent(synthAgentNode(values), input);
+                return callAgentByNode(synthAgentNode(values), input);
             default:
                 // Control-flow blocks (if_else, switch, loops) are handled on the
                 // client. On the server we just pass through.
