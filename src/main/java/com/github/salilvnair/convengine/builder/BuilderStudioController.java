@@ -27,7 +27,6 @@ import java.util.Map;
  * Neither endpoint goes through the intent / MCP / semantic-query pipeline
  * — the builder studio is a direct graph runner, not a conversation.
  *
- * <h3>DTO note</h3>
  * The free-form JSON payload fields are typed as {@link Map}/{@link Object}
  * rather than Jackson's {@code JsonNode}. Spring Boot 4 binds request bodies
  * through Jackson 3 ({@code tools.jackson}), while the rest of this codebase
