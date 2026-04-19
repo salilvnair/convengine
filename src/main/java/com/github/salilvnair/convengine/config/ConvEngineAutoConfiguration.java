@@ -9,7 +9,13 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @AutoConfiguration
 @AutoConfigurationPackage(basePackages = "com.github.salilvnair.convengine")
 @ComponentScan(basePackages = "com.github.salilvnair.convengine")
-@EntityScan(basePackages = "com.github.salilvnair.convengine.entity")
-@EnableJpaRepositories(basePackages = "com.github.salilvnair.convengine.repo")
+@EntityScan(basePackages = {
+        "com.github.salilvnair.convengine.entity",
+        "com.github.salilvnair.convengine.builder.entity"
+})
+@EnableJpaRepositories(basePackages = {
+        "com.github.salilvnair.convengine.repo",
+        "com.github.salilvnair.convengine.builder.repo"
+})
 public class ConvEngineAutoConfiguration {
 }

@@ -33,7 +33,7 @@ public class AgentBuilderStudioController {
      */
     @PostMapping("/workspace/{workspaceId}/sync")
     public ResponseEntity<Map<String, Object>> syncWorkspace(
-            @PathVariable String workspaceId,
+            @PathVariable("workspaceId") String workspaceId,
             @RequestBody WorkspaceSnapshot snapshot) {
         try {
             persistenceService.syncWorkspace(workspaceId, snapshot);
@@ -52,7 +52,7 @@ public class AgentBuilderStudioController {
      */
     @GetMapping("/workspace/{workspaceId}")
     public ResponseEntity<WorkspaceSnapshot> loadWorkspace(
-            @PathVariable String workspaceId) {
+            @PathVariable("workspaceId") String workspaceId) {
         try {
             WorkspaceSnapshot snapshot = persistenceService.loadWorkspace(workspaceId);
             return ResponseEntity.ok(snapshot);
