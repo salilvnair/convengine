@@ -33,6 +33,7 @@ public class BuilderStudioPersistenceService {
     private final BsAgentSkillRepository agentSkillRepo;
     private final BsSkillRepository skillRepo;
     private final BsWorkflowRepository workflowRepo;
+    private final BsLlmConfigRepository llmConfigRepo;
     private final ObjectMapper mapper;
 
     // ───────────────────────────────────────────── SAVE (full sync) ─────
@@ -158,6 +159,16 @@ public class BuilderStudioPersistenceService {
         workflowRepo.findByWorkspaceId(workspaceId).stream()
                 .filter(e -> !incomingWfIds.contains(e.getWorkflowId()))
                 .forEach(workflowRepo::delete);
+
+        // 7. LLM Config
+        if (snapshot.getLlmConfig() != null) {
+            llmConfigRepo.save(CeBsLlmConfig.builder()
+                    .workspaceId(workspaceId)
+                    .configJson(toJson(snapshot.getLlmConfig()))
+                    .build());
+        } else {
+            llmConfigRepo.deleteById(workspaceId);
+        }
     }
 
     // ───────────────────────────────────────────── LOAD ─────────────────
@@ -280,6 +291,11 @@ public class BuilderStudioPersistenceService {
         if (!snap.getWorkflows().isEmpty()) {
             snap.setActiveWorkflowId(snap.getWorkflows().get(0).getId());
         }
+
+        // LLM Config
+        llmConfigRepo.findById(workspaceId).ifPresent(cfg ->
+            snap.setLlmConfig(fromJson(cfg.getConfigJson()))
+        );
 
         return snap;
     }

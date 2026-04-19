@@ -22,6 +22,7 @@ public class WorkspaceSnapshot {
     private List<AgentDto> agents;
     private List<SkillDto> skills;
     private List<WorkflowDto> workflows;
+    private Object llmConfig;
 
     @Data
     public static class WorkspaceDto {

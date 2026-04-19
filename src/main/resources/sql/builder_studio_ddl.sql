@@ -123,4 +123,18 @@ CREATE TABLE ce_bs_workflow (
         REFERENCES ce_bs_team (team_id) ON DELETE SET NULL
 );
 CREATE INDEX idx_ce_bs_workflow_workspace ON ce_bs_workflow (workspace_id);
+
+-- ─── LLM Config ─────────────────────────────────────────────────────────────
+-- Stores the consumer-provided LLM provider configuration per workspace.
+-- The config_json column holds the full JSON object (provider, temperature,
+-- per-provider apiKey/model/baseUrl entries).
+CREATE TABLE ce_bs_llm_config (
+    workspace_id    text            NOT NULL,
+    config_json     jsonb           DEFAULT '{}'::jsonb  NOT NULL,
+    created_at      timestamptz     DEFAULT now() NOT NULL,
+    updated_at      timestamptz     DEFAULT now() NOT NULL,
+    CONSTRAINT ce_bs_llm_config_pkey PRIMARY KEY (workspace_id),
+    CONSTRAINT ce_bs_llm_config_workspace_fk FOREIGN KEY (workspace_id)
+        REFERENCES ce_bs_workspace (workspace_id) ON DELETE CASCADE
+);
 CREATE INDEX idx_ce_bs_workflow_team      ON ce_bs_workflow (team_id);
