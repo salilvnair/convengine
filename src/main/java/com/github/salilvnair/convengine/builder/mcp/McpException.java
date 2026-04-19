@@ -1,4 +1,4 @@
-package com.github.salilvnair.convengine.mcp;
+package com.github.salilvnair.convengine.builder.mcp;
 
 /**
  * Unified exception for MCP (Model Context Protocol) failures — transport

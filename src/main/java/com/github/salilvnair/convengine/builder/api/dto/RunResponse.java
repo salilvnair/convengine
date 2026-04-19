@@ -1,4 +1,4 @@
-package com.github.salilvnair.convengine.builder;
+package com.github.salilvnair.convengine.builder.api.dto;
 
 import lombok.Data;
 

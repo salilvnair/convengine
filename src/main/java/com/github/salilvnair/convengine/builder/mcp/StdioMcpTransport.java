@@ -1,4 +1,4 @@
-package com.github.salilvnair.convengine.mcp;
+package com.github.salilvnair.convengine.builder.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
