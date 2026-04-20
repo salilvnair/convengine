@@ -2,8 +2,10 @@ package com.github.salilvnair.convengine.builder.api.controller;
 
 import com.github.salilvnair.convengine.builder.api.dto.RunResponse;
 import com.github.salilvnair.convengine.builder.api.runner.BuilderStudioRunner;
+import com.github.salilvnair.convengine.builder.api.service.BuilderStudioLlmRuntimeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -45,6 +47,7 @@ import java.util.Map;
 public class BuilderStudioController {
 
     private final BuilderStudioRunner runner;
+    private final ObjectProvider<BuilderStudioLlmRuntimeService> llmRuntimeServiceProvider;
 
     @PostMapping("/agent")
     public ResponseEntity<Map<String, Object>> runAgent(@RequestBody AgentCallRequest body) {
@@ -78,6 +81,26 @@ public class BuilderStudioController {
         }
     }
 
+    @GetMapping("/llm/providers")
+    public ResponseEntity<Map<String, Object>> availableProviders() {
+        BuilderStudioLlmRuntimeService service = llmRuntimeServiceProvider.getIfAvailable();
+        if (service == null) {
+            return ResponseEntity.status(501)
+                    .body(Map.of("error", "No Builder Studio LLM runtime service is configured"));
+        }
+        return ResponseEntity.ok(service.availableProviders());
+    }
+
+    @PostMapping("/llm/provider")
+    public ResponseEntity<Map<String, Object>> changeProvider(@RequestBody ProviderChangeRequest body) {
+        BuilderStudioLlmRuntimeService service = llmRuntimeServiceProvider.getIfAvailable();
+        if (service == null) {
+            return ResponseEntity.status(501)
+                    .body(Map.of("error", "No Builder Studio LLM runtime service is configured"));
+        }
+        return ResponseEntity.ok(service.changeProvider(body.getProvider(), body.getModel(), body.getTemperature()));
+    }
+
     // ---- DTOs kept inline for a compact footprint ----
 
     /**
@@ -102,5 +125,12 @@ public class BuilderStudioController {
     public static class RunRequest {
         private Map<String, Object> workflow;
         private Map<String, String> inputs;
+    }
+
+    @lombok.Data
+    public static class ProviderChangeRequest {
+        private String provider;
+        private String model;
+        private Double temperature;
     }
 }
