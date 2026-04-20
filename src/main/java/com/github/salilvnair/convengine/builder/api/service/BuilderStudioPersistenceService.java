@@ -47,11 +47,14 @@ public class BuilderStudioPersistenceService {
     public void syncWorkspace(String workspaceId, WorkspaceSnapshot snapshot) {
         // 1. Workspace
         for (WorkspaceDto ws : safe(snapshot.getWorkspaces())) {
-            workspaceRepo.save(CeBsWorkspace.builder()
+            CeBsWorkspace existing = workspaceRepo.findById(ws.getId()).orElse(null);
+            CeBsWorkspace entity = CeBsWorkspace.builder()
                     .workspaceId(ws.getId())
                     .name(ws.getName())
                     .description(ws.getDescription())
-                    .build());
+                    .createdAt(existing != null ? existing.getCreatedAt() : null)
+                    .build();
+            workspaceRepo.save(entity);
         }
 
         // 2. Teams
