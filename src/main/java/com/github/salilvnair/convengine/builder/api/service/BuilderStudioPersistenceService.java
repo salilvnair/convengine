@@ -47,13 +47,10 @@ public class BuilderStudioPersistenceService {
     public void syncWorkspace(String workspaceId, WorkspaceSnapshot snapshot) {
         // 1. Workspace
         for (WorkspaceDto ws : safe(snapshot.getWorkspaces())) {
-            CeBsWorkspace existing = workspaceRepo.findById(ws.getId()).orElse(null);
-            CeBsWorkspace entity = CeBsWorkspace.builder()
-                    .workspaceId(ws.getId())
-                    .name(ws.getName())
-                    .description(ws.getDescription())
-                    .createdAt(existing != null ? existing.getCreatedAt() : null)
-                    .build();
+            CeBsWorkspace entity = workspaceRepo.findById(ws.getId())
+                    .orElse(CeBsWorkspace.builder().workspaceId(ws.getId()).build());
+            entity.setName(ws.getName());
+            entity.setDescription(ws.getDescription());
             workspaceRepo.save(entity);
         }
 
@@ -61,11 +58,11 @@ public class BuilderStudioPersistenceService {
         Set<String> incomingTeamIds = new HashSet<>();
         for (TeamDto t : safe(snapshot.getTeams())) {
             incomingTeamIds.add(t.getId());
-            teamRepo.save(CeBsTeam.builder()
-                    .teamId(t.getId())
-                    .workspaceId(t.getWorkspaceId() != null ? t.getWorkspaceId() : workspaceId)
-                    .name(t.getName())
-                    .build());
+            CeBsTeam entity = teamRepo.findById(t.getId())
+                    .orElse(CeBsTeam.builder().teamId(t.getId()).build());
+            entity.setWorkspaceId(t.getWorkspaceId() != null ? t.getWorkspaceId() : workspaceId);
+            entity.setName(t.getName());
+            teamRepo.save(entity);
         }
         // Remove teams deleted on the front-end
         teamRepo.findByWorkspaceId(workspaceId).stream()
@@ -76,11 +73,11 @@ public class BuilderStudioPersistenceService {
         Set<String> incomingPoolIds = new HashSet<>();
         for (AgentPoolDto p : safe(snapshot.getAgentPools())) {
             incomingPoolIds.add(p.getId());
-            agentPoolRepo.save(CeBsAgentPool.builder()
-                    .poolId(p.getId())
-                    .teamId(p.getTeamId())
-                    .name(p.getName())
-                    .build());
+            CeBsAgentPool entity = agentPoolRepo.findById(p.getId())
+                    .orElse(CeBsAgentPool.builder().poolId(p.getId()).build());
+            entity.setTeamId(p.getTeamId());
+            entity.setName(p.getName());
+            agentPoolRepo.save(entity);
         }
         // Cleanup removed pools within workspace teams
         for (String teamId : incomingTeamIds) {
@@ -93,15 +90,15 @@ public class BuilderStudioPersistenceService {
         Set<String> incomingSkillIds = new HashSet<>();
         for (SkillDto s : safe(snapshot.getSkills())) {
             incomingSkillIds.add(s.getId());
-            skillRepo.save(CeBsSkill.builder()
-                    .skillId(s.getId())
-                    .workspaceId(s.getWorkspaceId() != null ? s.getWorkspaceId() : workspaceId)
-                    .name(s.getName())
-                    .language(s.getLanguage())
-                    .source(s.getSource())
-                    .inputSchema(toJson(s.getInputSchema()))
-                    .outputSchema(toJson(s.getOutputSchema()))
-                    .build());
+            CeBsSkill entity = skillRepo.findById(s.getId())
+                    .orElse(CeBsSkill.builder().skillId(s.getId()).build());
+            entity.setWorkspaceId(s.getWorkspaceId() != null ? s.getWorkspaceId() : workspaceId);
+            entity.setName(s.getName());
+            entity.setLanguage(s.getLanguage());
+            entity.setSource(s.getSource());
+            entity.setInputSchema(toJson(s.getInputSchema()));
+            entity.setOutputSchema(toJson(s.getOutputSchema()));
+            skillRepo.save(entity);
         }
         skillRepo.findByWorkspaceId(workspaceId).stream()
                 .filter(e -> !incomingSkillIds.contains(e.getSkillId()))
@@ -111,19 +108,19 @@ public class BuilderStudioPersistenceService {
         Set<String> incomingAgentIds = new HashSet<>();
         for (AgentDto a : safe(snapshot.getAgents())) {
             incomingAgentIds.add(a.getId());
-            agentRepo.save(CeBsAgent.builder()
-                    .agentId(a.getId())
-                    .poolId(a.getPoolId())
-                    .name(a.getName())
-                    .model(a.getModel())
-                    .provider(a.getProvider())
-                    .systemPrompt(a.getSystemPrompt())
-                    .userPrompt(a.getUserPrompt())
-                    .inputSchema(toJson(a.getInputSchema()))
-                    .outputSchema(toJson(a.getOutputSchema()))
-                    .strictInput(a.getStrictInput())
-                    .strictOutput(a.getStrictOutput())
-                    .build());
+            CeBsAgent entity = agentRepo.findById(a.getId())
+                    .orElse(CeBsAgent.builder().agentId(a.getId()).build());
+            entity.setPoolId(a.getPoolId());
+            entity.setName(a.getName());
+            entity.setModel(a.getModel());
+            entity.setProvider(a.getProvider());
+            entity.setSystemPrompt(a.getSystemPrompt());
+            entity.setUserPrompt(a.getUserPrompt());
+            entity.setInputSchema(toJson(a.getInputSchema()));
+            entity.setOutputSchema(toJson(a.getOutputSchema()));
+            entity.setStrictInput(a.getStrictInput());
+            entity.setStrictOutput(a.getStrictOutput());
+            agentRepo.save(entity);
             // Sync skill attachments
             agentSkillRepo.deleteByAgentId(a.getId());
             for (String skillId : safe(a.getAttachedSkillIds())) {
@@ -147,17 +144,17 @@ public class BuilderStudioPersistenceService {
         Set<String> incomingWfIds = new HashSet<>();
         for (WorkflowDto w : safe(snapshot.getWorkflows())) {
             incomingWfIds.add(w.getId());
-            workflowRepo.save(CeBsWorkflow.builder()
-                    .workflowId(w.getId())
-                    .workspaceId(workspaceId)
-                    .teamId(w.getTeamId())
-                    .name(w.getName())
-                    .description(w.getDescription())
-                    .nodes(toJson(w.getNodes()))
-                    .edges(toJson(w.getEdges()))
-                    .subBlockValues(toJson(w.getSubBlockValues()))
-                    .metadata(toJson(w.getMetadata()))
-                    .build());
+            CeBsWorkflow entity = workflowRepo.findById(w.getId())
+                    .orElse(CeBsWorkflow.builder().workflowId(w.getId()).build());
+            entity.setWorkspaceId(workspaceId);
+            entity.setTeamId(w.getTeamId());
+            entity.setName(w.getName());
+            entity.setDescription(w.getDescription());
+            entity.setNodes(toJson(w.getNodes()));
+            entity.setEdges(toJson(w.getEdges()));
+            entity.setSubBlockValues(toJson(w.getSubBlockValues()));
+            entity.setMetadata(toJson(w.getMetadata()));
+            workflowRepo.save(entity);
         }
         workflowRepo.findByWorkspaceId(workspaceId).stream()
                 .filter(e -> !incomingWfIds.contains(e.getWorkflowId()))
@@ -165,10 +162,10 @@ public class BuilderStudioPersistenceService {
 
         // 7. LLM Config
         if (snapshot.getLlmConfig() != null) {
-            llmConfigRepo.save(CeBsLlmConfig.builder()
-                    .workspaceId(workspaceId)
-                    .configJson(toJson(snapshot.getLlmConfig()))
-                    .build());
+            CeBsLlmConfig entity = llmConfigRepo.findById(workspaceId)
+                    .orElse(CeBsLlmConfig.builder().workspaceId(workspaceId).build());
+            entity.setConfigJson(toJson(snapshot.getLlmConfig()));
+            llmConfigRepo.save(entity);
         } else {
             llmConfigRepo.deleteById(workspaceId);
         }
