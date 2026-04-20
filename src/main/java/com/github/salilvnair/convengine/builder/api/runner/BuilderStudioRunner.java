@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.builder.api.dto.RunResponse;
 import com.github.salilvnair.convengine.builder.api.controller.BuilderStudioController;
+import com.github.salilvnair.convengine.builder.api.service.BuilderStudioLlmRuntimeService;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -39,6 +41,7 @@ import java.util.concurrent.Executors;
 public class BuilderStudioRunner {
 
     private final LlmClient llmClient;
+    private final ObjectProvider<BuilderStudioLlmRuntimeService> llmRuntimeServiceProvider;
     private final ObjectMapper mapper;
     private final ExecutorService executor = Executors.newFixedThreadPool(8);
 
@@ -60,6 +63,9 @@ public class BuilderStudioRunner {
     /** Tree-shaped overload used by {@link #runGraph} once we've wrapped the DTO. */
     public String callAgentByNode(JsonNode agent, String input) {
         if (agent == null) return "";
+        String provider = agent.path("provider").asText(null);
+        String model = agent.path("model").asText(null);
+        Double temperature = agent.hasNonNull("temperature") ? agent.path("temperature").asDouble() : null;
         String systemPrompt = agent.path("systemPrompt").asText("");
         String userPrompt = agent.path("userPrompt").asText("{{input}}");
         String responseFormat = agent.hasNonNull("responseFormat") ? agent.get("responseFormat").asText(null) : null;
@@ -74,6 +80,15 @@ public class BuilderStudioRunner {
         String contextJson = "{\"input\":" + mapper.valueToTree(input == null ? "" : input) + "}";
 
         EngineSession session = newSession(input);
+        BuilderStudioLlmRuntimeService runtime = llmRuntimeServiceProvider.getIfAvailable();
+        if (runtime != null) {
+            if (responseFormat != null && !responseFormat.isBlank()) {
+                return strict
+                        ? runtime.generateJsonStrict(provider, model, temperature, session, hint, responseFormat, contextJson)
+                        : runtime.generateJson(provider, model, temperature, session, hint, responseFormat, contextJson);
+            }
+            return runtime.generateText(provider, model, temperature, session, hint, contextJson);
+        }
         if (responseFormat != null && !responseFormat.isBlank()) {
             return strict
                     ? llmClient.generateJsonStrict(session, hint, responseFormat, contextJson)
