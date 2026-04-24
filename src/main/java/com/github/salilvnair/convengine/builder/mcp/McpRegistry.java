@@ -142,6 +142,12 @@ public class McpRegistry {
                 }
                 yield new HttpMcpTransport(cfg.getUrl(), cfg.getHeaders(), mapper);
             }
+            case SSE -> {
+                if (cfg.getUrl() == null || cfg.getUrl().isBlank()) {
+                    throw new McpException("sse MCP server needs a 'url'");
+                }
+                yield new SseMcpTransport(cfg.getUrl(), cfg.getHeaders(), mapper);
+            }
         };
     }
 

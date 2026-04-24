@@ -32,7 +32,7 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class McpServerConfig {
 
-    public enum Transport { STDIO, HTTP }
+    public enum Transport { STDIO, HTTP, SSE }
 
     /** Stable identifier. Used in the UI as the dropdown value and referenced
      *  by workflow nodes (e.g. {@code mcp:<id>:<tool>}). */
