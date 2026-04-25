@@ -21,6 +21,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 /**
  * Stateless graph runner for the Agent Builder Studio.
@@ -205,6 +207,16 @@ public class BuilderStudioRunner {
                         RunResponse.TraceEntry entry = addTrace(resp, id, type, title, input, null,
                                 System.currentTimeMillis() - t0);
                         entry.setError(e.getMessage());
+                        String stack = stackTraceOf(e);
+                        entry.setStackTrace(stack);
+                        Map<String, Object> detail = new LinkedHashMap<>();
+                        detail.put("nodeId", id);
+                        detail.put("nodeTitle", title);
+                        detail.put("blockType", type);
+                        detail.put("message", e.getMessage());
+                        detail.put("cause", e.getClass().getSimpleName());
+                        detail.put("stack", stack);
+                        entry.setErrorDetail(detail);
                     }
                 }, executor));
             }
@@ -329,5 +341,13 @@ public class BuilderStudioRunner {
     private static String truncate(String s) {
         if (s == null) return null;
         return s.length() > 2000 ? s.substring(0, 2000) + "…" : s;
+    }
+
+    /** Captures the full Java stack trace of a throwable as a String. */
+    private static String stackTraceOf(Throwable t) {
+        if (t == null) return null;
+        StringWriter sw = new StringWriter();
+        t.printStackTrace(new PrintWriter(sw));
+        return sw.toString();
     }
 }

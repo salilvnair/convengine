@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Response envelope for the full-graph run endpoint. Mirrors what the UI's
@@ -25,5 +26,9 @@ public class RunResponse {
         private String output;
         private String error;
         private Long ms;
+        /** Full Java stack trace string — rendered in the Problems panel "Stack trace" disclosure. */
+        private String stackTrace;
+        /** Structured error detail map consumed by the UI's ErrorDetailView component. */
+        private Map<String, Object> errorDetail;
     }
 }
