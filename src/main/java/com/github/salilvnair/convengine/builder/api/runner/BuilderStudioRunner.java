@@ -6,6 +6,7 @@ import com.github.salilvnair.convengine.builder.api.dto.RunResponse;
 import com.github.salilvnair.convengine.builder.api.controller.BuilderStudioController;
 import com.github.salilvnair.convengine.builder.api.service.BuilderStudioLlmRuntimeService;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
+import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -46,6 +49,13 @@ public class BuilderStudioRunner {
     private final ExecutorService executor = Executors.newFixedThreadPool(8);
 
     /**
+     * In-process conversation store — keyed by conversationId.
+     * Lives for the lifetime of the application process (same as the extension's Map).
+     * Thread-safe: ConcurrentHashMap + CopyOnWriteArrayList per conversation.
+     */
+    private final Map<String, List<ConversationTurn>> conversationStore = new ConcurrentHashMap<>();
+
+    /**
      * One-shot agent call — used by {@code POST /builder-studio/agent} from
      * the client-side graph runner. The browser is orchestrating; we just
      * invoke the LLM with the supplied prompts.
@@ -69,32 +79,53 @@ public class BuilderStudioRunner {
         String systemPrompt = agent.path("systemPrompt").asText("");
         String userPrompt = agent.path("userPrompt").asText("{{input}}");
         String responseFormat = agent.hasNonNull("responseFormat") ? agent.get("responseFormat").asText(null) : null;
-        // Honor strict-JSON when the agent asks for it. Falls back to the
-        // default generateJson (which a provider is free to implement loosely)
-        // when strictOutput is false/missing. OpenAi's strict path uses
-        // response_format: { type: "json_schema", strict: true }.
         boolean strict = agent.path("strictOutput").asBoolean(false);
+
+        // ── Memory config ──────────────────────────────────────────────
+        JsonNode memNode = agent.path("memory");
+        String memType = memNode.path("type").asText("none");
+        String convId = memNode.path("conversationId").asText(null);
+        int windowSize = memNode.path("windowSize").asInt(10);
+        int maxTokens = memNode.path("maxTokens").asInt(4000);
 
         String resolvedUser = interpolate(userPrompt, input);
         String hint = (systemPrompt == null ? "" : systemPrompt) + "\n\n" + resolvedUser;
         String contextJson = "{\"input\":" + mapper.valueToTree(input == null ? "" : input) + "}";
 
         EngineSession session = newSession(input);
+
+        // Resolve and inject conversation history into the session
+        if (convId != null && !convId.isBlank() && !"none".equalsIgnoreCase(memType)) {
+            List<ConversationTurn> history = resolveHistory(convId, memType, windowSize, maxTokens);
+            session.setConversationHistory(history);
+        }
+
         BuilderStudioLlmRuntimeService runtime = llmRuntimeServiceProvider.getIfAvailable();
+        String output;
         if (runtime != null) {
             if (responseFormat != null && !responseFormat.isBlank()) {
-                return strict
+                output = strict
                         ? runtime.generateJsonStrict(provider, model, temperature, session, hint, responseFormat, contextJson)
                         : runtime.generateJson(provider, model, temperature, session, hint, responseFormat, contextJson);
+            } else {
+                output = runtime.generateText(provider, model, temperature, session, hint, contextJson);
             }
-            return runtime.generateText(provider, model, temperature, session, hint, contextJson);
+        } else {
+            if (responseFormat != null && !responseFormat.isBlank()) {
+                output = strict
+                        ? llmClient.generateJsonStrict(session, hint, responseFormat, contextJson)
+                        : llmClient.generateJson(session, hint, responseFormat, contextJson);
+            } else {
+                output = llmClient.generateText(session, hint, contextJson);
+            }
         }
-        if (responseFormat != null && !responseFormat.isBlank()) {
-            return strict
-                    ? llmClient.generateJsonStrict(session, hint, responseFormat, contextJson)
-                    : llmClient.generateJson(session, hint, responseFormat, contextJson);
+
+        // Persist this turn so subsequent calls in the same conversation see it
+        if (convId != null && !convId.isBlank() && !"none".equalsIgnoreCase(memType)) {
+            appendTurn(convId, resolvedUser, output);
         }
-        return llmClient.generateText(session, hint, contextJson);
+
+        return output;
     }
 
     /**
@@ -237,6 +268,44 @@ public class BuilderStudioRunner {
                 .inputParams(new HashMap<>())
                 .build();
         return new EngineSession(ctx, mapper);
+    }
+
+    // ── Conversation memory helpers ────────────────────────────────────
+
+    private List<ConversationTurn> resolveHistory(String convId, String memType, int windowSize, int maxTokens) {
+        List<ConversationTurn> all = conversationStore.getOrDefault(convId, Collections.emptyList());
+        if (all.isEmpty()) return Collections.emptyList();
+        return switch (memType) {
+            case "sliding_window" -> all.size() > windowSize
+                    ? new ArrayList<>(all.subList(all.size() - windowSize, all.size()))
+                    : new ArrayList<>(all);
+            case "sliding_window_tokens" -> applyTokenWindow(all, maxTokens);
+            default -> new ArrayList<>(all); // "conversation" = full history
+        };
+    }
+
+    /** Rough token estimate: 1 token ≈ 4 chars. */
+    private static int estimateTokens(String text) {
+        return text == null ? 0 : (int) Math.ceil(text.length() / 4.0);
+    }
+
+    private static List<ConversationTurn> applyTokenWindow(List<ConversationTurn> turns, int maxTokens) {
+        int budget = maxTokens;
+        Deque<ConversationTurn> result = new ArrayDeque<>();
+        for (int i = turns.size() - 1; i >= 0; i--) {
+            ConversationTurn t = turns.get(i);
+            int cost = estimateTokens(t.user()) + estimateTokens(t.assistant());
+            if (budget < cost) break;
+            budget -= cost;
+            result.addFirst(t);
+        }
+        return new ArrayList<>(result);
+    }
+
+    private void appendTurn(String convId, String user, String assistant) {
+        conversationStore
+                .computeIfAbsent(convId, k -> new CopyOnWriteArrayList<>())
+                .add(new ConversationTurn(user, assistant));
     }
 
     private static String interpolate(String template, String input) {
