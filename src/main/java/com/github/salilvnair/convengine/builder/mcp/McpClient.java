@@ -133,4 +133,7 @@ public class McpClient implements AutoCloseable {
 
     @Override
     public void close() { transport.close(); }
+
+    /** Whether the underlying transport (and its process/connection) is still healthy. */
+    public boolean isAlive() { return transport.isAlive(); }
 }

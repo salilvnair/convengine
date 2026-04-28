@@ -27,4 +27,7 @@ public interface McpTransport extends AutoCloseable {
 
     @Override
     void close();
+
+    /** Whether the underlying connection/process is still usable. */
+    default boolean isAlive() { return true; }
 }

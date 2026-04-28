@@ -45,7 +45,10 @@ public class McpRegistry {
     private static final Path STORE_PATH =
             Paths.get(System.getProperty("user.home"), ".convengine", "mcp-servers.json");
 
+    /** Persistence mapper — indented for human-readable file. */
     private final ObjectMapper mapper;
+    /** Transport mapper — no indentation, JSON-RPC is single-line newline-delimited. */
+    private final ObjectMapper transportMapper;
     private final Map<String, McpServerConfig> configs = new ConcurrentHashMap<>();
     private final Map<String, McpClient> clients = new ConcurrentHashMap<>();
     private final Map<String, List<JsonNode>> toolCache = new ConcurrentHashMap<>();
@@ -54,6 +57,9 @@ public class McpRegistry {
         // Reuse the Spring-managed mapper but enable indentation for the
         // persisted file so users can edit it by hand.
         this.mapper = mapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
+        // Transport mapper — no pretty-print. stdio transport sends one JSON
+        // object per line; indentation breaks Python's mcp.server.stdio parser.
+        this.transportMapper = mapper.copy().disable(SerializationFeature.INDENT_OUTPUT);
         load();
     }
 
@@ -110,11 +116,21 @@ public class McpRegistry {
     // ---- internals ----
 
     private McpClient client(String id) {
+        // Check if existing client's process is still alive; if not, discard it
+        // and respawn (handles pkill, crash, manual kill).
+        McpClient existing = clients.get(id);
+        if (existing != null && !existing.isAlive()) {
+            log.info("MCP server '{}' process died — respawning...", id);
+            existing.close();
+            clients.remove(id);
+            toolCache.remove(id);
+        }
         return clients.computeIfAbsent(id, key -> {
             McpServerConfig cfg = configs.get(key);
             if (cfg == null) throw new McpException("unknown MCP server: " + key);
+            log.info("Starting MCP server '{}' ({} {})...", cfg.getName(), cfg.getCommand(), cfg.getArgs());
             McpTransport transport = buildTransport(cfg);
-            McpClient c = new McpClient(transport, mapper);
+            McpClient c = new McpClient(transport, transportMapper);
             try {
                 c.initialize();
             } catch (RuntimeException e) {
@@ -134,19 +150,19 @@ public class McpRegistry {
                 if (cfg.getCommand() == null || cfg.getCommand().isBlank()) {
                     throw new McpException("stdio MCP server needs a 'command'");
                 }
-                yield new StdioMcpTransport(cfg.getCommand(), cfg.getArgs(), cfg.getEnv(), mapper);
+                yield new StdioMcpTransport(cfg.getCommand(), cfg.getArgs(), cfg.getEnv(), transportMapper);
             }
             case HTTP -> {
                 if (cfg.getUrl() == null || cfg.getUrl().isBlank()) {
                     throw new McpException("http MCP server needs a 'url'");
                 }
-                yield new HttpMcpTransport(cfg.getUrl(), cfg.getHeaders(), mapper);
+                yield new HttpMcpTransport(cfg.getUrl(), cfg.getHeaders(), transportMapper);
             }
             case SSE -> {
                 if (cfg.getUrl() == null || cfg.getUrl().isBlank()) {
                     throw new McpException("sse MCP server needs a 'url'");
                 }
-                yield new SseMcpTransport(cfg.getUrl(), cfg.getHeaders(), mapper);
+                yield new SseMcpTransport(cfg.getUrl(), cfg.getHeaders(), transportMapper);
             }
         };
     }

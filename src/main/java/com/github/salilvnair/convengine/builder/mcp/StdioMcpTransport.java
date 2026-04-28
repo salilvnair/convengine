@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @Slf4j
 public class StdioMcpTransport implements McpTransport {
 
-    private static final long DEFAULT_TIMEOUT_MS = 30_000;
+    private static final long DEFAULT_TIMEOUT_MS = 120_000;
 
     private final ObjectMapper mapper;
     private final Process process;
@@ -174,10 +174,13 @@ public class StdioMcpTransport implements McpTransport {
         try (BufferedReader br = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = br.readLine()) != null) {
-                log.debug("MCP[stderr]: {}", line);
+                log.info("whisper-mcp: {}", line);
             }
         } catch (IOException ignored) {}
     }
+
+    @Override
+    public boolean isAlive() { return !closed && process.isAlive(); }
 
     @Override
     public void close() {
