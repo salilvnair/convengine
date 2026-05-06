@@ -5,6 +5,7 @@ public enum RulePhase {
     POST_SCHEMA_EXTRACTION,
     PRE_AGENT_MCP,
     PRE_RESPONSE_RESOLUTION,
+    POST_RESPONSE_RESOLUTION,
     POST_CLASSIFIER_INTENT,
     POST_AGENT_INTENT,
     POST_AGENT_MCP,
@@ -18,6 +19,9 @@ public enum RulePhase {
         String normalized = raw.trim().toUpperCase();
         if ("PIPELINE_RULES".equals(normalized)) {
             return PRE_RESPONSE_RESOLUTION.name();
+        }
+        if ("POST_RESPONSE".equals(normalized)) {
+            return POST_RESPONSE_RESOLUTION.name();
         }
         if ("AGENT_POST_INTENT".equals(normalized)) {
             return POST_AGENT_INTENT.name();

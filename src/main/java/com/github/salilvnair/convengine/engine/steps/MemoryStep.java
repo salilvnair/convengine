@@ -25,7 +25,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Component
 @RequiresConversationPersisted
-@MustRunAfter(ResponseResolutionStep.class)
+@MustRunAfter(PostResponseRulesStep.class)
 @MustRunBefore(PersistConversationStep.class)
 public class MemoryStep implements EngineStep {
 
