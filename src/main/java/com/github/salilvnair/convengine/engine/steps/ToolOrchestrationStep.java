@@ -8,9 +8,9 @@ import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
 import com.github.salilvnair.convengine.config.ConvEngineFlowConfig;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
-import com.github.salilvnair.convengine.engine.mcp.McpConstants;
-import com.github.salilvnair.convengine.engine.mcp.McpToolRegistry;
-import com.github.salilvnair.convengine.engine.mcp.executor.McpToolExecutor;
+import com.github.salilvnair.convengine.engine.agent.AgentConstants;
+import com.github.salilvnair.convengine.engine.agent.AgentToolRegistry;
+import com.github.salilvnair.convengine.engine.agent.executor.AgentToolExecutor;
 import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.engine.pipeline.StepResult;
 import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunAfter;
@@ -18,7 +18,7 @@ import com.github.salilvnair.convengine.engine.core.step.annotation.MustRunBefor
 import com.github.salilvnair.convengine.engine.core.step.annotation.RequiresConversationPersisted;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
-import com.github.salilvnair.convengine.entity.CeMcpTool;
+import com.github.salilvnair.convengine.entity.CeAgentTool;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -32,12 +32,12 @@ import java.util.Map;
 @Component
 @RequiresConversationPersisted
 @MustRunAfter(GuardrailStep.class)
-@MustRunBefore(McpToolStep.class)
+@MustRunBefore(AgentToolStep.class)
 public class ToolOrchestrationStep implements EngineStep {
 
     private final ConvEngineFlowConfig flowConfig;
-    private final McpToolRegistry registry;
-    private final List<McpToolExecutor> toolExecutors;
+    private final AgentToolRegistry registry;
+    private final List<AgentToolExecutor> toolExecutors;
     private final RulesStep rulesStep;
     private final AuditService audit;
     private final VerboseMessagePublisher verbosePublisher;
@@ -61,7 +61,7 @@ public class ToolOrchestrationStep implements EngineStep {
         verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_REQUEST", null, request.toolCode(), false, request.toMap());
         audit.audit(ConvEngineAuditStage.TOOL_ORCHESTRATION_REQUEST, session.getConversationId(), request.toMap());
 
-        CeMcpTool resolvedTool = null;
+        CeAgentTool resolvedTool = null;
         try {
             resolvedTool = request.toolCode() == null || request.toolCode().isBlank()
                     ? null
@@ -74,22 +74,22 @@ public class ToolOrchestrationStep implements EngineStep {
                 throw new IllegalStateException("tool_group is required when tool_code is not resolvable");
             }
 
-            McpToolExecutor executor = resolveExecutor(group);
+            AgentToolExecutor executor = resolveExecutor(group);
             String resultJson = executor.execute(resolvedTool, request.args(), session);
 
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("status", McpConstants.TOOL_STATUS_SUCCESS);
+            result.put("status", AgentConstants.TOOL_STATUS_SUCCESS);
             result.put("tool_code", request.toolCode());
             result.put("tool_group", group);
             result.put("result", parseJsonOrString(resultJson));
             result.put("_meta", toolMeta(resolvedTool, request, group));
             session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
-            session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, McpConstants.TOOL_STATUS_SUCCESS);
+            session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, AgentConstants.TOOL_STATUS_SUCCESS);
             verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_RESULT", null, request.toolCode(), false, result);
             writeToolExecutionToContext(
                     session,
-                    McpConstants.TOOL_STATUS_SUCCESS,
-                    McpConstants.OUTCOME_SUCCESS,
+                    AgentConstants.TOOL_STATUS_SUCCESS,
+                    AgentConstants.OUTCOME_SUCCESS,
                     false,
                     request,
                     resolvedTool,
@@ -103,19 +103,19 @@ public class ToolOrchestrationStep implements EngineStep {
             if (e.getMessage() != null
                     && e.getMessage().contains("Missing enabled MCP tool for current intent/state")) {
                 Map<String, Object> result = new LinkedHashMap<>();
-                result.put("status", McpConstants.TOOL_STATUS_SCOPE_MISMATCH);
+                result.put("status", AgentConstants.TOOL_STATUS_SCOPE_MISMATCH);
                 result.put("tool_code", request.toolCode());
                 result.put("tool_group", request.toolGroup());
                 result.put("intent", session.getIntent());
                 result.put("state", session.getState());
                 result.put("_meta", toolMeta(resolvedTool, request, request.toolGroup()));
                 session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
-                session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, McpConstants.TOOL_STATUS_SCOPE_MISMATCH);
+                session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, AgentConstants.TOOL_STATUS_SCOPE_MISMATCH);
                 verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_ERROR", null, request.toolCode(), true, result);
                 writeToolExecutionToContext(
                         session,
-                        McpConstants.TOOL_STATUS_SCOPE_MISMATCH,
-                        McpConstants.OUTCOME_SCOPE_MISMATCH,
+                        AgentConstants.TOOL_STATUS_SCOPE_MISMATCH,
+                        AgentConstants.OUTCOME_SCOPE_MISMATCH,
                         true,
                         request,
                         resolvedTool,
@@ -126,18 +126,18 @@ public class ToolOrchestrationStep implements EngineStep {
                 return new StepResult.Continue();
             }
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("status", McpConstants.TOOL_STATUS_ERROR);
+            result.put("status", AgentConstants.TOOL_STATUS_ERROR);
             result.put("tool_code", request.toolCode());
             result.put("tool_group", request.toolGroup());
             result.put("error", String.valueOf(e.getMessage()));
             result.put("_meta", toolMeta(resolvedTool, request, request.toolGroup()));
             session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
-            session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, McpConstants.TOOL_STATUS_ERROR);
+            session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, AgentConstants.TOOL_STATUS_ERROR);
             verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_ERROR", null, request.toolCode(), true, result);
             writeToolExecutionToContext(
                     session,
-                    McpConstants.TOOL_STATUS_ERROR,
-                    McpConstants.OUTCOME_ERROR,
+                    AgentConstants.TOOL_STATUS_ERROR,
+                    AgentConstants.OUTCOME_ERROR,
                     false,
                     request,
                     resolvedTool,
@@ -147,18 +147,18 @@ public class ToolOrchestrationStep implements EngineStep {
             audit.audit(ConvEngineAuditStage.TOOL_ORCHESTRATION_ERROR, session.getConversationId(), result);
         } catch (Exception e) {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("status", McpConstants.TOOL_STATUS_ERROR);
+            result.put("status", AgentConstants.TOOL_STATUS_ERROR);
             result.put("tool_code", request.toolCode());
             result.put("tool_group", request.toolGroup());
             result.put("error", String.valueOf(e.getMessage()));
             result.put("_meta", toolMeta(resolvedTool, request, request.toolGroup()));
             session.putInputParam(ConvEngineInputParamKey.TOOL_RESULT, result);
-            session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, McpConstants.TOOL_STATUS_ERROR);
+            session.putInputParam(ConvEngineInputParamKey.TOOL_STATUS, AgentConstants.TOOL_STATUS_ERROR);
             verbosePublisher.publish(session, "ToolOrchestrationStep", "TOOL_ORCHESTRATION_ERROR", null, request.toolCode(), true, result);
             writeToolExecutionToContext(
                     session,
-                    McpConstants.TOOL_STATUS_ERROR,
-                    McpConstants.OUTCOME_ERROR,
+                    AgentConstants.TOOL_STATUS_ERROR,
+                    AgentConstants.OUTCOME_ERROR,
                     false,
                     request,
                     resolvedTool,
@@ -202,8 +202,8 @@ public class ToolOrchestrationStep implements EngineStep {
         return null;
     }
 
-    private McpToolExecutor resolveExecutor(String normalizedToolGroup) {
-        for (McpToolExecutor executor : toolExecutors) {
+    private AgentToolExecutor resolveExecutor(String normalizedToolGroup) {
+        for (AgentToolExecutor executor : toolExecutors) {
             String group = executor.toolGroup();
             if (group != null && group.trim().toUpperCase(Locale.ROOT).equals(normalizedToolGroup)) {
                 return executor;
@@ -237,7 +237,7 @@ public class ToolOrchestrationStep implements EngineStep {
         return text.isBlank() ? null : text;
     }
 
-    private Map<String, Object> toolMeta(CeMcpTool tool, ToolRequest request, String resolvedToolGroup) {
+    private Map<String, Object> toolMeta(CeAgentTool tool, ToolRequest request, String resolvedToolGroup) {
         Map<String, Object> meta = new LinkedHashMap<>();
         if (tool != null) {
             meta.put("tool_id", tool.getToolId());
@@ -267,7 +267,7 @@ public class ToolOrchestrationStep implements EngineStep {
             String outcome,
             boolean scopeMismatch,
             ToolRequest request,
-            CeMcpTool tool,
+            CeAgentTool tool,
             String resolvedToolGroup,
             Object result,
             String errorMessage) {
@@ -281,36 +281,36 @@ public class ToolOrchestrationStep implements EngineStep {
                 root = parsed instanceof ObjectNode objectNode ? objectNode : mapper.createObjectNode();
             }
 
-            ObjectNode mcp = root.withObject(McpConstants.CONTEXT_KEY_MCP);
-            ObjectNode execution = mcp.withObject(McpConstants.CONTEXT_KEY_TOOL_EXECUTION);
-            execution.put(McpConstants.CONTEXT_KEY_PHASE, RulePhase.POST_TOOL_EXECUTION.name());
-            execution.put(McpConstants.CONTEXT_KEY_FINISHED, true);
-            execution.put(McpConstants.CONTEXT_KEY_STATUS, status == null ? "" : status);
-            execution.put(McpConstants.CONTEXT_KEY_OUTCOME, outcome == null ? "" : outcome);
-            execution.put(McpConstants.CONTEXT_KEY_ERROR, McpConstants.TOOL_STATUS_ERROR.equalsIgnoreCase(status));
-            execution.put(McpConstants.CONTEXT_KEY_SCOPE_MISMATCH, scopeMismatch);
-            execution.put(McpConstants.CONTEXT_KEY_TOOL_EXECUTED,
-                    McpConstants.TOOL_STATUS_SUCCESS.equalsIgnoreCase(status));
-            execution.put(McpConstants.CONTEXT_KEY_TOOL_CODE, request == null ? null : request.toolCode());
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode execution = mcp.withObject(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION);
+            execution.put(AgentConstants.CONTEXT_KEY_PHASE, RulePhase.POST_TOOL_EXECUTION.name());
+            execution.put(AgentConstants.CONTEXT_KEY_FINISHED, true);
+            execution.put(AgentConstants.CONTEXT_KEY_STATUS, status == null ? "" : status);
+            execution.put(AgentConstants.CONTEXT_KEY_OUTCOME, outcome == null ? "" : outcome);
+            execution.put(AgentConstants.CONTEXT_KEY_ERROR, AgentConstants.TOOL_STATUS_ERROR.equalsIgnoreCase(status));
+            execution.put(AgentConstants.CONTEXT_KEY_SCOPE_MISMATCH, scopeMismatch);
+            execution.put(AgentConstants.CONTEXT_KEY_TOOL_EXECUTED,
+                    AgentConstants.TOOL_STATUS_SUCCESS.equalsIgnoreCase(status));
+            execution.put(AgentConstants.CONTEXT_KEY_TOOL_CODE, request == null ? null : request.toolCode());
             execution.put(
-                    McpConstants.CONTEXT_KEY_TOOL_GROUP,
+                    AgentConstants.CONTEXT_KEY_TOOL_GROUP,
                     resolvedToolGroup == null || resolvedToolGroup.isBlank()
                             ? (request == null ? null : request.toolGroup())
                             : resolvedToolGroup);
 
             if (errorMessage != null && !errorMessage.isBlank()) {
-                execution.put(McpConstants.CONTEXT_KEY_ERROR_MESSAGE, errorMessage);
+                execution.put(AgentConstants.CONTEXT_KEY_ERROR_MESSAGE, errorMessage);
             } else {
-                execution.remove(McpConstants.CONTEXT_KEY_ERROR_MESSAGE);
+                execution.remove(AgentConstants.CONTEXT_KEY_ERROR_MESSAGE);
             }
 
             if (result != null) {
-                execution.set(McpConstants.CONTEXT_KEY_RESULT, mapper.valueToTree(result));
+                execution.set(AgentConstants.CONTEXT_KEY_RESULT, mapper.valueToTree(result));
             } else {
-                execution.remove(McpConstants.CONTEXT_KEY_RESULT);
+                execution.remove(AgentConstants.CONTEXT_KEY_RESULT);
             }
 
-            execution.set(McpConstants.CONTEXT_KEY_META, mapper.valueToTree(toolMeta(tool, request, resolvedToolGroup)));
+            execution.set(AgentConstants.CONTEXT_KEY_META, mapper.valueToTree(toolMeta(tool, request, resolvedToolGroup)));
 
             session.setContextJson(mapper.writeValueAsString(root));
         } catch (Exception ignored) {

@@ -4,7 +4,7 @@ import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
 import com.github.salilvnair.convengine.engine.type.RulePhase;
 import com.github.salilvnair.convengine.entity.*;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.SemanticTableNames;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.SemanticTableNames;
 import com.github.salilvnair.convengine.repo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,9 +36,9 @@ public class StaticConfigurationCacheService {
     private final PromptTemplateRepository promptTemplateRepo;
     private final ResponseRepository responseRepo;
     private final ContainerConfigRepository containerConfigRepo;
-    private final McpToolRepository mcpToolRepo;
-    private final McpDbToolRepository mcpDbToolRepo;
-    private final McpPlannerRepository mcpPlannerRepo;
+    private final AgentToolRepository agentToolRepo;
+    private final AgentDbToolRepository agentDbToolRepo;
+    private final AgentPlannerRepository agentPlannerRepo;
     private final PolicyRepository policyRepo;
     private final VerboseRepository verboseRepo;
     private final CeConfigRepository ceConfigRepo;
@@ -112,13 +112,13 @@ public class StaticConfigurationCacheService {
     }
 
     @Cacheable("ce_mcp_tool")
-    public List<CeMcpTool> getAllMcpTools() {
-        return mcpToolRepo.findAll();
+    public List<CeAgentTool> getAllMcpTools() {
+        return agentToolRepo.findAll();
     }
 
     @Cacheable("ce_mcp_db_tool")
-    public List<CeMcpDbTool> getAllMcpDbTools() {
-        return mcpDbToolRepo.findAll();
+    public List<CeAgentDbTool> getAllMcpDbTools() {
+        return agentDbToolRepo.findAll();
     }
 
     @Cacheable("ce_policy")
@@ -127,8 +127,8 @@ public class StaticConfigurationCacheService {
     }
 
     @Cacheable("ce_mcp_planner")
-    public List<CeMcpPlanner> getAllMcpPlanners() {
-        return mcpPlannerRepo.findAll();
+    public List<CeAgentPlanner> getAllMcpPlanners() {
+        return agentPlannerRepo.findAll();
     }
 
     @Cacheable("ce_verbose")
@@ -405,15 +405,15 @@ public class StaticConfigurationCacheService {
     }
 
     // MCP Tools
-    public List<CeMcpTool> findEnabledMcpTools(String intentCode, String stateCode) {
-        Map<String, CeMcpTool> bestByCode = new LinkedHashMap<>();
+    public List<CeAgentTool> findEnabledMcpTools(String intentCode, String stateCode) {
+        Map<String, CeAgentTool> bestByCode = new LinkedHashMap<>();
         self().getAllMcpTools().stream()
-                .filter(CeMcpTool::isEnabled)
+                .filter(CeAgentTool::isEnabled)
                 .filter(t -> isEligibleMcpScopeCode(t.getIntentCode(), intentCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getStateCode(), stateCode))
                 .forEach(tool -> {
                     String code = tool.getToolCode() == null ? "" : tool.getToolCode().trim().toLowerCase(Locale.ROOT);
-                    CeMcpTool existing = bestByCode.get(code);
+                    CeAgentTool existing = bestByCode.get(code);
                     if (existing == null
                             || mcpToolSpecificityScore(tool, intentCode, stateCode) > mcpToolSpecificityScore(existing, intentCode, stateCode)) {
                         bestByCode.put(code, tool);
@@ -422,32 +422,32 @@ public class StaticConfigurationCacheService {
         return bestByCode.values().stream().toList();
     }
 
-    public Optional<CeMcpTool> findMcpTool(String toolCode, String intentCode, String stateCode) {
+    public Optional<CeAgentTool> findMcpTool(String toolCode, String intentCode, String stateCode) {
         return self().getAllMcpTools().stream()
-                .filter(CeMcpTool::isEnabled)
+                .filter(CeAgentTool::isEnabled)
                 .filter(t -> t.getToolCode() != null && t.getToolCode().equalsIgnoreCase(toolCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getIntentCode(), intentCode))
                 .filter(t -> isEligibleMcpScopeCode(t.getStateCode(), stateCode))
                 .max(Comparator.comparingInt(t -> mcpToolSpecificityScore(t, intentCode, stateCode)));
     }
 
-    public Optional<CeMcpDbTool> findMcpDbTool(String toolCode) {
+    public Optional<CeAgentDbTool> findMcpDbTool(String toolCode) {
         return self().getAllMcpDbTools().stream()
                 .filter(d -> d.getTool() != null && d.getTool().isEnabled())
                 .filter(d -> d.getTool().getToolCode() != null && d.getTool().getToolCode().equalsIgnoreCase(toolCode))
                 .findFirst();
     }
 
-    public Optional<CeMcpPlanner> findFirstMcpPlanner(String intentCode, String stateCode) {
+    public Optional<CeAgentPlanner> findFirstMcpPlanner(String intentCode, String stateCode) {
         return self().getAllMcpPlanners().stream()
-                .filter(CeMcpPlanner::isEnabled)
+                .filter(CeAgentPlanner::isEnabled)
                 .filter(p -> isEligibleIntent(p.getIntentCode(), intentCode))
                 .filter(p -> isEligibleState(p.getStateCode(), stateCode))
                 .sorted(
                         Comparator
-                                .comparingInt((CeMcpPlanner p) -> plannerSpecificityScore(p, intentCode, stateCode))
+                                .comparingInt((CeAgentPlanner p) -> plannerSpecificityScore(p, intentCode, stateCode))
                                 .reversed()
-                                .thenComparing(CeMcpPlanner::getPlannerId, Comparator.nullsLast(Comparator.reverseOrder())))
+                                .thenComparing(CeAgentPlanner::getPlannerId, Comparator.nullsLast(Comparator.reverseOrder())))
                 .findFirst();
     }
 
@@ -553,7 +553,7 @@ public class StaticConfigurationCacheService {
         return normalizedDbValue.equalsIgnoreCase(userValue.trim());
     }
 
-    private int plannerSpecificityScore(CeMcpPlanner planner, String intentCode, String stateCode) {
+    private int plannerSpecificityScore(CeAgentPlanner planner, String intentCode, String stateCode) {
         int score = 0;
         if (planner.getIntentCode() != null
                 && !planner.getIntentCode().isBlank()
@@ -568,7 +568,7 @@ public class StaticConfigurationCacheService {
         return score;
     }
 
-    private int mcpToolSpecificityScore(CeMcpTool tool, String intentCode, String stateCode) {
+    private int mcpToolSpecificityScore(CeAgentTool tool, String intentCode, String stateCode) {
         int score = 0;
         if (tool.getIntentCode() != null
                 && !tool.getIntentCode().isBlank()

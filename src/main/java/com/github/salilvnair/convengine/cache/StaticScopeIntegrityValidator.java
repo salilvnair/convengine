@@ -64,10 +64,10 @@ public class StaticScopeIntegrityValidator {
                 violations, warnings);
         validateScope("ce_output_schema", staticCacheService.getAllOutputSchemas().stream().filter(CeOutputSchema::isEnabled).toList(), CeOutputSchema::getSchemaId,
                 CeOutputSchema::getIntentCode, CeOutputSchema::getStateCode, allowedIntents, allowedStates, violations, warnings);
-        validateScope("ce_mcp_tool", staticCacheService.getAllMcpTools().stream().filter(CeMcpTool::isEnabled).toList(), CeMcpTool::getToolId, CeMcpTool::getIntentCode,
-                CeMcpTool::getStateCode, allowedIntents, allowedStates, violations, warnings);
-        validateScope("ce_mcp_planner", staticCacheService.getAllMcpPlanners().stream().filter(CeMcpPlanner::isEnabled).toList(), CeMcpPlanner::getPlannerId,
-                CeMcpPlanner::getIntentCode, CeMcpPlanner::getStateCode, allowedIntents, allowedStates, violations, warnings);
+        validateScope("ce_mcp_tool", staticCacheService.getAllMcpTools().stream().filter(CeAgentTool::isEnabled).toList(), CeAgentTool::getToolId, CeAgentTool::getIntentCode,
+                CeAgentTool::getStateCode, allowedIntents, allowedStates, violations, warnings);
+        validateScope("ce_mcp_planner", staticCacheService.getAllMcpPlanners().stream().filter(CeAgentPlanner::isEnabled).toList(), CeAgentPlanner::getPlannerId,
+                CeAgentPlanner::getIntentCode, CeAgentPlanner::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateScope("ce_verbose", staticCacheService.getAllVerboses().stream().filter(CeVerbose::isEnabled).toList(), CeVerbose::getVerboseId,
                 CeVerbose::getIntentCode, CeVerbose::getStateCode, allowedIntents, allowedStates, violations, warnings);
         validateVerboseRows(staticCacheService.getAllVerboses().stream().filter(CeVerbose::isEnabled).toList(),

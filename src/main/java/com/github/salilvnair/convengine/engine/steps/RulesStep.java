@@ -31,7 +31,7 @@ import java.util.Objects;
 
 @RequiredArgsConstructor
 @Component
-@MustRunAfter({AutoAdvanceStep.class, McpToolStep.class})
+@MustRunAfter({AutoAdvanceStep.class, AgentToolStep.class})
 @MustRunBefore(ResponseResolutionStep.class)
 public class RulesStep implements EngineStep {
 

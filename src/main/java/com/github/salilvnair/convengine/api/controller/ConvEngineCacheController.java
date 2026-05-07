@@ -4,7 +4,7 @@ import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildR
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildResponse;
 import com.github.salilvnair.convengine.cache.ConvEngineCacheAnalyzer;
 import com.github.salilvnair.convengine.cache.StaticTableCachePreloader;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.embedding.SemanticEmbeddingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;

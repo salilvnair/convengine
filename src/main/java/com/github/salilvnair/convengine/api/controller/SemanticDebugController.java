@@ -1,14 +1,14 @@
 package com.github.salilvnair.convengine.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.CanonicalIntent;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.SemanticCompiledSql;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.SemanticInterpretRequest;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.SemanticInterpretResponse;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.SemanticQueryResponseV2;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.service.SemanticDeterministicInterpretService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.service.SemanticInterpretService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.service.SemanticLlmQueryService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.contract.CanonicalIntent;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.contract.SemanticCompiledSql;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.contract.SemanticInterpretRequest;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.contract.SemanticInterpretResponse;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.contract.SemanticQueryResponseV2;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.service.SemanticDeterministicInterpretService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.service.SemanticInterpretService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.service.SemanticLlmQueryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
