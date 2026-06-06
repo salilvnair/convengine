@@ -1,12 +1,12 @@
-package com.github.salilvnair.convengine.engine.mcp.executor.handler;
+package com.github.salilvnair.convengine.engine.agent.executor.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
-import com.github.salilvnair.convengine.engine.mcp.McpSqlGuardrail;
-import com.github.salilvnair.convengine.engine.mcp.executor.interceptor.PostgresQueryInterceptor;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureFeedbackService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureRecord;
+import com.github.salilvnair.convengine.engine.agent.AgentSqlGuardrail;
+import com.github.salilvnair.convengine.engine.agent.executor.interceptor.PostgresQueryInterceptor;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.feedback.SemanticFailureFeedbackService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.feedback.SemanticFailureRecord;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.transport.verbose.VerboseMessagePublisher;
 import org.junit.jupiter.api.Test;
@@ -38,7 +38,7 @@ class PostgresQueryToolHandlerTest {
     @Test
     void executesWithNamedParamsFromArgs() {
         NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
-        McpSqlGuardrail guardrail = mock(McpSqlGuardrail.class);
+        AgentSqlGuardrail guardrail = mock(AgentSqlGuardrail.class);
         AuditService auditService = mock(AuditService.class);
         VerboseMessagePublisher verbosePublisher = mock(VerboseMessagePublisher.class);
         SemanticFailureFeedbackService failureService = mock(SemanticFailureFeedbackService.class);
@@ -70,7 +70,7 @@ class PostgresQueryToolHandlerTest {
     @Test
     void recordsFailureWhenExecutionErrors() {
         NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
-        McpSqlGuardrail guardrail = mock(McpSqlGuardrail.class);
+        AgentSqlGuardrail guardrail = mock(AgentSqlGuardrail.class);
         AuditService auditService = mock(AuditService.class);
         VerboseMessagePublisher verbosePublisher = mock(VerboseMessagePublisher.class);
         SemanticFailureFeedbackService failureService = mock(SemanticFailureFeedbackService.class);
@@ -96,7 +96,7 @@ class PostgresQueryToolHandlerTest {
     @Test
     void executesWhenPlannerSendsSqlArgAlias() {
         NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
-        McpSqlGuardrail guardrail = mock(McpSqlGuardrail.class);
+        AgentSqlGuardrail guardrail = mock(AgentSqlGuardrail.class);
         AuditService auditService = mock(AuditService.class);
         VerboseMessagePublisher verbosePublisher = mock(VerboseMessagePublisher.class);
         SemanticFailureFeedbackService failureService = mock(SemanticFailureFeedbackService.class);
@@ -132,7 +132,7 @@ class PostgresQueryToolHandlerTest {
     @Test
     void coercesIsoDateTimeParamsBeforeExecution() {
         NamedParameterJdbcTemplate jdbcTemplate = mock(NamedParameterJdbcTemplate.class);
-        McpSqlGuardrail guardrail = mock(McpSqlGuardrail.class);
+        AgentSqlGuardrail guardrail = mock(AgentSqlGuardrail.class);
         AuditService auditService = mock(AuditService.class);
         VerboseMessagePublisher verbosePublisher = mock(VerboseMessagePublisher.class);
         SemanticFailureFeedbackService failureService = mock(SemanticFailureFeedbackService.class);

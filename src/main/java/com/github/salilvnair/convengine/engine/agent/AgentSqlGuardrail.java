@@ -15,7 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Shared SQL safety checks for MCP DB execution paths.
+ * Shared SQL safety checks for Agent DB execution paths.
  * DB access remains read-only, while this guard can optionally be enriched by
  * a configured SQL guardrail table to allow or block specific functions/keywords.
  */

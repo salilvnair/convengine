@@ -111,12 +111,12 @@ public class StaticConfigurationCacheService {
         return containerConfigRepo.findAll();
     }
 
-    @Cacheable("ce_mcp_tool")
+    @Cacheable("ce_agent_tool")
     public List<CeAgentTool> getAllMcpTools() {
         return agentToolRepo.findAll();
     }
 
-    @Cacheable("ce_mcp_db_tool")
+    @Cacheable("ce_agent_db_tool")
     public List<CeAgentDbTool> getAllMcpDbTools() {
         return agentDbToolRepo.findAll();
     }
@@ -126,7 +126,7 @@ public class StaticConfigurationCacheService {
         return policyRepo.findAll();
     }
 
-    @Cacheable("ce_mcp_planner")
+    @Cacheable("ce_agent_planner")
     public List<CeAgentPlanner> getAllMcpPlanners() {
         return agentPlannerRepo.findAll();
     }
@@ -404,7 +404,7 @@ public class StaticConfigurationCacheService {
                 .toList();
     }
 
-    // MCP Tools
+    // Agent Tools
     public List<CeAgentTool> findEnabledMcpTools(String intentCode, String stateCode) {
         Map<String, CeAgentTool> bestByCode = new LinkedHashMap<>();
         self().getAllMcpTools().stream()

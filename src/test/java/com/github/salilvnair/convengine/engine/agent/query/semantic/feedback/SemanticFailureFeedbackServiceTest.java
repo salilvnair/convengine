@@ -1,8 +1,8 @@
-package com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback;
+package com.github.salilvnair.convengine.engine.agent.query.semantic.feedback;
 
 import com.github.salilvnair.convengine.audit.AuditService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureFeedbackService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureRecord;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.feedback.SemanticFailureFeedbackService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.feedback.SemanticFailureRecord;
 import com.github.salilvnair.convengine.entity.CeSemanticQueryFailure;
 import com.github.salilvnair.convengine.repo.SemanticQueryFailureRepository;
 import org.junit.jupiter.api.Test;

@@ -9,7 +9,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "ce_agent_feedback")
+@Table(name = "ce_agent_user_feedback")
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
@@ -43,8 +43,8 @@ public class CeAgentFeedback {
     @Column(name = "assistant_response")
     private String assistantResponse;
 
-    @Column(name = "mcp_tool_code", length = 255)
-    private String mcpToolCode;
+    @Column(name = "agent_tool_code", length = 255)
+    private String agentToolCode;
 
     @Column(name = "captured_query_knowledge_count")
     private Integer capturedQueryKnowledgeCount;

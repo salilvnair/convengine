@@ -22,13 +22,13 @@ public class AgentToolRegistry {
     public CeAgentTool requireTool(String toolCode, String intentCode, String stateCode) {
         return staticCacheService.findMcpTool(toolCode, intentCode, stateCode)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Missing enabled MCP tool for current intent/state: " + toolCode));
+                        "Missing enabled Agent tool for current intent/state: " + toolCode));
     }
 
     public CeAgentDbTool requireDbTool(String toolCode) {
         return staticCacheService.findMcpDbTool(toolCode)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Missing enabled DB tool in ce_mcp_db_tool for toolCode=" + toolCode
+                        "Missing enabled DB tool in ce_agent_db_tool for toolCode=" + toolCode
                                 + ". This row is required only when no matching DbToolHandler is registered."));
     }
 

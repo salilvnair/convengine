@@ -11,11 +11,11 @@ DELETE FROM ce_response WHERE intent_code = 'SEMANTIC_QUERY';
 DELETE FROM ce_prompt_template WHERE intent_code = 'SEMANTIC_QUERY';
 DELETE FROM ce_output_schema WHERE intent_code = 'SEMANTIC_QUERY';
 DELETE FROM ce_intent_classifier WHERE intent_code = 'SEMANTIC_QUERY';
-DELETE FROM ce_mcp_planner WHERE planner_id = 5401;
+DELETE FROM ce_agent_planner WHERE planner_id = 5401;
 DELETE FROM ce_intent WHERE intent_code = 'SEMANTIC_QUERY';
 
 -- Keep tool ids deterministic for demo setup.
-DELETE FROM ce_mcp_tool WHERE tool_code IN (
+DELETE FROM ce_agent_tool WHERE tool_code IN (
   'db.semantic.interpret',
   'db.semantic.query',
   'postgres.query'
@@ -301,7 +301,7 @@ VALUES
   'ANALYZE',
   'DERIVED',
   'You are an MCP planner for semantic querying.\nUse pipeline: db.semantic.interpret -> db.semantic.query -> postgres.query.\nIf interpret/query reports needsClarification=true, answer with the clarification question and do not proceed.\nNever skip order. Never invent tool names. Return strict JSON only.\n`action` MUST be exactly CALL_TOOL or ANSWER.\nNever return clarification_required / needs_clarification / clarify.',
-  'User input: {{user_input}}\nStandalone query: {{standalone_query}}\nMCP: {{context.mcp}}\nAvailable tools: {{mcp_tools}}\nExisting observations: {{mcp_observations}}',
+  'User input: {{user_input}}\nStandalone query: {{standalone_query}}\nMCP: {{context.mcp}}\nAvailable tools: {{agent_tools}}\nExisting observations: {{agent_observations}}',
   0.00,
   'MCP',
   '{"pipeline":["db.semantic.interpret","db.semantic.query","postgres.query"]}',
@@ -358,11 +358,11 @@ VALUES
  'Bootstrap SEMANTIC_QUERY into ANALYZE when classifier sets UNKNOWN'),
 ('POST_AGENT_INTENT', 'SEMANTIC_QUERY', 'IDLE', 'REGEX', '.*', 'SET_STATE', 'ANALYZE', 71, true,
  'Bootstrap SEMANTIC_QUERY into ANALYZE from IDLE'),
-('POST_AGENT_MCP', 'SEMANTIC_QUERY', 'ANALYZE', 'JSON_PATH',
+('POST_AGENT_TOOL', 'SEMANTIC_QUERY', 'ANALYZE', 'JSON_PATH',
  '$[?(@.context.mcp.lifecycle.error==true || @.context.mcp.lifecycle.blocked==true || @.context.mcp.lifecycle.status == ''TOOL_ERROR'' || @.context.mcp.lifecycle.outcome == ''ERROR'')]',
  'SET_STATE', 'FAILED', 72, true,
  'Move SEMANTIC_QUERY to FAILED on MCP tool failure'),
-('POST_AGENT_MCP', 'SEMANTIC_QUERY', 'ANALYZE', 'JSON_PATH',
+('POST_AGENT_TOOL', 'SEMANTIC_QUERY', 'ANALYZE', 'JSON_PATH',
  '$[?(@.context.mcp.finalAnswer != ''null'' && @.context.mcp.finalAnswer != null && @.context.mcp.finalAnswer != ''''
       && (@.context.pending_clarification == null || @.context.pending_clarification.question == null || @.context.pending_clarification.question == '''')
       && (@.context.mcp.semantic.semanticClarificationRequired == null || @.context.mcp.semantic.semanticClarificationRequired == false)
@@ -399,21 +399,21 @@ VALUES
 -- -----------------------------------------------------------------------------
 -- MCP tools + planner
 -- -----------------------------------------------------------------------------
-INSERT INTO ce_mcp_tool (tool_id, tool_code, tool_group, intent_code, state_code, enabled, description)
+INSERT INTO ce_agent_tool (tool_id, tool_code, tool_group, intent_code, state_code, enabled, description)
 VALUES
 (9401, 'db.semantic.interpret', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Interpret user query into canonical business intent.'),
 (9403, 'db.semantic.query', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Agent-2 SQL builder from canonical intent (LLM).'),
 (9404, 'postgres.query', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Execute read-only SQL with parameters.'),
 (9405, 'db.semantic.embed.refresh', 'DB', 'SEMANTIC_QUERY', 'ANALYZE', true, 'Refresh ce_semantic_concept_embedding vectors.');
 
-INSERT INTO ce_mcp_planner (planner_id, intent_code, state_code, system_prompt, user_prompt, enabled, created_at)
+INSERT INTO ce_agent_planner (planner_id, intent_code, state_code, system_prompt, user_prompt, enabled, created_at)
 VALUES
 (
   5401,
   'SEMANTIC_QUERY',
   'ANALYZE',
   'You are an MCP planning agent for semantic v2 DB querying.\nUse exact chain:\n1) db.semantic.interpret\n2) db.semantic.query\n3) postgres.query\nIf interpret/query says needsClarification=true, stop and ANSWER with clarificationQuestion.\nDo not skip or reorder tools.\nReturn strict JSON only.\n`action` MUST be exactly CALL_TOOL or ANSWER.\nNever return clarification_required / needs_clarification / clarify.',
-  'User input:\n{{user_input}}\n\nStandalone query:\n{{standalone_query}}\n\nMCP:\n{{context.mcp}}\n\nAvailable tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>",\n  "operation_tag":"<POLICY_RESTRICTED_OPERATION_or_null>"\n}\n`action` MUST be exactly CALL_TOOL or ANSWER. No other value is allowed.',
+  'User input:\n{{user_input}}\n\nStandalone query:\n{{standalone_query}}\n\nMCP:\n{{context.mcp}}\n\nAvailable tools:\n{{agent_tools}}\n\nExisting MCP observations:\n{{agent_observations}}\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>",\n  "operation_tag":"<POLICY_RESTRICTED_OPERATION_or_null>"\n}\n`action` MUST be exactly CALL_TOOL or ANSWER. No other value is allowed.',
   true,
   now()
 )

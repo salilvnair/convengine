@@ -511,7 +511,7 @@ public class EngineSession {
                     || ConvEngineInputParamKey.SCHEMA_JSON.equalsIgnoreCase(key)
                     || ConvEngineInputParamKey.SCHEMA_FIELD_DETAILS.equalsIgnoreCase(key)
                     || ConvEngineInputParamKey.MISSING_FIELD_OPTIONS.equalsIgnoreCase(key)
-                    || ConvEngineInputParamKey.MCP_OBSERVATIONS.equalsIgnoreCase(key)) {
+                    || ConvEngineInputParamKey.AGENT_OBSERVATIONS.equalsIgnoreCase(key)) {
                 continue;
             }
             out.put(key, e.getValue());

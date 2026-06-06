@@ -62,7 +62,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
     private static final Pattern PARAM_EQUALITY_PATTERN = Pattern.compile(
             "(?i)\\b([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)\\s*=\\s*:([a-zA-Z_][a-zA-Z0-9_]*)\\b");
     private static final String DEFAULT_DB_SQL_PREFLIGHT_SYSTEM_PROMPT = """
-            You are a DB SQL preflight repair assistant for ConvEngine MCP DB tools.
+            You are a DB SQL preflight repair assistant for ConvEngine Agent DB tools.
             Repair only read-only SELECT SQL.
             Use runtime schema metadata and semantic hints as source of truth.
             Never invent unknown table/column names.
@@ -93,7 +93,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
             }
             """;
     private static final String DEFAULT_DB_SQL_RECONCILE_SYSTEM_PROMPT = """
-            You are a DB SQL schema/type reconciliation assistant for ConvEngine MCP DB tools.
+            You are a DB SQL schema/type reconciliation assistant for ConvEngine Agent DB tools.
             Validate SQL against provided semantic metadata and runtime DB schema.
             Focus on type-safe predicates and parameter compatibility.
             Keep query semantics unchanged.
@@ -314,7 +314,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
                 args.put("sql_reconcile_diagnostics", reconcileResult.diagnostics());
             }
             sqlGuardrail.assertReadOnly(currentSql, "postgres.query tool (post-preflight)");
-            log.debug("Executing dynamic SQL from MCP (attempt {}/{}): {}", attempt + 1, maxRetries + 1, currentSql);
+            log.debug("Executing dynamic SQL from Agent (attempt {}/{}): {}", attempt + 1, maxRetries + 1, currentSql);
 
             try {
                 List<Map<String, Object>> rows = jdbcTemplate.queryForList(currentSql, currentParams);
@@ -568,7 +568,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
         payload.put("preflight_diagnostics", preflightDiagnostics == null ? Map.of() : preflightDiagnostics);
         payload.put("schema_knowledge_used", context == null ? Map.of() : context.schemaDetails());
         payload.put("semantic_knowledge_used", context == null ? Map.of() : context.semanticHints());
-        auditService.audit(ConvEngineAuditStage.MCP_DB_PREFLIGHT, session.getConversationId(), payload);
+        auditService.audit(ConvEngineAuditStage.AGENT_DB_PREFLIGHT, session.getConversationId(), payload);
     }
 
     private void auditPreflightRepair(
@@ -590,7 +590,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
         payload.put("failed_sql", failedSql);
         payload.put("repaired_sql", repairedSql);
         payload.put("error", String.valueOf(error == null ? "" : error.getMessage()));
-        auditService.audit(ConvEngineAuditStage.MCP_DB_PREFLIGHT_REPAIR, session.getConversationId(), payload);
+        auditService.audit(ConvEngineAuditStage.AGENT_DB_PREFLIGHT_REPAIR, session.getConversationId(), payload);
     }
 
     private void auditPreflightFailure(
@@ -633,7 +633,7 @@ public class PostgresQueryToolHandler implements DbToolHandler {
         }
         payload.put("error_class", error == null ? null : error.getClass().getName());
         payload.put("error_message", error == null ? null : error.getMessage());
-        auditService.audit(ConvEngineAuditStage.MCP_DB_PREFLIGHT, session.getConversationId(), payload);
+        auditService.audit(ConvEngineAuditStage.AGENT_DB_PREFLIGHT, session.getConversationId(), payload);
     }
 
     private boolean isSqlAutoRepairEnabled() {

@@ -69,7 +69,7 @@ public class VerboseStepHook implements EngineStepHook {
     }
 
     private String readToolCode(EngineSession session) {
-        Object raw = session.getInputParams().get("mcp_tool_code");
+        Object raw = session.getInputParams().get("agent_tool_code");
         if (raw == null) {
             raw = session.getInputParams().get("tool_code");
         }

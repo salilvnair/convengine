@@ -68,7 +68,7 @@ public class ConversationFeedbackService {
                 .stateCode(trimToNull(conversation.getStateCode()))
                 .userQuery(trimToNull(conversation.getLastUserText()))
                 .assistantResponse(assistantResponse)
-                .mcpToolCode(resolveLastMcpToolCode(conversation.getContextJson()))
+                .agentToolCode(resolveLastAgentToolCode(conversation.getContextJson()))
                 .capturedQueryKnowledgeCount(legacyCatalogQueryKnowledge.size())
                 .appliedQueryKnowledgeJson(JsonUtil.toJson(legacyCatalogQueryKnowledge))
                 .metadataJson(JsonUtil.toJson(request.getMetadata() == null ? Map.of() : request.getMetadata()))
@@ -121,7 +121,7 @@ public class ConversationFeedbackService {
         auditPayload.put("captured_user_query_knowledge_count", savedUserKnowledgeCount);
         auditPayload.put("embedded_user_query_knowledge_count", embeddedUserKnowledgeCount);
         auditPayload.put("feedback_id", feedback.getFeedbackId());
-        auditService.audit(ConvEngineAuditStage.MCP_USER_FEEDBACK, conversation.getConversationId(), auditPayload);
+        auditService.audit(ConvEngineAuditStage.AGENT_USER_FEEDBACK, conversation.getConversationId(), auditPayload);
 
         return ConversationFeedbackResponse.builder()
                 .success(true)
@@ -170,7 +170,7 @@ public class ConversationFeedbackService {
                 correctSql,
                 rootCause,
                 reason,
-                "MCP_USER_FEEDBACK",
+                "AGENT_USER_FEEDBACK",
                 failureMetadata(feedback)
         ));
     }
@@ -209,7 +209,7 @@ public class ConversationFeedbackService {
             CeAgentFeedback feedback,
             String feedbackType) {
         List<FeedbackKnowledgeEntry> out = new ArrayList<>();
-        JsonNode observations = mcpObservations(conversation.getContextJson());
+        JsonNode observations = agentObservations(conversation.getContextJson());
         if (observations == null || !observations.isArray()) {
             return out;
         }
@@ -295,7 +295,7 @@ public class ConversationFeedbackService {
 
     private List<Map<String, Object>> extractCatalogQueryKnowledgeFromContext(String contextJson) {
         List<Map<String, Object>> out = new ArrayList<>();
-        JsonNode observations = mcpObservations(contextJson);
+        JsonNode observations = agentObservations(contextJson);
         if (observations == null || !observations.isArray()) {
             return out;
         }
@@ -337,8 +337,8 @@ public class ConversationFeedbackService {
         return value;
     }
 
-    private String resolveLastMcpToolCode(String contextJson) {
-        JsonNode observations = mcpObservations(contextJson);
+    private String resolveLastAgentToolCode(String contextJson) {
+        JsonNode observations = agentObservations(contextJson);
         if (observations == null || !observations.isArray() || observations.isEmpty()) {
             return null;
         }
@@ -352,20 +352,20 @@ public class ConversationFeedbackService {
         return null;
     }
 
-    private JsonNode mcpObservations(String contextJson) {
+    private JsonNode agentObservations(String contextJson) {
         if (contextJson == null || contextJson.isBlank()) {
             return null;
         }
         try {
             JsonNode root = objectMapper.readTree(contextJson);
-            return root.path(AgentConstants.CONTEXT_KEY_MCP).path(AgentConstants.CONTEXT_KEY_OBSERVATIONS);
+            return root.path(AgentConstants.CONTEXT_KEY_AGENT).path(AgentConstants.CONTEXT_KEY_OBSERVATIONS);
         } catch (Exception ignored) {
             return null;
         }
     }
 
     private String latestObservedSql(String contextJson) {
-        JsonNode observations = mcpObservations(contextJson);
+        JsonNode observations = agentObservations(contextJson);
         if (observations == null || !observations.isArray() || observations.isEmpty()) {
             return null;
         }

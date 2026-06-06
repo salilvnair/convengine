@@ -45,7 +45,7 @@ public class AgentPlanner {
 
     private static final String DEFAULT_DB_SYSTEM_PROMPT = """
 
-                You are an MCP planning agent inside ConvEngine.
+                You are an Agent planning agent inside ConvEngine.
 
                 You will receive:
                 - user_input
@@ -82,14 +82,14 @@ public class AgentPlanner {
             User input:
             {{user_input}}
 
-            MCP Context:
+            Agent Context:
             {{context.mcp}}
 
-            Available MCP tools:
-            {{mcp_tools}}
+            Available Agent tools:
+            {{agent_tools}}
 
-            Existing MCP observations (if any):
-            {{mcp_observations}}
+            Existing Agent observations (if any):
+            {{agent_observations}}
 
             If semantic tools are available, follow:
             `db.semantic.interpret` -> `db.semantic.query` -> `postgres.query`.
@@ -142,8 +142,8 @@ public class AgentPlanner {
         String obsJson = obsPayload.json();
 
         Map<String, Object> extraVars = new LinkedHashMap<>(session.promptTemplateVars());
+        extraVars.remove("agent_observations");
         extraVars.remove("mcp_observations");
-        extraVars.remove("MCP_OBSERVATIONS");
         Map<String, Object> contextMap = session.contextDict();
         extraVars.put("context", contextMap);
         PlannerTimeContext timeContext = resolvePlannerTimeContext();
@@ -156,8 +156,8 @@ public class AgentPlanner {
                 .resolvedUserInput(session.getResolvedUserInput())
                 .standaloneQuery(session.getStandaloneQuery())
                 .conversationHistory(JsonUtil.toJson(session.conversionHistory()))
-                .mcpTools(toolsJson)
-                .mcpObservations(obsJson)
+                .agentTools(toolsJson)
+                .agentObservations(obsJson)
                 .currentDate(timeContext.currentDate())
                 .currentDateTime(timeContext.currentDateTime())
                 .currentYear(timeContext.currentYear())
@@ -187,15 +187,15 @@ public class AgentPlanner {
                 """;
 
         Map<String, Object> inputPayload = new LinkedHashMap<>();
-        inputPayload.put(ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER, promptSet.source());
+        inputPayload.put(ConvEnginePayloadKey.TEMPLATE_FROM_CE_CONFIG_AGENT_PLANNER, promptSet.source());
         inputPayload.put(ConvEnginePayloadKey.SYSTEM_PROMPT, systemPrompt);
         inputPayload.put(ConvEnginePayloadKey.USER_PROMPT, userPrompt);
         inputPayload.put(ConvEnginePayloadKey.SCHEMA, schema);
-        inputPayload.put("mcp_observations_compacted", obsPayload.compacted());
-        inputPayload.put("mcp_observations_raw_chars", obsPayload.rawChars());
-        inputPayload.put("mcp_observations_final_chars", obsPayload.finalChars());
-        audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_INPUT, session.getConversationId(), inputPayload);
-        verbosePublisher.publish(session, "AgentPlanner", "MCP_PLAN_LLM_INPUT", null, null, false, inputPayload);
+        inputPayload.put("agent_observations_compacted", obsPayload.compacted());
+        inputPayload.put("agent_observations_raw_chars", obsPayload.rawChars());
+        inputPayload.put("agent_observations_final_chars", obsPayload.finalChars());
+        audit.audit(ConvEngineAuditStage.AGENT_PLAN_LLM_INPUT, session.getConversationId(), inputPayload);
+        verbosePublisher.publish(session, "AgentPlanner", "AGENT_PLAN_LLM_INPUT", null, null, false, inputPayload);
 
         LlmInvocationContext.set(
                 session.getConversationId(),
@@ -206,15 +206,15 @@ public class AgentPlanner {
         try {
             out = llm.generateJson(session, systemPrompt + "\n\n" + userPrompt, schema, session.getContextJson());
         } catch (Exception e) {
-            verbosePublisher.publish(session, "AgentPlanner", "MCP_PLAN_LLM_ERROR", null, null, true,
+            verbosePublisher.publish(session, "AgentPlanner", "AGENT_PLAN_LLM_ERROR", null, null, true,
                     Map.of("error", String.valueOf(e.getMessage())));
             throw e;
         }
 
         Map<String, Object> outputPayload = new LinkedHashMap<>();
         outputPayload.put(ConvEnginePayloadKey.JSON, out);
-        audit.audit(ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT, session.getConversationId(), outputPayload);
-        verbosePublisher.publish(session, "AgentPlanner", "MCP_PLAN_LLM_OUTPUT", null, null, false, outputPayload);
+        audit.audit(ConvEngineAuditStage.AGENT_PLAN_LLM_OUTPUT, session.getConversationId(), outputPayload);
+        verbosePublisher.publish(session, "AgentPlanner", "AGENT_PLAN_LLM_OUTPUT", null, null, false, outputPayload);
 
         try {
             AgentPlan parsed = mapper.readValue(out, AgentPlan.class);
@@ -413,7 +413,7 @@ public class AgentPlanner {
     }
 
     private PlannerPromptSet fromTablePlanner(CeAgentPlanner planner) {
-        String source = "ce_mcp_planner(planner_id="
+        String source = "ce_agent_planner(planner_id="
                 + planner.getPlannerId()
                 + ", intent_code="
                 + planner.getIntentCode()
@@ -431,7 +431,7 @@ public class AgentPlanner {
     }
 
     private ObservationPayload buildObservationsPayload(List<AgentObservation> observations) {
-        int maxKeep = configResolver.resolveInt(this, "MCP_PLANNER_MAX_OBSERVATIONS_COUNT", 2);
+        int maxKeep = configResolver.resolveInt(this, "AGENT_PLANNER_MAX_OBSERVATIONS_COUNT", 2);
         List<AgentObservation> recentObservations = observations;
         if (observations.size() > maxKeep && maxKeep > 0) {
             recentObservations = observations.subList(observations.size() - maxKeep, observations.size());
@@ -464,7 +464,7 @@ public class AgentPlanner {
 
     private int resolvePlannerMaxObservationChars() {
         int yamlValue = 6000;
-        int resolved = configResolver.resolveInt(this, "MCP_PLANNER_MAX_OBS_CHARS", yamlValue);
+        int resolved = configResolver.resolveInt(this, "AGENT_PLANNER_MAX_OBS_CHARS", yamlValue);
         return Math.max(1000, resolved);
     }
 

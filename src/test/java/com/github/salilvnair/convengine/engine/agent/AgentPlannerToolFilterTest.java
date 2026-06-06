@@ -1,6 +1,6 @@
-package com.github.salilvnair.convengine.engine.mcp;
+package com.github.salilvnair.convengine.engine.agent;
 
-import com.github.salilvnair.convengine.entity.CeMcpTool;
+import com.github.salilvnair.convengine.entity.CeAgentTool;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -10,11 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class McpPlannerToolFilterTest {
+class AgentPlannerToolFilterTest {
 
     @Test
     void extractsToolCodesFromBacktickedPromptSegments() {
-        Set<String> codes = McpPlanner.extractMentionedToolCodes("""
+        Set<String> codes = AgentPlanner.extractMentionedToolCodes("""
                 Use only:
                 `db.semantic.query`
                 `postgres.query`
@@ -27,12 +27,12 @@ class McpPlannerToolFilterTest {
 
     @Test
     void filtersAvailableToolsToMentionedCodes() {
-        List<CeMcpTool> tools = List.of(
+        List<CeAgentTool> tools = List.of(
                 tool("db.semantic.query"),
                 tool("postgres.query"),
                 tool("order.status.api"));
 
-        List<CeMcpTool> filtered = McpPlanner.filterToolsByMentionedCodes(
+        List<CeAgentTool> filtered = AgentPlanner.filterToolsByMentionedCodes(
                 tools, Set.of("db.semantic.query", "postgres.query"));
 
         assertEquals(2, filtered.size());
@@ -41,8 +41,8 @@ class McpPlannerToolFilterTest {
         assertFalse(filtered.stream().anyMatch(t -> "order.status.api".equalsIgnoreCase(t.getToolCode())));
     }
 
-    private CeMcpTool tool(String code) {
-        CeMcpTool tool = new CeMcpTool();
+    private CeAgentTool tool(String code) {
+        CeAgentTool tool = new CeAgentTool();
         tool.setToolCode(code);
         tool.setToolGroup("DB");
         tool.setIntentCode("ANY");

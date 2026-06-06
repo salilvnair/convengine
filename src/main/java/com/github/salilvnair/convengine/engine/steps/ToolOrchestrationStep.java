@@ -101,7 +101,7 @@ public class ToolOrchestrationStep implements EngineStep {
             rulesStep.applyRules(session, "ToolOrchestrationStep PostTool", RulePhase.POST_TOOL_EXECUTION.name());
         } catch (IllegalStateException e) {
             if (e.getMessage() != null
-                    && e.getMessage().contains("Missing enabled MCP tool for current intent/state")) {
+                    && e.getMessage().contains("Missing enabled Agent tool for current intent/state")) {
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("status", AgentConstants.TOOL_STATUS_SCOPE_MISMATCH);
                 result.put("tool_code", request.toolCode());
@@ -209,7 +209,7 @@ public class ToolOrchestrationStep implements EngineStep {
                 return executor;
             }
         }
-        throw new IllegalStateException("No MCP tool executor found for tool group: " + normalizedToolGroup);
+        throw new IllegalStateException("No Agent tool executor found for tool group: " + normalizedToolGroup);
     }
 
     private Map<String, Object> toStringObjectMap(Map<?, ?> source) {
@@ -281,7 +281,7 @@ public class ToolOrchestrationStep implements EngineStep {
                 root = parsed instanceof ObjectNode objectNode ? objectNode : mapper.createObjectNode();
             }
 
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             ObjectNode execution = mcp.withObject(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION);
             execution.put(AgentConstants.CONTEXT_KEY_PHASE, RulePhase.POST_TOOL_EXECUTION.name());
             execution.put(AgentConstants.CONTEXT_KEY_FINISHED, true);

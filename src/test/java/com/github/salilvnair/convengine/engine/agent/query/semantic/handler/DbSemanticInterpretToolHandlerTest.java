@@ -1,19 +1,19 @@
-package com.github.salilvnair.convengine.engine.mcp.query.semantic.handler;
+package com.github.salilvnair.convengine.engine.agent.query.semantic.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
-import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
+import com.github.salilvnair.convengine.config.ConvEngineAgentConfig;
 import com.github.salilvnair.convengine.engine.context.EngineContext;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.handler.DbSemanticInterpretToolHandler;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticEntity;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticEntityTables;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticField;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModel;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelDynamicOverlayService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelRegistry;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.model.SemanticModelValidator;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.SemanticInterpretResponse;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.service.SemanticInterpretService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.handler.DbSemanticInterpretToolHandler;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.model.SemanticEntity;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.model.SemanticEntityTables;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.model.SemanticField;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.model.SemanticModel;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.model.SemanticModelDynamicOverlayService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.model.SemanticModelRegistry;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.model.SemanticModelValidator;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.contract.SemanticInterpretResponse;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.service.SemanticInterpretService;
 import com.github.salilvnair.convengine.engine.session.EngineSession;
 import com.github.salilvnair.convengine.llm.core.LlmClient;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +37,7 @@ class DbSemanticInterpretToolHandlerTest {
 
     @BeforeEach
     void setUp() {
-        ConvEngineMcpConfig config = new ConvEngineMcpConfig();
+        ConvEngineAgentConfig config = new ConvEngineAgentConfig();
         config.getDb().getSemantic().setEnabled(true);
 
         llmClient = new StubLlmClient();

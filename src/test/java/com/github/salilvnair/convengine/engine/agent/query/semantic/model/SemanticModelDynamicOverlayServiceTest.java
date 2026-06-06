@@ -1,4 +1,4 @@
-package com.github.salilvnair.convengine.engine.mcp.query.semantic.model;
+package com.github.salilvnair.convengine.engine.agent.query.semantic.model;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;

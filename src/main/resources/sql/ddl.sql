@@ -1,12 +1,12 @@
-DROP TABLE IF EXISTS ce_mcp_db_tool CASCADE;
-DROP TABLE IF EXISTS ce_mcp_planner CASCADE;
+DROP TABLE IF EXISTS ce_agent_db_tool CASCADE;
+DROP TABLE IF EXISTS ce_agent_planner CASCADE;
 DROP TABLE IF EXISTS ce_semantic_entity CASCADE;
 DROP TABLE IF EXISTS ce_semantic_relationship CASCADE;
 DROP TABLE IF EXISTS ce_semantic_join_hint CASCADE;
 DROP TABLE IF EXISTS ce_semantic_value_pattern CASCADE;
 DROP TABLE IF EXISTS ce_user_query_knowledge CASCADE;
-DROP TABLE IF EXISTS ce_mcp_user_feedback CASCADE;
-DROP TABLE IF EXISTS ce_mcp_user_query_knowledge CASCADE;
+DROP TABLE IF EXISTS ce_agent_user_feedback CASCADE;
+DROP TABLE IF EXISTS ce_agent_query_knowledge CASCADE;
 DROP TABLE IF EXISTS ce_conversation_history CASCADE;
 DROP TABLE IF EXISTS ce_audit CASCADE;
 DROP TABLE IF EXISTS ce_pending_action CASCADE;
@@ -16,7 +16,7 @@ DROP TABLE IF EXISTS ce_response CASCADE;
 DROP TABLE IF EXISTS ce_prompt_template CASCADE;
 DROP TABLE IF EXISTS ce_policy CASCADE;
 DROP TABLE IF EXISTS ce_output_schema CASCADE;
-DROP TABLE IF EXISTS ce_mcp_tool CASCADE;
+DROP TABLE IF EXISTS ce_agent_tool CASCADE;
 DROP TABLE IF EXISTS ce_llm_call_log CASCADE;
 DROP TABLE IF EXISTS ce_intent_classifier CASCADE;
 DROP TABLE IF EXISTS ce_intent CASCADE;
@@ -120,7 +120,7 @@ CREATE TABLE ce_llm_call_log (
 CREATE INDEX idx_ce_llm_log_conversation ON public.ce_llm_call_log USING btree (conversation_id);
 CREATE INDEX idx_ce_llm_log_intent_state ON public.ce_llm_call_log USING btree (intent_code, state_code);
 
-CREATE TABLE ce_mcp_tool (
+CREATE TABLE ce_agent_tool (
                              tool_id bigserial NOT NULL,
                              tool_code text NOT NULL,
                              tool_group text NOT NULL,
@@ -129,12 +129,12 @@ CREATE TABLE ce_mcp_tool (
                              enabled bool DEFAULT true NOT NULL,
                              description text NULL,
                              created_at timestamptz DEFAULT now() NOT NULL,
-                             CONSTRAINT ce_mcp_tool_pkey PRIMARY KEY (tool_id),
-                             CONSTRAINT ce_mcp_tool_tool_code_key UNIQUE (tool_code),
-                             CONSTRAINT ce_mcp_tool_intent_code_not_blank CHECK (btrim(intent_code) <> ''),
-                             CONSTRAINT ce_mcp_tool_state_code_not_blank CHECK (btrim(state_code) <> '')
+                             CONSTRAINT ce_agent_tool_pkey PRIMARY KEY (tool_id),
+                             CONSTRAINT ce_agent_tool_tool_code_key UNIQUE (tool_code),
+                             CONSTRAINT ce_agent_tool_intent_code_not_blank CHECK (btrim(intent_code) <> ''),
+                             CONSTRAINT ce_agent_tool_state_code_not_blank CHECK (btrim(state_code) <> '')
 );
-CREATE INDEX idx_ce_mcp_tool_enabled ON public.ce_mcp_tool USING btree (enabled, intent_code, state_code, tool_group, tool_code);
+CREATE INDEX idx_ce_agent_tool_enabled ON public.ce_agent_tool USING btree (enabled, intent_code, state_code, tool_group, tool_code);
 
 CREATE TABLE ce_output_schema (
                                   schema_id bigserial NOT NULL,
@@ -283,7 +283,7 @@ CREATE TABLE ce_conversation_history (
 );
 CREATE INDEX idx_ce_conversation_history_conv ON public.ce_conversation_history USING btree (conversation_id, created_at DESC);
 
-CREATE TABLE ce_mcp_db_tool (
+CREATE TABLE ce_agent_db_tool (
                                 tool_id int8 NOT NULL,
                                 dialect text DEFAULT 'POSTGRES'::text NOT NULL,
                                 sql_template text NOT NULL,
@@ -292,12 +292,12 @@ CREATE TABLE ce_mcp_db_tool (
                                 max_rows int4 DEFAULT 200 NOT NULL,
                                 created_at timestamptz DEFAULT now() NOT NULL,
                                 allowed_identifiers jsonb NULL,
-                                CONSTRAINT ce_mcp_db_tool_pkey PRIMARY KEY (tool_id),
-                                CONSTRAINT ce_mcp_db_tool_tool_id_fkey FOREIGN KEY (tool_id) REFERENCES ce_mcp_tool(tool_id) ON DELETE CASCADE
+                                CONSTRAINT ce_agent_db_tool_pkey PRIMARY KEY (tool_id),
+                                CONSTRAINT ce_agent_db_tool_tool_id_fkey FOREIGN KEY (tool_id) REFERENCES ce_agent_tool(tool_id) ON DELETE CASCADE
 );
-CREATE INDEX idx_ce_mcp_db_tool_dialect ON public.ce_mcp_db_tool USING btree (dialect);
+CREATE INDEX idx_ce_agent_db_tool_dialect ON public.ce_agent_db_tool USING btree (dialect);
 
-CREATE TABLE ce_mcp_planner (
+CREATE TABLE ce_agent_planner (
                                 planner_id bigserial NOT NULL,
                                 intent_code text NOT NULL,
                                 state_code text NOT NULL,
@@ -305,15 +305,15 @@ CREATE TABLE ce_mcp_planner (
                                 user_prompt text NOT NULL,
                                 enabled bool DEFAULT true NOT NULL,
                                 created_at timestamptz DEFAULT now() NOT NULL,
-                                CONSTRAINT ce_mcp_planner_pkey PRIMARY KEY (planner_id),
-                                CONSTRAINT ce_mcp_planner_intent_not_blank CHECK (btrim(intent_code) <> ''),
-                                CONSTRAINT ce_mcp_planner_state_not_blank CHECK (btrim(state_code) <> '')
+                                CONSTRAINT ce_agent_planner_pkey PRIMARY KEY (planner_id),
+                                CONSTRAINT ce_agent_planner_intent_not_blank CHECK (btrim(intent_code) <> ''),
+                                CONSTRAINT ce_agent_planner_state_not_blank CHECK (btrim(state_code) <> '')
 );
-CREATE INDEX idx_ce_mcp_planner_scope ON public.ce_mcp_planner USING btree (enabled, intent_code, state_code, planner_id);
+CREATE INDEX idx_ce_agent_planner_scope ON public.ce_agent_planner USING btree (enabled, intent_code, state_code, planner_id);
 
 
 
-CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
+CREATE TABLE IF NOT EXISTS ce_agent_query_knowledge (
     id BIGSERIAL PRIMARY KEY,
     query_text VARCHAR(1000) NOT NULL,
     description VARCHAR(2000),
@@ -323,9 +323,9 @@ CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
     embedding TEXT,
     created_at timestamptz DEFAULT now() NOT NULL
 );
-CREATE INDEX idx_ce_mcp_user_query_knowledge_query_text ON public.ce_mcp_user_query_knowledge USING btree (query_text);
+CREATE INDEX idx_ce_agent_query_knowledge_query_text ON public.ce_agent_query_knowledge USING btree (query_text);
 
-CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
+CREATE TABLE IF NOT EXISTS ce_agent_user_feedback (
     feedback_id BIGSERIAL PRIMARY KEY,
     conversation_id uuid NOT NULL,
     feedback_type VARCHAR(32) NOT NULL,
@@ -334,14 +334,14 @@ CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
     state_code VARCHAR(255),
     user_query TEXT,
     assistant_response TEXT,
-    mcp_tool_code VARCHAR(255),
+    agent_tool_code VARCHAR(255),
     captured_query_knowledge_count INTEGER DEFAULT 0 NOT NULL,
     applied_query_knowledge_json jsonb,
     metadata_json jsonb,
     created_at timestamptz DEFAULT now() NOT NULL,
-    CONSTRAINT ce_mcp_user_feedback_conversation_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
+    CONSTRAINT ce_agent_user_feedback_conversation_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
 );
-CREATE INDEX idx_ce_mcp_user_feedback_conversation ON public.ce_mcp_user_feedback USING btree (conversation_id, created_at DESC);
+CREATE INDEX idx_ce_agent_user_feedback_conversation ON public.ce_agent_user_feedback USING btree (conversation_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
     id BIGSERIAL PRIMARY KEY,
@@ -359,7 +359,7 @@ CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
     embedding TEXT,
     metadata_json jsonb,
     created_at timestamptz DEFAULT now() NOT NULL,
-    CONSTRAINT ce_user_query_knowledge_feedback_fkey FOREIGN KEY (feedback_id) REFERENCES ce_mcp_user_feedback(feedback_id) ON DELETE SET NULL,
+    CONSTRAINT ce_user_query_knowledge_feedback_fkey FOREIGN KEY (feedback_id) REFERENCES ce_agent_user_feedback(feedback_id) ON DELETE SET NULL,
     CONSTRAINT ce_user_query_knowledge_conversation_fkey FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE SET NULL
 );
 CREATE INDEX idx_ce_user_query_knowledge_query_text ON public.ce_user_query_knowledge USING btree (query_text);

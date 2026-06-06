@@ -37,9 +37,9 @@ public class ConvEngineCacheAnalyzer {
             "ce_prompt_template",
             "ce_response",
             "ce_container_config",
-            "ce_mcp_tool",
-            "ce_mcp_db_tool",
-            "ce_mcp_planner",
+            "ce_agent_tool",
+            "ce_agent_db_tool",
+            "ce_agent_planner",
             "ce_policy",
             "ce_verbose",
             "ce_semantic_ambiguity_option",
@@ -198,9 +198,9 @@ public class ConvEngineCacheAnalyzer {
         metrics.put("ce_prompt_template", measure(() -> staticCacheService.getAllPromptTemplates()));
         metrics.put("ce_response", measure(() -> staticCacheService.getAllResponses()));
         metrics.put("ce_container_config", measure(() -> staticCacheService.getAllContainerConfigs()));
-        metrics.put("ce_mcp_tool", measure(() -> staticCacheService.getAllMcpTools()));
-        metrics.put("ce_mcp_db_tool", measure(() -> staticCacheService.getAllMcpDbTools()));
-        metrics.put("ce_mcp_planner", measure(() -> staticCacheService.getAllMcpPlanners()));
+        metrics.put("ce_agent_tool", measure(() -> staticCacheService.getAllMcpTools()));
+        metrics.put("ce_agent_db_tool", measure(() -> staticCacheService.getAllMcpDbTools()));
+        metrics.put("ce_agent_planner", measure(() -> staticCacheService.getAllMcpPlanners()));
         metrics.put("ce_policy", measure(() -> staticCacheService.getAllPolicies()));
         metrics.put("ce_verbose", measure(() -> staticCacheService.getAllVerboses()));
         metrics.put("ce_semantic_ambiguity_option", measure(() -> staticCacheService.getAllSemanticAmbiguityOptions()));

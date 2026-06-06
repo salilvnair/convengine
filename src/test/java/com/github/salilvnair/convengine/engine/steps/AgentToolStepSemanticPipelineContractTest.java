@@ -7,12 +7,12 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class McpToolStepSemanticPipelineContractTest {
+class AgentToolStepSemanticPipelineContractTest {
 
     @Test
     void toolStepContainsSemanticPipelineHydrationAndGuardrailHooks() throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/com/github/salilvnair/convengine/engine/steps/McpToolStep.java"));
+                "src/main/java/com/github/salilvnair/convengine/engine/steps/AgentToolStep.java"));
 
         assertTrue(source.contains("enrichSemanticPipelineArgs("));
         assertTrue(source.contains("semanticClarificationQuestionFromObservation("));

@@ -23,7 +23,7 @@ import com.github.salilvnair.convengine.repo.CeConfigRepository;
 import com.github.salilvnair.convengine.repo.ContainerConfigRepository;
 import com.github.salilvnair.convengine.repo.IntentClassifierRepository;
 import com.github.salilvnair.convengine.repo.IntentRepository;
-import com.github.salilvnair.convengine.repo.McpDbToolRepository;
+import com.github.salilvnair.convengine.repo.AgentDbToolRepository;
 import com.github.salilvnair.convengine.repo.AgentPlannerRepository;
 import com.github.salilvnair.convengine.repo.VerboseRepository;
 import com.github.salilvnair.convengine.repo.AgentToolRepository;
@@ -77,7 +77,7 @@ public class ConfigController {
     private final IntentClassifierRepository intentClassifierRepository;
     private final ContainerConfigRepository containerConfigRepository;
     private final CeConfigRepository ceConfigRepository;
-    private final McpDbToolRepository mcpDbToolRepository;
+    private final AgentDbToolRepository agentDbToolRepository;
     private final VerboseRepository verboseRepository;
     private final PromptTemplateRepository promptTemplateRepository;
     private final RuleRepository ruleRepository;
@@ -112,7 +112,7 @@ public class ConfigController {
         map.put("rules", new TableBinding<>(CeRule.class, ruleRepository, "intentCode"));
         map.put("responses", new TableBinding<>(CeResponse.class, responseRepository, "intentCode"));
         map.put("mcp-tools", new TableBinding<>(CeAgentTool.class, mcpToolRepository, "intentCode"));
-        map.put("mcp-db-tools", new TableBinding<>(CeAgentDbTool.class, mcpDbToolRepository, null));
+        map.put("mcp-db-tools", new TableBinding<>(CeAgentDbTool.class, agentDbToolRepository, null));
         map.put("mcp-planners", new TableBinding<>(CeAgentPlanner.class, mcpPlannerRepository, "intentCode"));
         map.put("policies", new TableBinding<>(CePolicy.class, policyRepository, null));
         map.put("configs", new TableBinding<>(CeConfig.class, ceConfigRepository, null));

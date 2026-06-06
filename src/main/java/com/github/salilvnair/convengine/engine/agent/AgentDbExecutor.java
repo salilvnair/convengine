@@ -29,7 +29,7 @@ public class AgentDbExecutor {
     private static final String CFG_DB_SQL_PREFLIGHT_USER_PROMPT = "DB_SQL_PREFLIGHT_USER_PROMPT";
     private static final String CFG_DB_SQL_PREFLIGHT_SCHEMA_JSON = "DB_SQL_PREFLIGHT_SCHEMA_JSON";
     private static final String DEFAULT_DB_SQL_PREFLIGHT_SYSTEM_PROMPT = """
-            You are a DB SQL preflight repair assistant for ConvEngine MCP DB tools.
+            You are a DB SQL preflight repair assistant for ConvEngine Agent DB tools.
             Repair only read-only SELECT SQL.
             Use runtime schema metadata and semantic hints as source of truth.
             Never invent unknown table/column names.
@@ -74,7 +74,7 @@ public class AgentDbExecutor {
         Map<String, Object> safeArgs = (args == null) ? Map.of() : args;
 
         String sql = AgentSqlTemplate.expandIdentifiers(tool, safeArgs);
-        sqlGuardrail.assertReadOnly(sql, "MCP DB tool [" + tool.getTool().getToolCode() + "]");
+        sqlGuardrail.assertReadOnly(sql, "Agent DB tool [" + tool.getTool().getToolCode() + "]");
 
         Map<String, Object> params = new HashMap<>(safeArgs);
         if (!params.containsKey("limit")) {
@@ -229,7 +229,7 @@ public class AgentDbExecutor {
         payload.put("preflight_diagnostics", preflightDiagnostics == null ? Map.of() : preflightDiagnostics);
         payload.put("schema_knowledge_used", context == null ? Map.of() : context.schemaDetails());
         payload.put("semantic_knowledge_used", context == null ? Map.of() : context.semanticHints());
-        auditService.audit(ConvEngineAuditStage.MCP_DB_PREFLIGHT, session.getConversationId(), payload);
+        auditService.audit(ConvEngineAuditStage.AGENT_DB_PREFLIGHT, session.getConversationId(), payload);
     }
 
     private void auditPreflightRepair(
@@ -252,16 +252,16 @@ public class AgentDbExecutor {
         payload.put("failed_sql", failedSql);
         payload.put("repaired_sql", repairedSql);
         payload.put("error", String.valueOf(error == null ? "" : error.getMessage()));
-        auditService.audit(ConvEngineAuditStage.MCP_DB_PREFLIGHT_REPAIR, session.getConversationId(), payload);
+        auditService.audit(ConvEngineAuditStage.AGENT_DB_PREFLIGHT_REPAIR, session.getConversationId(), payload);
     }
 
     private void enforceReadOnlySql(String sql) {
         String normalized = sql == null ? "" : sql.trim();
         if (!normalized.toLowerCase().startsWith("select")) {
-            throw new IllegalArgumentException("MCP DB executor allows only SELECT statements");
+            throw new IllegalArgumentException("Agent DB executor allows only SELECT statements");
         }
         if (FORBIDDEN_SQL.matcher(normalized).find()) {
-            throw new IllegalArgumentException("MCP DB executor blocked forbidden SQL statement");
+            throw new IllegalArgumentException("Agent DB executor blocked forbidden SQL statement");
         }
     }
 
@@ -269,7 +269,7 @@ public class AgentDbExecutor {
         if (error instanceof RuntimeException runtimeException) {
             return runtimeException;
         }
-        return new IllegalStateException("Failed to execute MCP DB SQL", error);
+        return new IllegalStateException("Failed to execute Agent DB SQL", error);
     }
 
     private void auditSqlExecution(
@@ -293,8 +293,8 @@ public class AgentDbExecutor {
                 session,
                 null,
                 "AgentDbExecutor",
-                ConvEngineAuditStage.MCP_DB_SQL_EXECUTION,
-                ConvEngineAuditStage.MCP_DB_SQL_EXECUTION,
+                ConvEngineAuditStage.AGENT_DB_SQL_EXECUTION,
+                ConvEngineAuditStage.AGENT_DB_SQL_EXECUTION,
                 basePayload,
                 sql,
                 params,

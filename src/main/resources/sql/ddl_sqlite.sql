@@ -1,12 +1,12 @@
-DROP TABLE IF EXISTS ce_mcp_db_tool;
-DROP TABLE IF EXISTS ce_mcp_planner;
+DROP TABLE IF EXISTS ce_agent_db_tool;
+DROP TABLE IF EXISTS ce_agent_planner;
 DROP TABLE IF EXISTS ce_semantic_entity;
 DROP TABLE IF EXISTS ce_semantic_relationship;
 DROP TABLE IF EXISTS ce_semantic_join_hint;
 DROP TABLE IF EXISTS ce_semantic_value_pattern;
 DROP TABLE IF EXISTS ce_user_query_knowledge;
-DROP TABLE IF EXISTS ce_mcp_user_feedback;
-DROP TABLE IF EXISTS ce_mcp_user_query_knowledge;
+DROP TABLE IF EXISTS ce_agent_user_feedback;
+DROP TABLE IF EXISTS ce_agent_query_knowledge;
 DROP TABLE IF EXISTS ce_conversation_history;
 DROP TABLE IF EXISTS ce_audit;
 DROP TABLE IF EXISTS ce_pending_action;
@@ -16,7 +16,7 @@ DROP TABLE IF EXISTS ce_response;
 DROP TABLE IF EXISTS ce_prompt_template;
 DROP TABLE IF EXISTS ce_policy;
 DROP TABLE IF EXISTS ce_output_schema;
-DROP TABLE IF EXISTS ce_mcp_tool;
+DROP TABLE IF EXISTS ce_agent_tool;
 DROP TABLE IF EXISTS ce_llm_call_log;
 DROP TABLE IF EXISTS ce_intent_classifier;
 DROP TABLE IF EXISTS ce_intent;
@@ -103,7 +103,7 @@ CREATE TABLE ce_llm_call_log (
 CREATE INDEX idx_ce_llm_log_conversation ON ce_llm_call_log (conversation_id);
 CREATE INDEX idx_ce_llm_log_intent_state ON ce_llm_call_log (intent_code, state_code);
 
-CREATE TABLE ce_mcp_tool (
+CREATE TABLE ce_agent_tool (
   tool_id INTEGER PRIMARY KEY AUTOINCREMENT,
   tool_code TEXT NOT NULL UNIQUE,
   tool_group TEXT NOT NULL,
@@ -113,7 +113,7 @@ CREATE TABLE ce_mcp_tool (
   description TEXT,
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
-CREATE INDEX idx_ce_mcp_tool_enabled ON ce_mcp_tool (enabled, intent_code, state_code, tool_group, tool_code);
+CREATE INDEX idx_ce_agent_tool_enabled ON ce_agent_tool (enabled, intent_code, state_code, tool_group, tool_code);
 
 CREATE TABLE ce_output_schema (
   schema_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,7 +239,7 @@ CREATE TABLE ce_conversation_history (
 );
 CREATE INDEX idx_ce_conversation_history_conv ON ce_conversation_history (conversation_id, created_at DESC);
 
-CREATE TABLE ce_mcp_db_tool (
+CREATE TABLE ce_agent_db_tool (
   tool_id INTEGER NOT NULL PRIMARY KEY,
   dialect TEXT NOT NULL DEFAULT 'POSTGRES',
   sql_template TEXT NOT NULL,
@@ -248,11 +248,11 @@ CREATE TABLE ce_mcp_db_tool (
   max_rows INTEGER NOT NULL DEFAULT 200,
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
   allowed_identifiers TEXT,
-  FOREIGN KEY (tool_id) REFERENCES ce_mcp_tool(tool_id) ON DELETE CASCADE
+  FOREIGN KEY (tool_id) REFERENCES ce_agent_tool(tool_id) ON DELETE CASCADE
 );
-CREATE INDEX idx_ce_mcp_db_tool_dialect ON ce_mcp_db_tool (dialect);
+CREATE INDEX idx_ce_agent_db_tool_dialect ON ce_agent_db_tool (dialect);
 
-CREATE TABLE ce_mcp_planner (
+CREATE TABLE ce_agent_planner (
   planner_id INTEGER PRIMARY KEY AUTOINCREMENT,
   intent_code TEXT NOT NULL CHECK (trim(intent_code) <> ''),
   state_code TEXT NOT NULL CHECK (trim(state_code) <> ''),
@@ -261,10 +261,10 @@ CREATE TABLE ce_mcp_planner (
   enabled BOOLEAN NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
-CREATE INDEX idx_ce_mcp_planner_scope ON ce_mcp_planner (enabled, intent_code, state_code, planner_id);
+CREATE INDEX idx_ce_agent_planner_scope ON ce_agent_planner (enabled, intent_code, state_code, planner_id);
 
 
-CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
+CREATE TABLE IF NOT EXISTS ce_agent_query_knowledge (
                                                           id INTEGER PRIMARY KEY AUTOINCREMENT,
                                                           query_text TEXT NOT NULL,
                                                           description TEXT,
@@ -274,9 +274,9 @@ CREATE TABLE IF NOT EXISTS ce_mcp_user_query_knowledge (
                                                           embedding TEXT,
                                                           created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 );
-CREATE INDEX idx_ce_mcp_user_query_knowledge_query_text ON ce_mcp_user_query_knowledge (query_text);
+CREATE INDEX idx_ce_agent_query_knowledge_query_text ON ce_agent_query_knowledge (query_text);
 
-CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
+CREATE TABLE IF NOT EXISTS ce_agent_user_feedback (
                                                    feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
                                                    conversation_id TEXT NOT NULL,
                                                    feedback_type TEXT NOT NULL,
@@ -285,14 +285,14 @@ CREATE TABLE IF NOT EXISTS ce_mcp_user_feedback (
                                                    state_code TEXT,
                                                    user_query TEXT,
                                                    assistant_response TEXT,
-                                                   mcp_tool_code TEXT,
+                                                   agent_tool_code TEXT,
                                                    captured_query_knowledge_count INTEGER NOT NULL DEFAULT 0,
                                                    applied_query_knowledge_json TEXT,
                                                    metadata_json TEXT,
                                                    created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
                                                    FOREIGN KEY (conversation_id) REFERENCES ce_conversation(conversation_id) ON DELETE CASCADE
 );
-CREATE INDEX idx_ce_mcp_user_feedback_conversation ON ce_mcp_user_feedback (conversation_id, created_at DESC);
+CREATE INDEX idx_ce_agent_user_feedback_conversation ON ce_agent_user_feedback (conversation_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS ce_user_query_knowledge (
                                                    id INTEGER PRIMARY KEY AUTOINCREMENT,

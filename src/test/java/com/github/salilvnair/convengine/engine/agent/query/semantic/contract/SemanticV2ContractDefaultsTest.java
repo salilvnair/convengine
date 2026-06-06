@@ -1,6 +1,6 @@
-package com.github.salilvnair.convengine.engine.mcp.query.semantic.contract;
+package com.github.salilvnair.convengine.engine.agent.query.semantic.contract;
 
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.contract.*;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.contract.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

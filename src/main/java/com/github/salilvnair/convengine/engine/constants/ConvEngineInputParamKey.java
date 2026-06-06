@@ -24,7 +24,7 @@ public final class ConvEngineInputParamKey {
     public static final String RULE_EXECUTION_ORIGIN = "rule_execution_origin";
     public static final String RULE_PHASE = "rule_phase";
     public static final String RULE_AGENT_POST_INTENT = "rule_agent_post_intent";
-    public static final String RULE_AGENT_POST_MCP = "rule_agent_post_mcp";
+    public static final String RULE_AGENT_POST_TOOL = "rule_agent_post_tool";
 
     public static final String DIALOGUE_ACT = "dialogue_act";
     public static final String DIALOGUE_ACT_CONFIDENCE = "dialogue_act_confidence";
@@ -61,13 +61,13 @@ public final class ConvEngineInputParamKey {
     public static final String MEMORY_RECALL = "memory_recall";
     public static final String MEMORY_SESSION_SUMMARY = "memory_session_summary";
 
-    public static final String MCP_ACTION = "mcp_action";
-    public static final String MCP_TOOL_CODE = "mcp_tool_code";
-    public static final String MCP_TOOL_GROUP = "mcp_tool_group";
-    public static final String MCP_TOOL_ARGS = "mcp_tool_args";
-    public static final String MCP_OBSERVATIONS = "mcp_observations";
-    public static final String MCP_FINAL_ANSWER = "mcp_final_answer";
-    public static final String MCP_STATUS = "mcp_status";
-    public static final String MCP_TOOL_EXECUTION_ERROR = "mcp_tool_execution_error";
+    public static final String AGENT_ACTION = "agent_action";
+    public static final String AGENT_TOOL_CODE = "agent_tool_code";
+    public static final String AGENT_TOOL_GROUP = "agent_tool_group";
+    public static final String AGENT_TOOL_ARGS = "agent_tool_args";
+    public static final String AGENT_OBSERVATIONS = "agent_observations";
+    public static final String AGENT_FINAL_ANSWER = "agent_final_answer";
+    public static final String AGENT_STATUS = "agent_status";
+    public static final String AGENT_TOOL_EXECUTION_ERROR = "agent_tool_execution_error";
     public static final String RULE_TOOL_POST_EXECUTION = "rule_tool_post_execution";
 }

@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * Consumer-facing SPI for tool-code specific DB execution.
- * Implement one handler per MCP DB tool code when SQL-template execution is not enough.
+ * Implement one handler per Agent DB tool code when SQL-template execution is not enough.
  */
 public interface DbToolHandler {
     String toolCode();

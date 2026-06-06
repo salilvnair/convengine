@@ -26,7 +26,7 @@ import static com.github.salilvnair.convengine.support.TestConstants.STATE_KEY;
 import static com.github.salilvnair.convengine.support.TestConstants.STATE_PROCESS_APPLICATION;
 import static com.github.salilvnair.convengine.support.TestConstants.STEP_ENTER;
 import static com.github.salilvnair.convengine.support.TestConstants.STEP_ERROR;
-import static com.github.salilvnair.convengine.support.TestConstants.STEP_MCP_TOOL;
+import static com.github.salilvnair.convengine.support.TestConstants.STEP_AGENT_TOOL;
 import static com.github.salilvnair.convengine.support.TestConstants.STEP_NAME_KEY;
 import static com.github.salilvnair.convengine.support.TestConstants.STEP_RULES;
 import static com.github.salilvnair.convengine.support.TestConstants.TOOL_CODE_LOAN_SUBMIT;
@@ -52,20 +52,20 @@ class VerboseStepHookTest {
     void beforeStepPublishesEnterVerbose() {
         EngineSession session = newSession();
 
-        hook.beforeStep(STEP_MCP_TOOL, session);
+        hook.beforeStep(STEP_AGENT_TOOL, session);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
         verify(verboseMessagePublisher).publish(
                 eq(session),
-                eq(STEP_MCP_TOOL),
+                eq(STEP_AGENT_TOOL),
                 eq(STEP_ENTER),
                 eq(42L),
                 eq(TOOL_CODE_LOAN_SUBMIT),
                 eq(false),
                 metadataCaptor.capture());
         Map<String, Object> expected = new LinkedHashMap<>();
-        expected.put(STEP_NAME_KEY, STEP_MCP_TOOL);
+        expected.put(STEP_NAME_KEY, STEP_AGENT_TOOL);
         expected.put(INTENT_KEY, INTENT_LOAN_APPLICATION);
         expected.put(STATE_KEY, STATE_PROCESS_APPLICATION);
         expected.put(RESULT_KEY, null);
@@ -106,7 +106,7 @@ class VerboseStepHookTest {
         session.setIntent(INTENT_LOAN_APPLICATION);
         session.setState(STATE_PROCESS_APPLICATION);
         session.putInputParam("rule_id", 42L);
-        session.putInputParam("mcp_tool_code", TOOL_CODE_LOAN_SUBMIT);
+        session.putInputParam("agent_tool_code", TOOL_CODE_LOAN_SUBMIT);
         return session;
     }
 }

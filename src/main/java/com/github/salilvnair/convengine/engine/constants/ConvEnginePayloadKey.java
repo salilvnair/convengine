@@ -72,7 +72,7 @@ public final class ConvEnginePayloadKey {
     public static final String RULE_EXECUTION_ORIGIN = "ruleExecutionOrigin";
     public static final String RULE_EXECUTION_SOURCE = "ruleExecutionSource";
     public static final String RULE_ID = "ruleId";
-    public static final String RULE_AGENT_POST_MCP = "ruleAgentPostMcp";
+    public static final String RULE_AGENT_POST_TOOL = "ruleAgentPostTool";
     public static final String RULE_TOOL_POST_EXECUTION = "ruleToolPostExecution";
     public static final String RULE_PHASE = "rulePhase";
     public static final String RULE_STATE_CODE = "ruleStateCode";
@@ -97,7 +97,7 @@ public final class ConvEnginePayloadKey {
     public static final String SENSITIVE = "sensitive";
     public static final String SYSTEM_PROMPT = "system_prompt";
     public static final String TEMPLATE_DESC = "templateDesc";
-    public static final String TEMPLATE_FROM_CE_CONFIG_MCP_PLANNER = "templateFromCeConfig (McpPlanner)";
+    public static final String TEMPLATE_FROM_CE_CONFIG_AGENT_PLANNER = "templateFromCeConfig (AgentPlanner)";
     public static final String TEMPLATE_ID = "templateId";
     public static final String TEXT = "text";
     public static final String TASK_BEAN = "taskBean";

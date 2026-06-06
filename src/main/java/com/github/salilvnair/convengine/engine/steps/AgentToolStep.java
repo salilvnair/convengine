@@ -50,10 +50,10 @@ public class AgentToolStep implements EngineStep {
 
     private static final int DEFAULT_MAX_LOOPS = 5;
     private static final String STEP_NAME = "AgentToolStep";
-    private static final String CONFIG_KEY_TOOL_MAX_LOOPS = "MCP_TOOL_MAX_LOOPS";
-    private static final String CONFIG_KEY_TOOL_CALL_DELAY_MS = "MCP_TOOL_CALL_DELAY_MS";
-    private static final String CONFIG_KEY_TOOL_CALL_DELAY_AFTER_CALLS = "MCP_TOOL_CALL_DELAY_AFTER_CALLS";
-    private static final String CONFIG_KEY_TOOL_CALL_DELAY_AFTER_MS = "MCP_TOOL_CALL_DELAY_AFTER_MS";
+    private static final String CONFIG_KEY_TOOL_MAX_LOOPS = "AGENT_TOOL_MAX_LOOPS";
+    private static final String CONFIG_KEY_TOOL_CALL_DELAY_MS = "AGENT_TOOL_CALL_DELAY_MS";
+    private static final String CONFIG_KEY_TOOL_CALL_DELAY_AFTER_CALLS = "AGENT_TOOL_CALL_DELAY_AFTER_CALLS";
+    private static final String CONFIG_KEY_TOOL_CALL_DELAY_AFTER_MS = "AGENT_TOOL_CALL_DELAY_AFTER_MS";
     private static final String GREETING_REGEX = "^(hi|hello|hey|greetings|good morning|good afternoon|good evening)\\b.*";
     private static final String OPERATION_TAG_POLICY_RESTRICTED_OPERATION = "POLICY_RESTRICTED_OPERATION";
     private static final String FALLBACK_POLICY_RESTRICTED = "This request is restricted by policy. Read-only operations are allowed.";
@@ -79,22 +79,22 @@ public class AgentToolStep implements EngineStep {
 
     @Override
     public StepResult execute(EngineSession session) {
-        rulesStep.applyRules(session, "AgentToolStep PreMcp", RulePhase.PRE_AGENT_MCP.name());
+        rulesStep.applyRules(session, "AgentToolStep PreAgent", RulePhase.PRE_AGENT_TOOL.name());
 
         if (Boolean.TRUE.equals(session.getInputParams().get(ConvEngineInputParamKey.SKIP_TOOL_EXECUTION))
                 || Boolean.TRUE.equals(session.getInputParams().get(ConvEngineInputParamKey.GUARDRAIL_BLOCKED))) {
-            session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_SKIPPED_BY_GUARDRAIL);
+            session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_SKIPPED_BY_GUARDRAIL);
             writeLifecycleToContext(session, AgentConstants.STATUS_SKIPPED_BY_GUARDRAIL, AgentConstants.OUTCOME_SKIPPED,
                     true, false, false, null, null, null, null, null);
             return new StepResult.Continue();
         }
 
         if (session.getResolvedSchema() != null && !session.isSchemaComplete()) {
-            session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_SKIPPED_SCHEMA_INCOMPLETE);
+            session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_SKIPPED_SCHEMA_INCOMPLETE);
             writeLifecycleToContext(session, AgentConstants.STATUS_SKIPPED_SCHEMA_INCOMPLETE, AgentConstants.OUTCOME_SKIPPED,
                     true, false, false, null, null, null, null, "SCHEMA_INCOMPLETE");
             audit.audit(
-                    ConvEngineAuditStage.MCP_SKIPPED_SCHEMA_INCOMPLETE,
+                    ConvEngineAuditStage.AGENT_SKIPPED_SCHEMA_INCOMPLETE,
                     session.getConversationId(),
                     mapOf(
                             "intent", session.getIntent(),
@@ -108,7 +108,7 @@ public class AgentToolStep implements EngineStep {
         String routingDecision = session.inputParamAsString(ConvEngineInputParamKey.ROUTING_DECISION);
         boolean clarificationReply = isSemanticClarificationReply(session, dialogueAct);
         if (clarificationReply) {
-            // Clarification answer should continue semantic MCP flow.
+            // Clarification answer should continue semantic Agent tool flow.
             session.clearClarification();
             clearPendingClarificationFromContext(session);
             dialogueAct = DialogueAct.ANSWER;
@@ -122,7 +122,7 @@ public class AgentToolStep implements EngineStep {
                     || dialogueAct == DialogueAct.RESET
                     || (dialogueAct == DialogueAct.AFFIRM && !confirmAccept);
             if (skipForDialogueAct) {
-                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_SKIPPED_DIALOGUE_ACT);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_SKIPPED_DIALOGUE_ACT);
                 writeLifecycleToContext(session, AgentConstants.STATUS_SKIPPED_DIALOGUE_ACT, AgentConstants.OUTCOME_SKIPPED,
                         true, false, false, null, null, null, null, null);
                 return new StepResult.Continue();
@@ -132,7 +132,7 @@ public class AgentToolStep implements EngineStep {
         String userText = session.getUserText();
         if (userText != null && userText.trim().toLowerCase()
                 .matches(GREETING_REGEX)) {
-            session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_SKIPPED_GREETING);
+            session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_SKIPPED_GREETING);
             writeLifecycleToContext(session, AgentConstants.STATUS_SKIPPED_GREETING, AgentConstants.OUTCOME_SKIPPED,
                     true, false, false, null, null, null, null, null);
             return new StepResult.Continue();
@@ -140,7 +140,7 @@ public class AgentToolStep implements EngineStep {
 
         if (session.hasPendingClarification()) {
             audit.audit(
-                    ConvEngineAuditStage.MCP_SKIPPED_PENDING_CLARIFICATION,
+                    ConvEngineAuditStage.AGENT_SKIPPED_PENDING_CLARIFICATION,
                     session.getConversationId(),
                     mapOf(
                             "intent", session.getIntent(),
@@ -151,10 +151,10 @@ public class AgentToolStep implements EngineStep {
         List<CeAgentTool> tools = registry.listEnabledTools(session.getIntent(), session.getState());
 
         if (CollectionUtils.isEmpty(tools)) {
-            session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_NO_TOOLS_FOR_SCOPE);
+            session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_NO_TOOLS_FOR_SCOPE);
             writeLifecycleToContext(session, AgentConstants.STATUS_NO_TOOLS_FOR_SCOPE, AgentConstants.OUTCOME_NO_TOOLS,
                     true, false, false, null, null, null, null, null);
-            audit.audit(ConvEngineAuditStage.MCP_NO_TOOLS_AVAILABLE, session.getConversationId(),
+            audit.audit(ConvEngineAuditStage.AGENT_NO_TOOLS_AVAILABLE, session.getConversationId(),
                     mapOf("intent", session.getIntent(), "state", session.getState()));
             return new StepResult.Continue();
         }
@@ -174,9 +174,9 @@ public class AgentToolStep implements EngineStep {
             mcpTouched = true;
             String toolCode = plan.tool_code();
             Map<String, Object> args = enrichSemanticPipelineArgs(toolCode, plan.args(), observations);
-            session.putInputParam(ConvEngineInputParamKey.MCP_ACTION, plan.action());
-            session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_CODE, toolCode);
-            session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_ARGS, args);
+            session.putInputParam(ConvEngineInputParamKey.AGENT_ACTION, plan.action());
+            session.putInputParam(ConvEngineInputParamKey.AGENT_TOOL_CODE, toolCode);
+            session.putInputParam(ConvEngineInputParamKey.AGENT_TOOL_ARGS, args);
             session.putInputParam("mcp_operation_tag", plan.operation_tag());
             writeLifecycleToContext(session, AgentConstants.STATUS_TOOL_RESULT, AgentConstants.OUTCOME_IN_PROGRESS,
                     false, false, false, plan.action(), toolCode, null, args, null);
@@ -187,14 +187,14 @@ public class AgentToolStep implements EngineStep {
                 writeFinalAnswerToContext(session, plan.answer());
                 finalAnswerDetermined = true;
                 writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
+                session.putInputParam(ConvEngineInputParamKey.AGENT_FINAL_ANSWER,
                         plan.answer() == null ? "" : plan.answer());
-                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_ANSWER);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_ANSWER);
                 writeLifecycleToContext(session, AgentConstants.STATUS_ANSWER, AgentConstants.OUTCOME_ANSWERED,
                         true, false, false, plan.action(), toolCode, null, args, null);
-                verbosePublisher.publish(session, "AgentToolStep", "MCP_FINAL_ANSWER", null, null, false, mapOf("answer", plan.answer()));
+                verbosePublisher.publish(session, "AgentToolStep", "AGENT_FINAL_ANSWER", null, null, false, mapOf("answer", plan.answer()));
                 audit.audit(
-                        ConvEngineAuditStage.MCP_FINAL_ANSWER,
+                        ConvEngineAuditStage.AGENT_FINAL_ANSWER,
                         session.getConversationId(),
                         mapOf("answer", plan.answer()));
                 break;
@@ -204,20 +204,20 @@ public class AgentToolStep implements EngineStep {
                 writeFinalAnswerToContext(session, AgentConstants.FALLBACK_UNSAFE_NEXT_STEP);
                 finalAnswerDetermined = true;
                 writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER,
+                session.putInputParam(ConvEngineInputParamKey.AGENT_FINAL_ANSWER,
                         AgentConstants.FALLBACK_UNSAFE_NEXT_STEP);
-                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_FALLBACK);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_FALLBACK);
                 writeLifecycleToContext(session, AgentConstants.STATUS_FALLBACK, AgentConstants.OUTCOME_FALLBACK,
                         true, false, false, plan.action(), toolCode, null, args, null);
-                verbosePublisher.publish(session, "AgentToolStep", "MCP_FINAL_ANSWER", null, null, true, mapOf("answer", AgentConstants.FALLBACK_UNSAFE_NEXT_STEP));
+                verbosePublisher.publish(session, "AgentToolStep", "AGENT_FINAL_ANSWER", null, null, true, mapOf("answer", AgentConstants.FALLBACK_UNSAFE_NEXT_STEP));
                 break;
             }
             if (isPolicyRestrictedOperationTag(plan.operation_tag())) {
                 writeFinalAnswerToContext(session, FALLBACK_POLICY_RESTRICTED);
                 finalAnswerDetermined = true;
                 writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, FALLBACK_POLICY_RESTRICTED);
-                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_GUARDRAIL_BLOCKED);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_FINAL_ANSWER, FALLBACK_POLICY_RESTRICTED);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_GUARDRAIL_BLOCKED);
                 writeLifecycleToContext(session, AgentConstants.STATUS_GUARDRAIL_BLOCKED, AgentConstants.OUTCOME_BLOCKED,
                         true, true, false, plan.action(), toolCode, null, args, OPERATION_TAG_POLICY_RESTRICTED_OPERATION);
                 Map<String, Object> blockedPayload = mapOf(
@@ -225,8 +225,8 @@ public class AgentToolStep implements EngineStep {
                         "args", args,
                         "operation_tag", plan.operation_tag(),
                         "error", "planner-marked restricted operation");
-                verbosePublisher.publish(session, STEP_NAME, "MCP_TOOL_ERROR", null, toolCode, true, blockedPayload);
-                audit.audit(ConvEngineAuditStage.MCP_TOOL_ERROR, session.getConversationId(), blockedPayload);
+                verbosePublisher.publish(session, STEP_NAME, "AGENT_TOOL_ERROR", null, toolCode, true, blockedPayload);
+                audit.audit(ConvEngineAuditStage.AGENT_TOOL_ERROR, session.getConversationId(), blockedPayload);
                 break;
             }
             String toolSignature = buildToolCallSignature(toolCode, args);
@@ -238,8 +238,8 @@ public class AgentToolStep implements EngineStep {
                 writeFinalAnswerToContext(session, duplicateLoopAnswer);
                 finalAnswerDetermined = true;
                 writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, duplicateLoopAnswer);
-                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_ANSWER);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_FINAL_ANSWER, duplicateLoopAnswer);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_ANSWER);
                 writeLifecycleToContext(session, AgentConstants.STATUS_ANSWER, AgentConstants.OUTCOME_ANSWERED,
                         true, false, false, AgentConstants.ACTION_ANSWER, toolCode, null, args, null);
                 Map<String, Object> suppressedPayload = mapOf(
@@ -248,10 +248,10 @@ public class AgentToolStep implements EngineStep {
                         "tool_code", toolCode,
                         "args", args);
                 verbosePublisher.publish(session, "AgentToolStep",
-                        AgentConstants.VERBOSE_EVENT_MCP_DUPLICATE_TOOL_CALL_SUPPRESSED, null, toolCode, false,
+                        AgentConstants.VERBOSE_EVENT_AGENT_DUPLICATE_TOOL_CALL_SUPPRESSED, null, toolCode, false,
                         suppressedPayload);
                 audit.audit(
-                        AgentConstants.AUDIT_STAGE_MCP_DUPLICATE_TOOL_CALL_SUPPRESSED,
+                        AgentConstants.AUDIT_STAGE_AGENT_DUPLICATE_TOOL_CALL_SUPPRESSED,
                         session.getConversationId(),
                         suppressedPayload);
                 break;
@@ -266,21 +266,21 @@ public class AgentToolStep implements EngineStep {
                     "observation_count", observations.size(),
                     "current_observation_tool",
                     observations.isEmpty() ? AgentConstants.FLOW_START : observations.get(observations.size() - 1).toolCode());
-            verbosePublisher.publish(session, "AgentToolStep", "MCP_TOOL_CALL", null, toolCode, false, toolCallPayload);
+            verbosePublisher.publish(session, "AgentToolStep", "AGENT_TOOL_CALL", null, toolCode, false, toolCallPayload);
 
             String guardrailBlockReason = nextToolGuardrailBlockReason(toolCode, observations);
             if (guardrailBlockReason != null) {
                 writeFinalAnswerToContext(session, AgentConstants.FALLBACK_GUARDRAIL_BLOCKED);
                 finalAnswerDetermined = true;
                 writeMcpExecutionFlagsToContext(session, finalAnswerDetermined, toolExecutionAbrupted, maxLoops);
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, AgentConstants.FALLBACK_GUARDRAIL_BLOCKED);
-                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_GUARDRAIL_BLOCKED);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_FINAL_ANSWER, AgentConstants.FALLBACK_GUARDRAIL_BLOCKED);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_GUARDRAIL_BLOCKED);
                 writeLifecycleToContext(session, AgentConstants.STATUS_GUARDRAIL_BLOCKED, AgentConstants.OUTCOME_BLOCKED,
                         true, true, false, plan.action(), toolCode, null, args,
                         guardrailBlockReason);
-                verbosePublisher.publish(session, "AgentToolStep", "MCP_TOOL_ERROR", null, toolCode, true, mapOf("tool_code", toolCode, "error", guardrailBlockReason));
+                verbosePublisher.publish(session, "AgentToolStep", "AGENT_TOOL_ERROR", null, toolCode, true, mapOf("tool_code", toolCode, "error", guardrailBlockReason));
                 audit.audit(
-                        ConvEngineAuditStage.MCP_TOOL_ERROR,
+                        ConvEngineAuditStage.AGENT_TOOL_ERROR,
                         session.getConversationId(),
                         mapOf(
                                 "tool_code", toolCode,
@@ -291,13 +291,13 @@ public class AgentToolStep implements EngineStep {
             }
 
             audit.audit(
-                    ConvEngineAuditStage.MCP_TOOL_CALL,
+                    ConvEngineAuditStage.AGENT_TOOL_CALL,
                     session.getConversationId(),
                     toolCallPayload);
 
             CeAgentTool tool = registry.requireTool(toolCode, session.getIntent(), session.getState());
             String toolGroup = registry.normalizeToolGroup(tool.getToolGroup());
-            session.putInputParam(ConvEngineInputParamKey.MCP_TOOL_GROUP, toolGroup);
+            session.putInputParam(ConvEngineInputParamKey.AGENT_TOOL_GROUP, toolGroup);
 
             try {
                 applyToolDelay(i + 1);
@@ -308,14 +308,14 @@ public class AgentToolStep implements EngineStep {
                 executedToolSignatures.add(toolSignature);
                 writeObservationsToContext(session, observations);
                 writeSemanticToolObservation(session, toolCode, rowsJson);
-                session.putInputParam(ConvEngineInputParamKey.MCP_OBSERVATIONS, observations);
-                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_TOOL_RESULT);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_OBSERVATIONS, observations);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_TOOL_RESULT);
                 writeLifecycleToContext(session, AgentConstants.STATUS_TOOL_RESULT, AgentConstants.OUTCOME_IN_PROGRESS,
                         false, false, false, plan.action(), toolCode, toolGroup, args, null);
-                verbosePublisher.publish(session, "AgentToolStep", "MCP_TOOL_RESULT", null, toolCode, false, mapOf("tool_code", toolCode, "tool_group", toolGroup));
+                verbosePublisher.publish(session, "AgentToolStep", "AGENT_TOOL_RESULT", null, toolCode, false, mapOf("tool_code", toolCode, "tool_group", toolGroup));
 
                 audit.audit(
-                        ConvEngineAuditStage.MCP_TOOL_RESULT,
+                        ConvEngineAuditStage.AGENT_TOOL_RESULT,
                         session.getConversationId(),
                         mapOf("tool_code", toolCode, "tool_group", toolGroup, "rows", rowsJson));
 
@@ -333,13 +333,13 @@ public class AgentToolStep implements EngineStep {
                     writeFinalAnswerToContext(session, clarificationQuestion);
                     finalAnswerDetermined = true;
                     writeMcpExecutionFlagsToContext(session, true, false, maxLoops);
-                    session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, clarificationQuestion);
-                    session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_ANSWER);
+                    session.putInputParam(ConvEngineInputParamKey.AGENT_FINAL_ANSWER, clarificationQuestion);
+                    session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_ANSWER);
                     writeLifecycleToContext(session, AgentConstants.STATUS_ANSWER, AgentConstants.OUTCOME_ANSWERED,
                             true, false, false, AgentConstants.ACTION_ANSWER, toolCode, toolGroup, args, null);
-                    verbosePublisher.publish(session, "AgentToolStep", "MCP_FINAL_ANSWER", null, toolCode, false,
+                    verbosePublisher.publish(session, "AgentToolStep", "AGENT_FINAL_ANSWER", null, toolCode, false,
                             mapOf("answer", clarificationQuestion, "reason", "SEMANTIC_CLARIFICATION_REQUIRED"));
-                    audit.audit(ConvEngineAuditStage.MCP_FINAL_ANSWER, session.getConversationId(),
+                    audit.audit(ConvEngineAuditStage.AGENT_FINAL_ANSWER, session.getConversationId(),
                             mapOf("answer", clarificationQuestion, "reason", "SEMANTIC_CLARIFICATION_REQUIRED",
                                     "tool_code", toolCode));
                     break;
@@ -352,13 +352,13 @@ public class AgentToolStep implements EngineStep {
                     writeFinalAnswerToContext(session, unsupportedMessage);
                     finalAnswerDetermined = true;
                     writeMcpExecutionFlagsToContext(session, true, false, maxLoops);
-                    session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, unsupportedMessage);
-                    session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_ANSWER);
+                    session.putInputParam(ConvEngineInputParamKey.AGENT_FINAL_ANSWER, unsupportedMessage);
+                    session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_ANSWER);
                     writeLifecycleToContext(session, AgentConstants.STATUS_ANSWER, AgentConstants.OUTCOME_ANSWERED,
                             true, false, false, AgentConstants.ACTION_ANSWER, toolCode, toolGroup, args, null);
-                    verbosePublisher.publish(session, "AgentToolStep", "MCP_FINAL_ANSWER", null, toolCode, false,
+                    verbosePublisher.publish(session, "AgentToolStep", "AGENT_FINAL_ANSWER", null, toolCode, false,
                             mapOf("answer", unsupportedMessage, "reason", "SEMANTIC_UNSUPPORTED"));
-                    audit.audit(ConvEngineAuditStage.MCP_FINAL_ANSWER, session.getConversationId(),
+                    audit.audit(ConvEngineAuditStage.AGENT_FINAL_ANSWER, session.getConversationId(),
                             mapOf("answer", unsupportedMessage, "reason", "SEMANTIC_UNSUPPORTED",
                                     "tool_code", toolCode));
                     break;
@@ -379,7 +379,7 @@ public class AgentToolStep implements EngineStep {
                     toolErrorPayload.put("root_cause_message", args.get("root_cause_message"));
                 }
                 audit.audit(
-                        ConvEngineAuditStage.MCP_TOOL_ERROR,
+                        ConvEngineAuditStage.AGENT_TOOL_ERROR,
                         session.getConversationId(),
                         toolErrorPayload);
                 writeToolExecutionErrorToContext(session, toolErrorPayload);
@@ -387,14 +387,14 @@ public class AgentToolStep implements EngineStep {
                 writeFinalAnswerToContext(session, toolErrorMessage);
                 finalAnswerDetermined = true;
                 writeMcpExecutionFlagsToContext(session, true, false, maxLoops);
-                session.putInputParam(ConvEngineInputParamKey.MCP_FINAL_ANSWER, toolErrorMessage);
-                session.putInputParam(ConvEngineInputParamKey.MCP_STATUS, AgentConstants.STATUS_TOOL_ERROR);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_FINAL_ANSWER, toolErrorMessage);
+                session.putInputParam(ConvEngineInputParamKey.AGENT_STATUS, AgentConstants.STATUS_TOOL_ERROR);
                 writeLifecycleToContext(session, AgentConstants.STATUS_TOOL_ERROR, AgentConstants.OUTCOME_ERROR,
                         true, false, true, plan.action(), toolCode, toolGroup, args,
                         String.valueOf(toolErrorPayload.getOrDefault("root_cause_message", e.getMessage())));
-                verbosePublisher.publish(session, "AgentToolStep", "MCP_TOOL_CALL", null, toolCode, true,
+                verbosePublisher.publish(session, "AgentToolStep", "AGENT_TOOL_CALL", null, toolCode, true,
                         toolErrorPayload);
-                audit.audit("MCP_TOOL_ROOT_CAUSE", session.getConversationId(), mapOf(
+                audit.audit("AGENT_TOOL_ROOT_CAUSE", session.getConversationId(), mapOf(
                         "tool_code", toolCode,
                         "tool_group", toolGroup,
                         "error_message", toolErrorPayload.get("error_message"),
@@ -412,7 +412,7 @@ public class AgentToolStep implements EngineStep {
         }
 
         if (mcpTouched) {
-            rulesStep.applyRules(session, "AgentToolStep", RulePhase.POST_AGENT_MCP.name());
+            rulesStep.applyRules(session, "AgentToolStep", RulePhase.POST_AGENT_TOOL.name());
         }
 
         session.syncToConversation();
@@ -426,12 +426,12 @@ public class AgentToolStep implements EngineStep {
                 return executor;
             }
         }
-        throw new IllegalStateException("No MCP tool executor found for tool group: " + normalizedToolGroup);
+        throw new IllegalStateException("No Agent tool executor found for tool group: " + normalizedToolGroup);
     }
 
     private int resolveMaxLoops() {
         int yamlValue = mcpConfig == null ? DEFAULT_MAX_LOOPS : mcpConfig.getToolMaxLoops();
-        int resolved = configResolver.resolveInt(this, "MCP_TOOL_MAX_LOOPS", yamlValue);
+        int resolved = configResolver.resolveInt(this, "AGENT_TOOL_MAX_LOOPS", yamlValue);
         return Math.max(1, resolved);
     }
 
@@ -448,7 +448,7 @@ public class AgentToolStep implements EngineStep {
 
     private long resolveToolDelayMs() {
         long yamlValue = mcpConfig == null ? 0L : mcpConfig.getToolCallDelayMs();
-        int resolved = configResolver.resolveInt(this, "MCP_TOOL_CALL_DELAY_MS",
+        int resolved = configResolver.resolveInt(this, "AGENT_TOOL_CALL_DELAY_MS",
                 (int) Math.min(Integer.MAX_VALUE, yamlValue));
         return Math.max(0L, resolved);
     }
@@ -456,8 +456,8 @@ public class AgentToolStep implements EngineStep {
     private DelayPolicy resolveDelayPolicy() {
         int yamlCalls = mcpConfig == null ? 4 : mcpConfig.getToolCallDelayAfterCalls();
         long yamlDelay = mcpConfig == null ? 5000L : mcpConfig.getToolCallDelayAfterMs();
-        int calls = configResolver.resolveInt(this, "MCP_TOOL_CALL_DELAY_AFTER_CALLS", yamlCalls);
-        int delayMs = configResolver.resolveInt(this, "MCP_TOOL_CALL_DELAY_AFTER_MS",
+        int calls = configResolver.resolveInt(this, "AGENT_TOOL_CALL_DELAY_AFTER_CALLS", yamlCalls);
+        int delayMs = configResolver.resolveInt(this, "AGENT_TOOL_CALL_DELAY_AFTER_MS",
                 (int) Math.min(Integer.MAX_VALUE, yamlDelay));
         return new DelayPolicy(Math.max(0, calls), Math.max(0L, delayMs));
     }
@@ -499,7 +499,7 @@ public class AgentToolStep implements EngineStep {
     private List<AgentObservation> readObservationsFromContext(EngineSession session) {
         try {
             ObjectNode root = ensureContextObject(session);
-            JsonNode mcp = root.path(AgentConstants.CONTEXT_KEY_MCP);
+            JsonNode mcp = root.path(AgentConstants.CONTEXT_KEY_AGENT);
             JsonNode obs = mcp.path(AgentConstants.CONTEXT_KEY_OBSERVATIONS);
             if (!obs.isArray())
                 return new ArrayList<>();
@@ -520,7 +520,7 @@ public class AgentToolStep implements EngineStep {
     private void writeObservationsToContext(EngineSession session, List<AgentObservation> observations) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
 
             ArrayNode arr = mapper.createArrayNode();
             for (AgentObservation o : observations) {
@@ -539,7 +539,7 @@ public class AgentToolStep implements EngineStep {
     private void writeFinalAnswerToContext(EngineSession session, String answer) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             mcp.put(AgentConstants.CONTEXT_KEY_FINAL_ANSWER, answer == null ? "" : answer);
             session.setContextJson(mapper.writeValueAsString(root));
         } catch (Exception ignored) {
@@ -560,15 +560,15 @@ public class AgentToolStep implements EngineStep {
         try {
             ObjectNode root = ensureContextObject(session);
 
-            // Remove stale per-turn MCP state
-            if (root.has(AgentConstants.CONTEXT_KEY_MCP) && root.get(AgentConstants.CONTEXT_KEY_MCP).isObject()) {
-                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_MCP)).remove(AgentConstants.CONTEXT_KEY_FINAL_ANSWER);
-                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_MCP)).remove(AgentConstants.CONTEXT_KEY_FINAL_ANSWER_DETERMINED);
-                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_MCP)).remove(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTED);
-                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_MCP)).remove(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTION_LIMIT);
-                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_MCP)).remove(AgentConstants.CONTEXT_KEY_OBSERVATIONS);
-                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_MCP)).remove(AgentConstants.CONTEXT_KEY_LIFECYCLE);
-                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_MCP)).remove(CONTEXT_KEY_SEMANTIC);
+            // Remove stale per-turn Agent state
+            if (root.has(AgentConstants.CONTEXT_KEY_AGENT) && root.get(AgentConstants.CONTEXT_KEY_AGENT).isObject()) {
+                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_AGENT)).remove(AgentConstants.CONTEXT_KEY_FINAL_ANSWER);
+                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_AGENT)).remove(AgentConstants.CONTEXT_KEY_FINAL_ANSWER_DETERMINED);
+                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_AGENT)).remove(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTED);
+                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_AGENT)).remove(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTION_LIMIT);
+                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_AGENT)).remove(AgentConstants.CONTEXT_KEY_OBSERVATIONS);
+                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_AGENT)).remove(AgentConstants.CONTEXT_KEY_LIFECYCLE);
+                ((ObjectNode) root.get(AgentConstants.CONTEXT_KEY_AGENT)).remove(CONTEXT_KEY_SEMANTIC);
             }
 
             session.setContextJson(mapper.writeValueAsString(root));
@@ -578,7 +578,7 @@ public class AgentToolStep implements EngineStep {
             clearStaleMcpInputParams(session);
 
             audit.audit(
-                    AgentConstants.AUDIT_STAGE_MCP_CONTEXT_CLEARED,
+                    AgentConstants.AUDIT_STAGE_AGENT_CONTEXT_CLEARED,
                     session.getConversationId(),
                     Map.of());
         }
@@ -695,10 +695,10 @@ public class AgentToolStep implements EngineStep {
             String errorMessage) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             ObjectNode lifecycle = mcp.withObject(AgentConstants.CONTEXT_KEY_LIFECYCLE);
 
-            lifecycle.put(AgentConstants.CONTEXT_KEY_PHASE, RulePhase.POST_AGENT_MCP.name());
+            lifecycle.put(AgentConstants.CONTEXT_KEY_PHASE, RulePhase.POST_AGENT_TOOL.name());
             lifecycle.put(AgentConstants.CONTEXT_KEY_STATUS, status == null ? "" : status);
             lifecycle.put(AgentConstants.CONTEXT_KEY_OUTCOME, outcome == null ? "" : outcome);
             lifecycle.put(AgentConstants.CONTEXT_KEY_FINISHED, finished);
@@ -745,7 +745,7 @@ public class AgentToolStep implements EngineStep {
             int toolExecutionAbruptionLimit) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             mcp.put(AgentConstants.CONTEXT_KEY_FINAL_ANSWER_DETERMINED, finalAnswerDetermined);
             mcp.put(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTED, toolExecutionAbrupted);
             mcp.put(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION_ABRUPTION_LIMIT, Math.max(1, toolExecutionAbruptionLimit));
@@ -760,7 +760,7 @@ public class AgentToolStep implements EngineStep {
         }
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             ObjectNode err = mcp.withObject(AgentConstants.CONTEXT_KEY_TOOL_EXECUTION_ERROR);
             Object value = toolErrorPayload.get("tool_code");
             if (value != null) err.put("toolCode", String.valueOf(value));
@@ -800,13 +800,13 @@ public class AgentToolStep implements EngineStep {
             return;
         }
         List<String> staleKeys = List.of(
-                ConvEngineInputParamKey.MCP_ACTION,
-                ConvEngineInputParamKey.MCP_STATUS,
-                ConvEngineInputParamKey.MCP_TOOL_CODE,
-                ConvEngineInputParamKey.MCP_TOOL_GROUP,
-                ConvEngineInputParamKey.MCP_TOOL_ARGS,
-                ConvEngineInputParamKey.MCP_OBSERVATIONS,
-                ConvEngineInputParamKey.MCP_FINAL_ANSWER);
+                ConvEngineInputParamKey.AGENT_ACTION,
+                ConvEngineInputParamKey.AGENT_STATUS,
+                ConvEngineInputParamKey.AGENT_TOOL_CODE,
+                ConvEngineInputParamKey.AGENT_TOOL_GROUP,
+                ConvEngineInputParamKey.AGENT_TOOL_ARGS,
+                ConvEngineInputParamKey.AGENT_OBSERVATIONS,
+                ConvEngineInputParamKey.AGENT_FINAL_ANSWER);
         for (String key : staleKeys) {
             session.getInputParams().remove(key);
             if (session.getSafeInputParamsForOutput() != null) {
@@ -1031,7 +1031,7 @@ public class AgentToolStep implements EngineStep {
     private boolean isSemanticClarificationActiveInContext(EngineSession session) {
         try {
             JsonNode root = mapper.readTree(session.getContextJson() == null ? "{}" : session.getContextJson());
-            JsonNode clarification = root.path(AgentConstants.CONTEXT_KEY_MCP)
+            JsonNode clarification = root.path(AgentConstants.CONTEXT_KEY_AGENT)
                     .path(CONTEXT_KEY_SEMANTIC)
                     .path(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
             boolean required = clarification.path("required").asBoolean(false);
@@ -1045,7 +1045,7 @@ public class AgentToolStep implements EngineStep {
     private void markSemanticClarificationResolved(EngineSession session) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
             ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
             clarification.put("resolved", true);
@@ -1069,7 +1069,7 @@ public class AgentToolStep implements EngineStep {
     private void writeSemanticClarificationRequired(EngineSession session, String toolCode, String question) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
             ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
             clarification.put("required", true);
@@ -1089,7 +1089,7 @@ public class AgentToolStep implements EngineStep {
     private void writeSemanticUnsupported(EngineSession session, String toolCode, String message) {
         try {
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
             ObjectNode clarification = semantic.withObject(CONTEXT_KEY_SEMANTIC_CLARIFICATION);
             clarification.put("required", false);
@@ -1182,7 +1182,7 @@ public class AgentToolStep implements EngineStep {
         try {
             JsonNode rootObs = mapper.readTree(rowsJson);
             ObjectNode root = ensureContextObject(session);
-            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_MCP);
+            ObjectNode mcp = root.withObject(AgentConstants.CONTEXT_KEY_AGENT);
             ObjectNode semantic = mcp.withObject(CONTEXT_KEY_SEMANTIC);
             ObjectNode tools = semantic.withObject(CONTEXT_KEY_SEMANTIC_TOOLS);
             ObjectNode toolNode = tools.withObject(semanticToolKey(toolCode));

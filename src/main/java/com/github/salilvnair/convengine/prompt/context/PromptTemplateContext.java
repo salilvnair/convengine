@@ -47,11 +47,11 @@ public class PromptTemplateContext {
     @PromptVar({ "conversation_history", "conversationHistory", "history" })
     private String conversationHistory;
 
-    @PromptVar({ "mcp_tools", "tools", "available_tools", "tool_list", "mcpTools" })
-    private String mcpTools;
+    @PromptVar({ "agent_tools", "tools", "available_tools", "tool_list", "agentTools" })
+    private String agentTools;
 
-    @PromptVar({ "mcp_observations", "observations", "mcpObservations" })
-    private String mcpObservations;
+    @PromptVar({ "agent_observations", "observations", "agentObservations" })
+    private String agentObservations;
 
     @PromptVar({ "question", "query_question", "queryQuestion" })
     private String question;
