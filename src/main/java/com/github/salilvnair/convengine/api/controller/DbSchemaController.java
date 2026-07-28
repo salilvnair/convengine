@@ -5,7 +5,7 @@ import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingCatalogRebuildR
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildRequest;
 import com.github.salilvnair.convengine.api.dto.SemanticEmbeddingRebuildResponse;
 import com.github.salilvnair.convengine.cache.DbSchemaInspectorService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.embedding.SemanticEmbeddingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

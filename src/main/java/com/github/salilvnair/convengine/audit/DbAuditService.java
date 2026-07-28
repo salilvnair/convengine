@@ -28,7 +28,7 @@ public class DbAuditService implements AuditService {
 
     private static final Set<String> HISTORY_AI_STAGES = Set.of(
             ConvEngineAuditStage.INTENT_AGENT_LLM_OUTPUT.value(),
-            ConvEngineAuditStage.MCP_PLAN_LLM_OUTPUT.value(),
+            ConvEngineAuditStage.AGENT_PLAN_LLM_OUTPUT.value(),
             ConvEngineAuditStage.RESOLVE_RESPONSE_LLM_OUTPUT.value(),
             ConvEngineAuditStage.ASSISTANT_OUTPUT.value(),
             ConvEngineAuditStage.RESPONSE_EXACT.value());

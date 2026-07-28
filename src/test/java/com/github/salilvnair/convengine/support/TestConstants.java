@@ -32,7 +32,7 @@ public final class TestConstants {
     public static final String ERROR_TYPE_KEY = "errorType";
     public static final String ERROR_MESSAGE_KEY = "errorMessage";
 
-    public static final String STEP_MCP_TOOL = "McpToolStep";
+    public static final String STEP_AGENT_TOOL = "AgentToolStep";
     public static final String STEP_RULES = "RulesStep";
     public static final String HOOK_NAME = "MyHook";
     public static final String EVENT_PRECHECK_STARTED = "PRECHECK_STARTED";

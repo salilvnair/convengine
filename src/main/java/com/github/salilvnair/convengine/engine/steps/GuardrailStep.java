@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 @Component
 @RequiresConversationPersisted
 @MustRunAfter(DisambiguationStep.class)
-@MustRunBefore({PendingActionStep.class, ToolOrchestrationStep.class, McpToolStep.class})
+@MustRunBefore({PendingActionStep.class, ToolOrchestrationStep.class, AgentToolStep.class})
 public class GuardrailStep implements EngineStep {
 
     private final ConvEngineFlowConfig flowConfig;

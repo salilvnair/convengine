@@ -114,11 +114,11 @@ User input:
 Context JSON:
 {{context}}
 
-Available MCP tools:
-{{mcp_tools}}
+Available Agent tools:
+{{agent_tools}}
 
 Existing MCP observations (if any):
-{{mcp_observations}}
+{{agent_observations}}
 
 Return JSON EXACTLY in this schema:
 {

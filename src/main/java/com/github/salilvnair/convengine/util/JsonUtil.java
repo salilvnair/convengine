@@ -19,7 +19,7 @@ public final class JsonUtil {
         return MAPPER.createObjectNode();
     }
 
-    /** Parse JSON string safely (used for schema, MCP output, etc.) */
+    /** Parse JSON string safely (used for schema, Agent tool output, etc.) */
     public static JsonNode parseOrNull(String json) {
         if (json == null || json.isBlank()) {
             return NullNode.getInstance();

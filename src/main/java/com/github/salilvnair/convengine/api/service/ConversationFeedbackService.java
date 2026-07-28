@@ -6,17 +6,17 @@ import com.github.salilvnair.convengine.api.dto.ConversationFeedbackRequest;
 import com.github.salilvnair.convengine.api.dto.ConversationFeedbackResponse;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
-import com.github.salilvnair.convengine.engine.mcp.McpConstants;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureFeedbackService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureRecord;
+import com.github.salilvnair.convengine.engine.agent.AgentConstants;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.embedding.SemanticEmbeddingService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.feedback.SemanticFailureFeedbackService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.feedback.SemanticFailureRecord;
 import com.github.salilvnair.convengine.entity.CeConversation;
-import com.github.salilvnair.convengine.entity.CeMcpUserFeedback;
-import com.github.salilvnair.convengine.entity.CeMcpUserQueryKnowledge;
+import com.github.salilvnair.convengine.entity.CeAgentFeedback;
+import com.github.salilvnair.convengine.entity.CeAgentQueryKnowledge;
 import com.github.salilvnair.convengine.entity.CeUserQueryKnowledge;
 import com.github.salilvnair.convengine.repo.ConversationRepository;
-import com.github.salilvnair.convengine.repo.McpUserFeedbackRepository;
-import com.github.salilvnair.convengine.repo.McpUserQueryKnowledgeRepository;
+import com.github.salilvnair.convengine.repo.AgentFeedbackRepository;
+import com.github.salilvnair.convengine.repo.AgentQueryKnowledgeRepository;
 import com.github.salilvnair.convengine.repo.UserQueryKnowledgeRepository;
 import com.github.salilvnair.convengine.util.JsonUtil;
 import lombok.RequiredArgsConstructor;
@@ -40,8 +40,8 @@ public class ConversationFeedbackService {
     private static final String KEY_API_HINTS = "apiHints";
 
     private final ConversationRepository conversationRepository;
-    private final McpUserFeedbackRepository feedbackRepository;
-    private final McpUserQueryKnowledgeRepository legacyUserQueryKnowledgeRepository;
+    private final AgentFeedbackRepository feedbackRepository;
+    private final AgentQueryKnowledgeRepository legacyUserQueryKnowledgeRepository;
     private final UserQueryKnowledgeRepository userQueryKnowledgeRepository;
     private final SemanticEmbeddingService semanticEmbeddingService;
     private final SemanticFailureFeedbackService semanticFailureFeedbackService;
@@ -60,7 +60,7 @@ public class ConversationFeedbackService {
         String assistantResponse = resolveAssistantResponse(request, conversation);
         List<Map<String, Object>> legacyCatalogQueryKnowledge = extractCatalogQueryKnowledgeFromContext(conversation.getContextJson());
 
-        CeMcpUserFeedback feedback = CeMcpUserFeedback.builder()
+        CeAgentFeedback feedback = CeAgentFeedback.builder()
                 .conversationId(conversation.getConversationId())
                 .feedbackType(normalizedFeedback)
                 .messageId(trimToNull(request.getMessageId()))
@@ -68,7 +68,7 @@ public class ConversationFeedbackService {
                 .stateCode(trimToNull(conversation.getStateCode()))
                 .userQuery(trimToNull(conversation.getLastUserText()))
                 .assistantResponse(assistantResponse)
-                .mcpToolCode(resolveLastMcpToolCode(conversation.getContextJson()))
+                .agentToolCode(resolveLastAgentToolCode(conversation.getContextJson()))
                 .capturedQueryKnowledgeCount(legacyCatalogQueryKnowledge.size())
                 .appliedQueryKnowledgeJson(JsonUtil.toJson(legacyCatalogQueryKnowledge))
                 .metadataJson(JsonUtil.toJson(request.getMetadata() == null ? Map.of() : request.getMetadata()))
@@ -121,7 +121,7 @@ public class ConversationFeedbackService {
         auditPayload.put("captured_user_query_knowledge_count", savedUserKnowledgeCount);
         auditPayload.put("embedded_user_query_knowledge_count", embeddedUserKnowledgeCount);
         auditPayload.put("feedback_id", feedback.getFeedbackId());
-        auditService.audit(ConvEngineAuditStage.MCP_USER_FEEDBACK, conversation.getConversationId(), auditPayload);
+        auditService.audit(ConvEngineAuditStage.AGENT_USER_FEEDBACK, conversation.getConversationId(), auditPayload);
 
         return ConversationFeedbackResponse.builder()
                 .success(true)
@@ -134,7 +134,7 @@ public class ConversationFeedbackService {
     }
 
     private void captureSemanticFailureCorrection(CeConversation conversation,
-                                                  CeMcpUserFeedback feedback,
+                                                  CeAgentFeedback feedback,
                                                   ConversationFeedbackRequest request) {
         if (conversation == null || feedback == null) {
             return;
@@ -170,12 +170,12 @@ public class ConversationFeedbackService {
                 correctSql,
                 rootCause,
                 reason,
-                "MCP_USER_FEEDBACK",
+                "AGENT_USER_FEEDBACK",
                 failureMetadata(feedback)
         ));
     }
 
-    private Map<String, Object> failureMetadata(CeMcpUserFeedback feedback) {
+    private Map<String, Object> failureMetadata(CeAgentFeedback feedback) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("feedbackId", feedback == null ? null : feedback.getFeedbackId());
         metadata.put("feedbackType", feedback == null ? null : feedback.getFeedbackType());
@@ -192,7 +192,7 @@ public class ConversationFeedbackService {
             if (queryText == null) {
                 continue;
             }
-            CeMcpUserQueryKnowledge knowledge = CeMcpUserQueryKnowledge.builder()
+            CeAgentQueryKnowledge knowledge = CeAgentQueryKnowledge.builder()
                     .queryText(queryText)
                     .description(trimToNull(asText(row.get(KEY_DESCRIPTION))))
                     .preparedSql(trimToNull(asText(row.get(KEY_PREPARED_SQL))))
@@ -206,10 +206,10 @@ public class ConversationFeedbackService {
 
     private List<FeedbackKnowledgeEntry> extractKnowledgeEntriesForAllModes(
             CeConversation conversation,
-            CeMcpUserFeedback feedback,
+            CeAgentFeedback feedback,
             String feedbackType) {
         List<FeedbackKnowledgeEntry> out = new ArrayList<>();
-        JsonNode observations = mcpObservations(conversation.getContextJson());
+        JsonNode observations = agentObservations(conversation.getContextJson());
         if (observations == null || !observations.isArray()) {
             return out;
         }
@@ -220,8 +220,8 @@ public class ConversationFeedbackService {
 
         Set<String> dedupe = new LinkedHashSet<>();
         for (JsonNode observationNode : observations) {
-            String toolCode = trimToNull(observationNode.path(McpConstants.CONTEXT_OBSERVATION_TOOL_CODE).asText(null));
-            String rawObservationJson = observationNode.path(McpConstants.CONTEXT_OBSERVATION_JSON).asText("");
+            String toolCode = trimToNull(observationNode.path(AgentConstants.CONTEXT_OBSERVATION_TOOL_CODE).asText(null));
+            String rawObservationJson = observationNode.path(AgentConstants.CONTEXT_OBSERVATION_JSON).asText("");
             JsonNode observationJson = parseJson(rawObservationJson);
             List<FeedbackKnowledgeEntry> extracted = extractFromObservation(
                     toolCode,
@@ -295,7 +295,7 @@ public class ConversationFeedbackService {
 
     private List<Map<String, Object>> extractCatalogQueryKnowledgeFromContext(String contextJson) {
         List<Map<String, Object>> out = new ArrayList<>();
-        JsonNode observations = mcpObservations(contextJson);
+        JsonNode observations = agentObservations(contextJson);
         if (observations == null || !observations.isArray()) {
             return out;
         }
@@ -337,14 +337,14 @@ public class ConversationFeedbackService {
         return value;
     }
 
-    private String resolveLastMcpToolCode(String contextJson) {
-        JsonNode observations = mcpObservations(contextJson);
+    private String resolveLastAgentToolCode(String contextJson) {
+        JsonNode observations = agentObservations(contextJson);
         if (observations == null || !observations.isArray() || observations.isEmpty()) {
             return null;
         }
         for (int i = observations.size() - 1; i >= 0; i--) {
             JsonNode node = observations.get(i);
-            String toolCode = trimToNull(node.path(McpConstants.CONTEXT_OBSERVATION_TOOL_CODE).asText(null));
+            String toolCode = trimToNull(node.path(AgentConstants.CONTEXT_OBSERVATION_TOOL_CODE).asText(null));
             if (toolCode != null) {
                 return toolCode;
             }
@@ -352,30 +352,30 @@ public class ConversationFeedbackService {
         return null;
     }
 
-    private JsonNode mcpObservations(String contextJson) {
+    private JsonNode agentObservations(String contextJson) {
         if (contextJson == null || contextJson.isBlank()) {
             return null;
         }
         try {
             JsonNode root = objectMapper.readTree(contextJson);
-            return root.path(McpConstants.CONTEXT_KEY_MCP).path(McpConstants.CONTEXT_KEY_OBSERVATIONS);
+            return root.path(AgentConstants.CONTEXT_KEY_AGENT).path(AgentConstants.CONTEXT_KEY_OBSERVATIONS);
         } catch (Exception ignored) {
             return null;
         }
     }
 
     private String latestObservedSql(String contextJson) {
-        JsonNode observations = mcpObservations(contextJson);
+        JsonNode observations = agentObservations(contextJson);
         if (observations == null || !observations.isArray() || observations.isEmpty()) {
             return null;
         }
         for (int i = observations.size() - 1; i >= 0; i--) {
             JsonNode node = observations.get(i);
-            String toolCode = trimToNull(node.path(McpConstants.CONTEXT_OBSERVATION_TOOL_CODE).asText(null));
+            String toolCode = trimToNull(node.path(AgentConstants.CONTEXT_OBSERVATION_TOOL_CODE).asText(null));
             if (toolCode == null) {
                 continue;
             }
-            JsonNode payload = parseJson(node.path(McpConstants.CONTEXT_OBSERVATION_JSON).asText(""));
+            JsonNode payload = parseJson(node.path(AgentConstants.CONTEXT_OBSERVATION_JSON).asText(""));
             String sql = firstNonBlank(
                     pathText(payload, "_db", "sql"),
                     trimToNull(payload.path("compiledSql").path("sql").asText(null)),

@@ -1,7 +1,7 @@
 -- ConvEngine 2.0.7+ canonical MCP seed pack (Postgres)
 -- Includes Example 1 (ORDER_DIAGNOSTICS) and Example 2 (LOAN_APPLICATION)
 -- Covers ce_intent, ce_intent_classifier, ce_output_schema, ce_prompt_template,
--- ce_response, ce_rule, ce_mcp_tool, ce_mcp_planner.
+-- ce_response, ce_rule, ce_agent_tool, ce_agent_planner.
 
 SET search_path TO v2, public;
 
@@ -13,9 +13,9 @@ DELETE FROM ce_response WHERE intent_code IN ('ORDER_DIAGNOSTICS', 'LOAN_APPLICA
 DELETE FROM ce_prompt_template WHERE intent_code IN ('ORDER_DIAGNOSTICS', 'LOAN_APPLICATION');
 DELETE FROM ce_output_schema WHERE intent_code IN ('ORDER_DIAGNOSTICS', 'LOAN_APPLICATION');
 DELETE FROM ce_intent_classifier WHERE intent_code IN ('ORDER_DIAGNOSTICS', 'LOAN_APPLICATION');
-DELETE FROM ce_mcp_planner WHERE planner_id IN (5101, 5201, 5202);
-DELETE FROM ce_mcp_db_tool WHERE tool_id IN (
-    SELECT tool_id FROM ce_mcp_tool WHERE tool_code IN (
+DELETE FROM ce_agent_planner WHERE planner_id IN (5101, 5201, 5202);
+DELETE FROM ce_agent_db_tool WHERE tool_id IN (
+    SELECT tool_id FROM ce_agent_tool WHERE tool_code IN (
         'mock.order.status',
         'mock.order.async.trace',
         'loan.credit.rating.check',
@@ -24,7 +24,7 @@ DELETE FROM ce_mcp_db_tool WHERE tool_id IN (
         'loan.application.submit'
     )
 );
-DELETE FROM ce_mcp_tool WHERE tool_code IN (
+DELETE FROM ce_agent_tool WHERE tool_code IN (
     'mock.order.status',
     'mock.order.async.trace',
     'loan.credit.rating.check',
@@ -188,7 +188,7 @@ VALUES
  'Bootstrap ORDER_DIAGNOSTICS into ANALYZE when classifier sets UNKNOWN'),
 ('POST_AGENT_INTENT', 'ORDER_DIAGNOSTICS', 'IDLE', 'REGEX', '.*', 'SET_STATE', 'ANALYZE', 41, true,
  'Bootstrap ORDER_DIAGNOSTICS into ANALYZE from IDLE'),
-('POST_AGENT_MCP', 'ORDER_DIAGNOSTICS', 'ANALYZE', 'JSON_PATH',
+('POST_AGENT_TOOL', 'ORDER_DIAGNOSTICS', 'ANALYZE', 'JSON_PATH',
  '$[?(@.context.mcp.finalAnswer != ''null'' && @.context.mcp.finalAnswer != null && @.context.mcp.finalAnswer != '''')]',
  'SET_STATE', 'COMPLETED', 42, true,
  'Move ORDER_DIAGNOSTICS to COMPLETED when context.mcp.finalAnswer exists'),
@@ -196,7 +196,7 @@ VALUES
  'Move LOAN_APPLICATION into ELIGIBILITY_GATE when classifier state is UNKNOWN'),
 ('POST_AGENT_INTENT', 'LOAN_APPLICATION', 'IDLE', 'REGEX', '.*', 'SET_STATE', 'ELIGIBILITY_GATE', 61, true,
  'Move LOAN_APPLICATION into ELIGIBILITY_GATE when state is IDLE'),
-('POST_AGENT_MCP', 'LOAN_APPLICATION', 'ELIGIBILITY_GATE', 'JSON_PATH',
+('POST_AGENT_TOOL', 'LOAN_APPLICATION', 'ELIGIBILITY_GATE', 'JSON_PATH',
  '$[?(@.context.mcp.finalAnswer != null && @.context.mcp.finalAnswer != '''')]',
  'SET_STATE', 'COMPLETED', 62, true,
  'Move LOAN_APPLICATION to COMPLETED when context.mcp.finalAnswer exists'),
@@ -208,7 +208,7 @@ VALUES
 -- -----------------------------------------------------------------------------
 -- MCP tools (intent/state scoped, no null)
 -- -----------------------------------------------------------------------------
-INSERT INTO ce_mcp_tool (tool_id, tool_code, tool_group, intent_code, state_code, enabled, description)
+INSERT INTO ce_agent_tool (tool_id, tool_code, tool_group, intent_code, state_code, enabled, description)
 VALUES
 (9101, 'mock.order.status', 'HTTP_API', 'ORDER_DIAGNOSTICS', 'ANALYZE', true,
  'Fetch order status for diagnostics'),
@@ -224,16 +224,16 @@ VALUES
  'Step 4: if profile healthy, submit final loan application');
 
 -- -----------------------------------------------------------------------------
--- ce_mcp_planner prompts (example 1 + example 2 + safe default)
+-- ce_agent_planner prompts (example 1 + example 2 + safe default)
 -- -----------------------------------------------------------------------------
-INSERT INTO ce_mcp_planner (planner_id, intent_code, state_code, system_prompt, user_prompt, enabled, created_at)
+INSERT INTO ce_agent_planner (planner_id, intent_code, state_code, system_prompt, user_prompt, enabled, created_at)
 VALUES
 (
     5101,
     'ORDER_DIAGNOSTICS',
     'ANALYZE',
     'You are an MCP planning agent for order diagnostics.\nTool order:\n1) mock.order.status\n2) mock.order.async.trace\n3) ANSWER with concise diagnosis from observations.\nReturn JSON only. Do not invent values.',
-    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
+    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable Agent tools:\n{{agent_tools}}\n\nExisting Agent observations:\n{{agent_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
     true,
     now()
 ),
@@ -242,7 +242,7 @@ VALUES
     'ANY',
     'ANY',
     'You are an MCP planning agent inside ConvEngine. Decide whether to CALL_TOOL or ANSWER. Be conservative, safe, and do not hallucinate missing data. Return JSON only. If answering from tabular DB/tool rows, format answer as a Markdown table.',
-    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
+    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable Agent tools:\n{{agent_tools}}\n\nExisting Agent observations:\n{{agent_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
     true,
     now()
 ),
@@ -251,7 +251,7 @@ VALUES
     'LOAN_APPLICATION',
     'ELIGIBILITY_GATE',
     'You are an MCP planning agent for a loan application workflow.\nYou MUST follow tool order:\n1) loan.credit.rating.check\n2) If creditRating <= 750 => ANSWER reject\n3) Else loan.credit.fraud.check\n4) If flagged=true => ANSWER reject\n5) Else loan.debt.credit.summary\n6) If dti > 0.65 or availableCredit < requestedAmount*0.15 => ANSWER reject/manual-review\n7) Else loan.application.submit\n8) ANSWER with applicationId.\nReturn JSON only. Never invent unknown values.',
-    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable MCP tools:\n{{mcp_tools}}\n\nExisting MCP observations:\n{{mcp_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
+    'User input:\n{{user_input}}\n\nCurrent date/time context:\n- current_date: {{current_date}}\n- current_datetime: {{current_datetime}}\n- current_year: {{current_year}}\n- current_timezone: {{current_timezone}}\n\nStandalone query:\n{{standalone_query}}\n\nRecent conversation history:\n{{conversation_history}}\n\nContext JSON:\n{{context}}\n\nAvailable Agent tools:\n{{agent_tools}}\n\nExisting Agent observations:\n{{agent_observations}}\n\nIf the user refers to prior results using words like "above", "that", "those", "same", or "previous", resolve references using standalone_query + conversation_history + mcp_observations before asking clarification.\n\nReturn strict JSON:\n{\n  "action":"CALL_TOOL" | "ANSWER",\n  "tool_code":"<tool_code_or_null>",\n  "args":{},\n  "answer":"<text_or_null>"\n}',
     true,
     now()
 )

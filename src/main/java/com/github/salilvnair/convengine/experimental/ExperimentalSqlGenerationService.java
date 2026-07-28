@@ -40,14 +40,14 @@ public class ExperimentalSqlGenerationService {
             "ce_container_config",
             "ce_intent",
             "ce_intent_classifier",
-            "ce_mcp_tool",
-            "ce_mcp_planner",
+            "ce_agent_tool",
+            "ce_agent_planner",
             "ce_output_schema",
             "ce_policy",
             "ce_prompt_template",
             "ce_response",
             "ce_rule",
-            "ce_mcp_db_tool"
+            "ce_agent_db_tool"
     );
 
     private final LlmClient llmClient;
@@ -85,7 +85,7 @@ public class ExperimentalSqlGenerationService {
                   ce_response.output_format: TEXT | JSON | SCHEMA_JSON
                   ce_prompt_template.output_format: TEXT | JSON | SCHEMA_JSON
                   ce_rule.rule_type: EXACT | REGEX | JSON_PATH
-                  ce_rule.phase: PRE_RESPONSE_RESOLUTION | POST_AGENT_INTENT | POST_AGENT_MCP | POST_TOOL_EXECUTION
+                  ce_rule.phase: PRE_RESPONSE_RESOLUTION | POST_AGENT_INTENT | POST_AGENT_TOOL | POST_TOOL_EXECUTION
                   ce_rule.state_code: NULL | ANY | <STATE_CODE>
                   ce_intent_classifier.rule_type: REGEX | CONTAINS | STARTS_WITH
                   action: SET_INTENT | SET_STATE | SET_JSON | GET_CONTEXT | GET_SCHEMA_JSON | GET_SESSION | SET_TASK
@@ -110,7 +110,7 @@ public class ExperimentalSqlGenerationService {
                 Output requirements:
                 - Emit a single runnable SQL script.
                 - Use deterministic IDs where table requires explicit IDs (for example ce_config.config_id).
-                - Ensure dependencies are inserted first (for example ce_mcp_tool before ce_mcp_db_tool).
+                - Ensure dependencies are inserted first (for example ce_agent_tool before ce_agent_db_tool).
                 - Keep script production-safe: no runtime/history table writes.
                 - Include meaningful sample prompts for system_prompt and user_prompt fields.
                 
@@ -217,9 +217,9 @@ public class ExperimentalSqlGenerationService {
         List<String> tables = new ArrayList<>();
         for (String table : NON_TRANSACTIONAL_TABLES_DDL_ORDER) {
             if (!includeMcp
-                    && ("ce_mcp_tool".equalsIgnoreCase(table)
-                    || "ce_mcp_db_tool".equalsIgnoreCase(table)
-                    || "ce_mcp_planner".equalsIgnoreCase(table))) {
+                    && ("ce_agent_tool".equalsIgnoreCase(table)
+                    || "ce_agent_db_tool".equalsIgnoreCase(table)
+                    || "ce_agent_planner".equalsIgnoreCase(table))) {
                 continue;
             }
             tables.add(table);

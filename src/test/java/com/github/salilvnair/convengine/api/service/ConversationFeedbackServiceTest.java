@@ -3,14 +3,14 @@ package com.github.salilvnair.convengine.api.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.api.dto.ConversationFeedbackRequest;
 import com.github.salilvnair.convengine.audit.AuditService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.embedding.SemanticEmbeddingService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureFeedbackService;
-import com.github.salilvnair.convengine.engine.mcp.query.semantic.feedback.SemanticFailureRecord;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.embedding.SemanticEmbeddingService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.feedback.SemanticFailureFeedbackService;
+import com.github.salilvnair.convengine.engine.agent.query.semantic.feedback.SemanticFailureRecord;
 import com.github.salilvnair.convengine.entity.CeConversation;
-import com.github.salilvnair.convengine.entity.CeMcpUserFeedback;
+import com.github.salilvnair.convengine.entity.CeAgentFeedback;
 import com.github.salilvnair.convengine.repo.ConversationRepository;
-import com.github.salilvnair.convengine.repo.McpUserFeedbackRepository;
-import com.github.salilvnair.convengine.repo.McpUserQueryKnowledgeRepository;
+import com.github.salilvnair.convengine.repo.AgentFeedbackRepository;
+import com.github.salilvnair.convengine.repo.AgentQueryKnowledgeRepository;
 import com.github.salilvnair.convengine.repo.UserQueryKnowledgeRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,9 +34,9 @@ class ConversationFeedbackServiceTest {
     @Mock
     private ConversationRepository conversationRepository;
     @Mock
-    private McpUserFeedbackRepository feedbackRepository;
+    private AgentFeedbackRepository feedbackRepository;
     @Mock
-    private McpUserQueryKnowledgeRepository legacyUserQueryKnowledgeRepository;
+    private AgentQueryKnowledgeRepository legacyUserQueryKnowledgeRepository;
     @Mock
     private UserQueryKnowledgeRepository userQueryKnowledgeRepository;
     @Mock
@@ -68,8 +68,8 @@ class ConversationFeedbackServiceTest {
         conversation.setContextJson("{\"mcp\":{\"observations\":[]}}");
 
         when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
-        when(feedbackRepository.save(any(CeMcpUserFeedback.class))).thenAnswer(invocation -> {
-            CeMcpUserFeedback saved = invocation.getArgument(0);
+        when(feedbackRepository.save(any(CeAgentFeedback.class))).thenAnswer(invocation -> {
+            CeAgentFeedback saved = invocation.getArgument(0);
             saved.setFeedbackId(11L);
             return saved;
         });

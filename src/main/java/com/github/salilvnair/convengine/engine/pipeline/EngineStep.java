@@ -22,7 +22,7 @@ public interface EngineStep {
         ResponseResolutionStep,
         MemoryStep,
         AutoAdvanceStep,
-        McpToolStep,
+        AgentToolStep,
         CacheInspectAuditStep,
         LoadOrCreateConversationStep,
         FallbackIntentStateStep,

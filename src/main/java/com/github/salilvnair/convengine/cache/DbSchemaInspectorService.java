@@ -1,6 +1,6 @@
 package com.github.salilvnair.convengine.cache;
 
-import com.github.salilvnair.convengine.config.ConvEngineMcpConfig;
+import com.github.salilvnair.convengine.config.ConvEngineAgentConfig;
 import com.github.salilvnair.convengine.config.ConvEngineSchemaConfig;
 import com.github.salilvnair.convengine.util.TableIntrospectionMatcher;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ public class DbSchemaInspectorService {
 
     private final JdbcTemplate jdbcTemplate;
     private final ConvEngineSchemaConfig schemaConfig;
-    private final ConvEngineMcpConfig mcpConfig;
+    private final ConvEngineAgentConfig mcpConfig;
 
     public Map<String, Object> inspect(String schemaName, String tablePrefix) {
         return inspect(schemaName, tablePrefix, "REGEX");

@@ -3,11 +3,12 @@ package com.github.salilvnair.convengine.engine.type;
 public enum RulePhase {
     POST_DIALOGUE_ACT,
     POST_SCHEMA_EXTRACTION,
-    PRE_AGENT_MCP,
+    PRE_AGENT_TOOL,
     PRE_RESPONSE_RESOLUTION,
+    POST_RESPONSE_RESOLUTION,
     POST_CLASSIFIER_INTENT,
     POST_AGENT_INTENT,
-    POST_AGENT_MCP,
+    POST_AGENT_TOOL,
     POST_SEMANTIC_INTERPRET,
     POST_TOOL_EXECUTION;
 
@@ -19,15 +20,14 @@ public enum RulePhase {
         if ("PIPELINE_RULES".equals(normalized)) {
             return PRE_RESPONSE_RESOLUTION.name();
         }
+        if ("POST_RESPONSE".equals(normalized)) {
+            return POST_RESPONSE_RESOLUTION.name();
+        }
         if ("AGENT_POST_INTENT".equals(normalized)) {
             return POST_AGENT_INTENT.name();
         }
-        if ("CLASSIFIER_POST_INTENT".equals(normalized)
-                || "POST_CLASSIFIER_INTENT".equals(normalized)) {
+        if ("CLASSIFIER_POST_INTENT".equals(normalized)) {
             return POST_CLASSIFIER_INTENT.name();
-        }
-        if ("AGENT_POST_MCP".equals(normalized)) {
-            return POST_AGENT_MCP.name();
         }
         if ("AGENT_POST_SEMANTIC_INTERPRET".equals(normalized)
                 || "SEMANTIC_INTERPRET_POST".equals(normalized)) {

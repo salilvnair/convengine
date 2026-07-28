@@ -46,7 +46,7 @@ class ThymeleafTemplateRendererTest {
     @Test
     void doesNotHtmlEscapeJsonValues() {
         String toolsJson = "[{\"tool_code\":\"db.semantic.query\"}]";
-        String rendered = renderer.render("Available tools: {{mcp_tools}}", null, Map.of("mcp_tools", toolsJson));
+        String rendered = renderer.render("Available tools: {{agent_tools}}", null, Map.of("agent_tools", toolsJson));
 
         assertEquals("Available tools: " + toolsJson, rendered);
     }
