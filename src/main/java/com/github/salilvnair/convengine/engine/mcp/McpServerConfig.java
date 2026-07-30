@@ -21,9 +21,11 @@ import java.util.Map;
  *                    optional static {@link #headers}. The server must return
  *                    plain JSON (not an SSE stream) for now.
  *
- * Configs are serialized to {@code ~/.convengine/mcp-servers.json} by
- * {@link McpRegistry}, so adding/editing/deleting through the REST controller
- * survives restarts.
+ * Persisted by {@link McpRegistry} to {@code ce_mcp_server} — always
+ * DB-backed, works across replicas (e.g. AKS pods) since every instance
+ * reads/writes the same table. Adding/editing/deleting through the REST
+ * controller survives restarts and is visible to other replicas within one
+ * refresh cycle.
  */
 @Data
 @Builder

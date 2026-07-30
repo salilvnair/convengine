@@ -136,9 +136,10 @@ public interface LlmClient {
 - `ce_response`
 - `ce_rule`
 - `ce_pending_action`
-- `ce_mcp_tool`
-- `ce_mcp_db_tool`
-- `ce_mcp_planner`
+- `ce_agent_tool`
+- `ce_agent_db_tool`
+- `ce_agent_planner`
+- `ce_mcp_server`
 - `ce_verbose`
 
 ### Runtime / transactional tables
@@ -255,7 +256,10 @@ Important:
 - runtime lifecycle is not stored in this table
 - runtime lifecycle (`OPEN`, `IN_PROGRESS`, `EXECUTED`, `REJECTED`, `EXPIRED`) lives in context as `pending_action_runtime`
 
-### `ce_mcp_tool`
+### `ce_agent_tool`
+
+(Renamed from `ce_mcp_tool` — the internal Agent tool executor pattern, not
+to be confused with `engine/mcp`'s real MCP client, see further down.)
 
 Critical current contract:
 - `intent_code` is mandatory
@@ -274,10 +278,13 @@ Supported canonical groups:
 - `CALCULATOR_TRANSFORM`
 - `NOTIFICATION`
 - `FILES`
+- `MCP_SERVER` (routes to a tool discovered from a connected external MCP server — see "External MCP servers" below)
 
-For semantic catalog, tool code is fixed as `db.semantic.catalog` and should be registered through `ce_mcp_tool` rows. Do not document or implement a separate YAML `tool-code` property for semantic catalog.
+For semantic catalog, tool code is fixed as `db.semantic.catalog` and should be registered through `ce_agent_tool` rows. Do not document or implement a separate YAML `tool-code` property for semantic catalog.
 
-### `ce_mcp_planner`
+### `ce_agent_planner`
+
+(Renamed from `ce_mcp_planner`.)
 
 Planner prompt selection order:
 1. exact `intent_code + state_code`
@@ -285,7 +292,7 @@ Planner prompt selection order:
 3. `ANY + ANY`
 4. legacy `ce_config` fallback
 
-Like `ce_mcp_tool`, scope is explicit and validated at startup.
+Like `ce_agent_tool`, scope is explicit and validated at startup.
 
 ### `ce_verbose`
 
@@ -381,6 +388,16 @@ Current MCP next-tool guard model:
 - controlled by `convengine.mcp.guardrail.*`
 - `failClosed` can block if allowed-next rules are missing
 - blocked-next behavior must remain deterministic and auditable
+
+### External MCP servers (`engine/mcp`)
+
+Not to be confused with the legacy internal "MCP" naming above (`ce_agent_tool` / planner tool orchestration, formerly `ce_mcp_tool`) — `engine/mcp` is a real Model Context Protocol client: `McpRegistry` persists `McpServerConfig`s to `ce_mcp_server` (always DB-backed, no local-file fallback — required so server registration is visible across every replica in a horizontally-scaled deployment), lazily spawns/connects an `McpClient` per server (`STDIO`/`HTTP`/`SSE` transports), and caches each server's `tools/list` manifest. `McpServerRepository` is a required constructor dependency of `McpRegistry`, so the `ce_mcp_server` table must exist for this feature to work at all — see `ddl.sql`/`ddl_postgres.sql` or the standalone migration.
+
+- `AgentPlanner` merges `McpRegistry.discoveredTools()` into its available-tool list automatically — tool codes take the form `mcp.<serverId>.<toolName>`.
+- `McpServerToolExecutor` (tool group `MCP_SERVER`) is the executor that routes `CALL_TOOL` to `McpRegistry.callTool(...)` for these tool codes.
+- Discovery is automatic, but execution is not: `AgentToolRegistry.requireTool(...)` still requires a matching `ce_agent_tool` row (`tool_group = 'MCP_SERVER'`, `enabled = true`, correct `intent_code`/`state_code`) or the planner's tool call fails with `IllegalStateException`.
+- A background thread reloads `ce_mcp_server` every 30s so a server registered on one replica becomes visible on the others without any pod-to-pod communication.
+- REST surface: `McpController` at `/api/v1/mcp/servers` (register/list/remove servers, list/refresh a server's tools, call a tool directly). See README.md ("MCP Client (External Servers)") for full request/response shapes and an end-to-end example.
 
 ## Semantic Query MCP Runtime
 

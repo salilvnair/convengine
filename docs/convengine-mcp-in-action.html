@@ -1,0 +1,608 @@
+<meta charset="utf-8">
+<title>ConvEngine MCP in Action — db-query-agent walkthrough</title>
+
+<style>
+  :root {
+    color-scheme: light dark;
+    --ground:#0c0e13; --ground-2:#111420; --panel:#161a24; --panel-2:#1b2030;
+    --rule:#242a38; --rule-soft:#1b2028;
+    --ink:#e9e7e2; --ink-2:#a6abb8; --ink-3:#6b7280;
+    --accent:#d4a574; --accent-dim:#8a6c4b;
+    --ok:#5fb98a; --ok-bg:#5fb98a1c; --ok-line:#5fb98a44;
+    --warn:#d8a657; --warn-bg:#d8a6571c; --warn-line:#d8a65744;
+    --bad:#c97b8a; --bad-bg:#c97b8a1c; --bad-line:#c97b8a44;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:ui-serif,"Iowan Old Style","Charter","Palatino Linotype",Georgia,serif;
+  }
+  @media (prefers-color-scheme:light){:root{
+    --ground:#f6f4ef; --ground-2:#eeebe4; --panel:#ffffff; --panel-2:#f4f1ea;
+    --rule:#dcd7cd; --rule-soft:#e7e2d9;
+    --ink:#1a1c21; --ink-2:#4c515b; --ink-3:#7b818c;
+    --accent:#8f6329; --accent-dim:#a9835a;
+    --ok:#2c7a58; --ok-bg:#2c7a5814; --ok-line:#2c7a5836;
+    --warn:#8f6217; --warn-bg:#8f621714; --warn-line:#8f621736;
+    --bad:#9c4657; --bad-bg:#9c465714; --bad-line:#9c465736;
+  }}
+  :root[data-theme="light"]{
+    --ground:#f6f4ef; --ground-2:#eeebe4; --panel:#ffffff; --panel-2:#f4f1ea;
+    --rule:#dcd7cd; --rule-soft:#e7e2d9;
+    --ink:#1a1c21; --ink-2:#4c515b; --ink-3:#7b818c;
+    --accent:#8f6329; --accent-dim:#a9835a;
+    --ok:#2c7a58; --ok-bg:#2c7a5814; --ok-line:#2c7a5836;
+    --warn:#8f6217; --warn-bg:#8f621714; --warn-line:#8f621736;
+    --bad:#9c4657; --bad-bg:#9c465714; --bad-line:#9c465736;
+  }
+  :root[data-theme="dark"]{
+    --ground:#0c0e13; --ground-2:#111420; --panel:#161a24; --panel-2:#1b2030;
+    --rule:#242a38; --rule-soft:#1b2028;
+    --ink:#e9e7e2; --ink-2:#a6abb8; --ink-3:#6b7280;
+    --accent:#d4a574; --accent-dim:#8a6c4b;
+    --ok:#5fb98a; --ok-bg:#5fb98a1c; --ok-line:#5fb98a44;
+    --warn:#d8a657; --warn-bg:#d8a6571c; --warn-line:#d8a65744;
+    --bad:#c97b8a; --bad-bg:#c97b8a1c; --bad-line:#c97b8a44;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:52px 24px 120px}
+
+  .mast{display:flex;flex-direction:column;gap:15px;margin-bottom:40px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+  h1{font-family:var(--mono);font-weight:600;font-size:clamp(27px,4.4vw,42px);letter-spacing:-.02em;line-height:1.08;text-wrap:balance;margin:0}
+  .thesis{font-size:18px;color:var(--ink-2);max-width:74ch;text-wrap:pretty;margin:0}
+  .thesis b{color:var(--ink);font-weight:600}
+  p{margin:0 0 12px;max-width:74ch}
+  code{font-family:var(--mono);font-size:.85em;background:var(--ground-2);border:1px solid var(--rule-soft);border-radius:3px;padding:1px 5px;color:var(--accent);word-break:break-word}
+  .lede{font-size:15px;color:var(--ink-2)}
+  .lede b{color:var(--ink)}
+
+  .box{margin:16px 0;border-left:3px solid var(--bc);background:var(--bbg);padding:13px 16px;border-radius:0 6px 6px 0}
+  .box .bt{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--bc);font-weight:700;margin-bottom:6px}
+  .box p{margin:0;font-size:14px;color:var(--ink-2)} .box p b{color:var(--ink)}
+  .box p + p{margin-top:8px}
+  .box code{background:transparent;border:0;padding:0}
+  .warn{--bc:var(--warn);--bbg:var(--warn-bg)}
+  .verify{--bc:var(--ok);--bbg:var(--ok-bg)}
+  .note{--bc:var(--accent-dim);--bbg:var(--panel-2)}
+
+  footer{margin-top:72px;border-top:1px solid var(--rule);padding-top:20px;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);line-height:1.85}
+  footer b{color:var(--ink-2)}
+
+  /* ── the animated step player ── */
+  .af{--af-cool:#7aa2d6;--af-pink:#c97b8a}
+  .af-spec{border:1px solid var(--rule);border-radius:9px;background:var(--panel);overflow:hidden;margin-bottom:14px}
+  .af-spec-h{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);padding:8px 13px;border-bottom:1px solid var(--rule);background:var(--panel-2)}
+  .af-spec pre{font-family:var(--mono);font-size:12px;line-height:1.8;margin:0;padding:12px 14px;overflow-x:auto;border:0;background:transparent}
+  .af-k{color:var(--accent);font-weight:600}.af-v{color:var(--ok)}.af-c{color:var(--ink-3)}
+  .af-ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+  .af-ctl button{font-family:var(--mono);font-size:12px;font-weight:600;cursor:pointer;border-radius:7px;padding:8px 14px;border:1px solid var(--rule);background:var(--panel);color:var(--ink);transition:all .15s ease}
+  .af-ctl button:hover{border-color:var(--accent-dim);background:var(--panel-2)}
+  .af-ctl button.af-pri{background:var(--accent);color:var(--ground);border-color:var(--accent)}
+  .af-ctl button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .af-n{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-left:auto}
+  .af-hint{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin:0 0 12px}
+  .af-rail{height:3px;background:var(--rule);border-radius:2px;overflow:hidden;margin-bottom:16px}
+  .af-fill{height:100%;width:0;background:var(--accent);transition:width .45s cubic-bezier(.4,0,.2,1)}
+  .af-grid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:16px;align-items:start}
+  @media(max-width:980px){.af-grid{grid-template-columns:1fr}}
+  .af-pipe{list-style:none;margin:0;padding:0;position:relative;max-width:none}
+  .af-pipe::before{content:"";position:absolute;left:17px;top:12px;bottom:12px;width:2px;background:var(--rule)}
+  .af-stg{position:relative;padding:0 0 10px 46px;margin:0;opacity:.4;transition:opacity .35s ease;cursor:pointer}
+  .af-stg:hover{opacity:.85}.af-stg:hover .af-card{border-color:var(--accent-dim)}
+  .af-stg.af-seen{opacity:1}
+  .af-stg.af-act .af-card{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent)}
+  .af-dot{position:absolute;left:8px;top:10px;width:19px;height:19px;border-radius:50%;background:var(--panel);border:2px solid var(--rule);z-index:1;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);transition:all .35s ease}
+  .af-stg.af-seen .af-dot{border-color:var(--accent-dim);color:var(--accent)}
+  .af-stg.af-act .af-dot{border-color:var(--accent);background:var(--accent);color:var(--ground);transform:scale(1.15)}
+  .af-stg.af-pass .af-dot{border-color:var(--ok);background:var(--ok);color:var(--ground)}
+  .af-card{border:1px solid var(--rule);border-radius:8px;background:var(--panel);padding:9px 12px;transition:all .3s ease}
+  .af-t{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .af-d{font-size:12.5px;color:var(--ink-2);margin-top:3px;line-height:1.5}
+  .af-tag{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:20px;font-weight:700;white-space:nowrap}
+  .af-tag.f{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--accent)}
+  .af-tag.ok{background:color-mix(in srgb,var(--ok) 20%,transparent);color:var(--ok)}
+  .af-tag.cool{background:color-mix(in srgb,var(--af-cool) 20%,transparent);color:var(--af-cool)}
+  .af-tag.pink{background:color-mix(in srgb,var(--af-pink) 20%,transparent);color:var(--af-pink)}
+  .af-side{display:flex;flex-direction:column;gap:12px;min-width:0;align-self:start;
+    position:sticky;top:10px;max-height:calc(100vh - 20px);overflow-y:auto;
+    overscroll-behavior:contain;scrollbar-width:thin;padding-right:2px}
+  .af-side::-webkit-scrollbar{width:8px}
+  .af-side::-webkit-scrollbar-thumb{background:var(--rule);border-radius:4px}
+  .af-side::-webkit-scrollbar-thumb:hover{background:var(--accent-dim)}
+  .af-side::-webkit-scrollbar-track{background:transparent}
+  @media(max-width:980px){.af-side{position:static;max-height:none;overflow:visible}}
+  .af-pan{border:1px solid var(--rule);border-radius:9px;background:var(--panel);overflow:hidden;flex:0 0 auto}
+  .af-pan-h{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);
+    padding:9px 13px;border-bottom:1px solid var(--rule);background:var(--panel-2);display:flex;align-items:center;
+    gap:8px;cursor:pointer;user-select:none;transition:background .15s ease,color .15s ease}
+  .af-pan-h:hover{background:color-mix(in srgb,var(--accent) 8%,var(--panel-2));color:var(--ink-2)}
+  .af-pan-h .af-hl{color:var(--accent);margin-left:auto;text-align:right}
+  .af-pan-h>span:nth-child(2){flex:1 1 auto;min-width:0}
+  .af-cv{width:11px;flex:0 0 11px;color:var(--ink-3);font-size:9px;line-height:1;transition:transform .3s cubic-bezier(.4,0,.2,1),color .15s ease}
+  .af-cv::before{content:"\25BC";display:block}
+  .af-pan.af-col .af-cv{transform:rotate(-90deg)}
+  .af-pan.af-col .af-pan-h{border-bottom-color:transparent}
+  .af-pan-wrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows .34s cubic-bezier(.4,0,.2,1)}
+  .af-pan.af-col .af-pan-wrap{grid-template-rows:0fr}
+  .af-pan-in{overflow:hidden;min-height:0}
+  .af-pan.af-open{border-color:var(--accent-dim)}
+  .af-tabs{display:flex;gap:4px;padding:8px 10px 0;background:var(--panel-2);border-bottom:1px solid var(--rule);flex-wrap:wrap}
+  .af-tab{font-family:var(--mono);font-size:11px;font-weight:600;padding:6px 11px;border-radius:6px 6px 0 0;border:1px solid transparent;border-bottom:none;background:transparent;color:var(--ink-3);cursor:pointer;position:relative;transition:all .15s ease}
+  .af-tab:hover{color:var(--ink-2)}
+  .af-tab.on{background:var(--panel);border-color:var(--rule);color:var(--accent)}
+  .af-tab.af-has::after{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--ok);margin-left:6px;vertical-align:middle}
+  .af-tab:not(.af-has){opacity:.55}
+  .af-tabb{padding:12px;min-height:160px;max-height:52vh;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain}
+  .af-tabb::-webkit-scrollbar{width:8px;height:8px}
+  .af-tabb::-webkit-scrollbar-thumb{background:var(--rule);border-radius:4px}
+  .af-tabb::-webkit-scrollbar-track{background:transparent}
+  .af-txt{font-family:var(--mono);font-size:11px;line-height:1.65;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--ink-2)}
+  .af-code{font-family:var(--mono);font-size:10.5px;line-height:1.7;white-space:pre;overflow-x:auto;background:var(--ground-2,var(--panel-2));border:1px solid var(--rule-soft);border-radius:5px;padding:10px 12px;margin:0}
+  .hc{color:var(--ink-3);font-style:italic}
+  .hs{color:var(--ok)}
+  .hk{color:var(--accent);font-weight:600}
+  .hn{color:var(--warn)}
+  .hf{color:var(--af-cool)}
+  .hd{color:var(--af-pink)}
+  .af-src{font-family:var(--mono);font-size:9.5px;color:var(--accent);margin-bottom:6px;word-break:break-all}
+  /* prompt renderer — headings, bullets, numbered steps, `code`, **bold**, {{vars}} */
+  .pv{font-family:var(--mono);font-size:11px;line-height:1.72;color:var(--ink-2)}
+  .pv-l{white-space:pre-wrap;word-break:break-word}
+  .pv-sp{height:.55em}
+  .pv-h1{font-size:11.5px;font-weight:700;color:var(--accent);letter-spacing:.05em;text-transform:uppercase;
+         margin:12px 0 5px;padding-bottom:4px;border-bottom:1px solid var(--rule)}
+  .pv-h2{font-size:11.5px;font-weight:700;color:var(--jv-key);margin:9px 0 4px;letter-spacing:.02em}
+  .pv-lbl{color:var(--ink);font-weight:600;margin-top:6px}
+  .pv-li{padding-left:14px;position:relative}
+  .pv-li::before{content:"\25AA";position:absolute;left:2px;top:0;color:var(--accent-dim)}
+  .pv-ol{padding-left:2px}
+  .pv-num{color:var(--jv-num);font-weight:700}
+  .pv-b{color:var(--ink);font-weight:700}
+  .pv-var{color:var(--jv-bool);font-weight:600}
+  .af{--jv-key:#c4b5fd;--jv-str:#7ee2a8;--jv-num:#f0b866;--jv-bool:#7fb3f0;--jv-null:#e08a9b;--jv-esc:#5b6474}
+  @media (prefers-color-scheme:light){.af{--jv-key:#6d28d9;--jv-str:#15803d;--jv-num:#b45309;--jv-bool:#1d4ed8;--jv-null:#b91c1c;--jv-esc:#9aa0ab}}
+  :root[data-theme="light"] .af{--jv-key:#6d28d9;--jv-str:#15803d;--jv-num:#b45309;--jv-bool:#1d4ed8;--jv-null:#b91c1c;--jv-esc:#9aa0ab}
+  :root[data-theme="dark"] .af{--jv-key:#c4b5fd;--jv-str:#7ee2a8;--jv-num:#f0b866;--jv-bool:#7fb3f0;--jv-null:#e08a9b;--jv-esc:#5b6474}
+  .jv{font-family:var(--mono);font-size:11px;line-height:1.75;color:var(--ink-2);word-break:break-word}
+  .jv-r{padding-left:15px;border-left:1px solid var(--rule-soft);margin-left:1px}
+  .jv-k{color:var(--jv-key);font-weight:600}
+  .jv-s{color:var(--jv-str);white-space:pre-wrap}
+  .jv-num{color:var(--jv-num)}.jv-bool{color:var(--jv-bool);font-weight:600}.jv-null{color:var(--jv-null);font-weight:600}
+  .jv-p{color:var(--ink-3)}
+  .jv-b{display:inline}
+  .jv-tg{width:13px;height:13px;padding:0;margin-right:3px;vertical-align:baseline;cursor:pointer;border:0;background:transparent;color:var(--ink-3);font-family:var(--mono);font-size:9px;line-height:13px}
+  .jv-tg::before{content:"\25B6";display:inline-block;transition:transform .15s ease}
+  .jv-b.open>.jv-tg::before{transform:rotate(90deg)}
+  .jv-tg:hover{color:var(--accent)}
+  .jv-b:not(.open)>.jv-kids{display:none}
+  .jv-b.open>.jv-sum{display:none}
+  .jv-sum{color:var(--ink-3);font-style:italic;padding:0 5px;cursor:default}
+  .af-ic{font-family:var(--mono);font-size:.85em;background:var(--ground-2,var(--panel-2));border:1px solid var(--rule-soft);border-radius:3px;padding:0 4px;color:var(--accent)}
+  .af-why{font-size:12.5px;color:var(--ink-2);margin:9px 0 0;line-height:1.55}
+  .af-why b{color:var(--ink)}
+  .af-empty{color:var(--ink-3);font-style:italic;font-family:var(--serif);font-size:13.5px;margin:0}
+  .af-final{margin-top:0;border:0 solid var(--rule);border-radius:9px;background:var(--panel);
+    overflow:hidden;opacity:0;display:grid;grid-template-rows:0fr;
+    transition:grid-template-rows .42s cubic-bezier(.4,0,.2,1),opacity .35s ease,margin-top .42s ease}
+  .af-final-w{min-height:0;overflow:hidden}
+  .af-final.af-on{margin-top:16px;border-width:1px;opacity:1;grid-template-rows:1fr}
+  .af-final-h{padding:9px 14px;border-bottom:1px solid var(--rule);background:linear-gradient(180deg,color-mix(in srgb,var(--ok) 12%,transparent),transparent);font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ok);font-weight:700}
+  .af-final-b{padding:14px}
+  .af-ans{font-size:14.5px;color:var(--ink);margin:0 0 13px;max-width:76ch;line-height:1.65}
+  .af-node{color:var(--af-cool);font-family:var(--mono);font-size:.9em}
+  @media (prefers-reduced-motion: reduce){.af *{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="eyebrow">ConvEngine · engine/mcp · one real question, walked step by step</div>
+    <h1>ConvEngine MCP in Action</h1>
+    <p class="thesis">
+      A user asks a plain-English database question. Watch it travel through ConvEngine's planner,
+      out over the real <b>Model Context Protocol</b> to an external <code>db-query-agent</code> Python
+      server, and back — with the actual prompts, the actual JSON-RPC wire traffic, and the actual
+      ConvEngine source running at each step.
+    </p>
+  </header>
+
+  <div class="box note">
+    <div class="bt">the scenario</div>
+    <p>An external MCP server called <b><code>db-query-agent</code></b> (Python, <code>STDIO</code> transport)
+    exposes one tool — <code>query_database</code> — that takes a natural-language question, translates it to SQL
+    itself, runs it, and returns rows. ConvEngine never writes SQL here; it just routes the question to the tool
+    and reads back the result. See <code>README.md</code> ("MCP Client") for the DDL/DML this demo assumes.</p>
+  </div>
+
+  <p class="lede"><b>Press play</b>, or <b>click any step</b> to jump to it. The right-hand panels show the real
+  prompt text ConvEngine sends, the JSON-RPC traffic to the MCP server, and the actual ConvEngine source behind
+  each step.</p>
+
+  <div class="af">
+    <div class="af-spec">
+      <div class="af-spec-h">ce_agent_tool row that makes this legal — the one row people forget</div>
+      <pre><span class="af-k">tool_code</span> = <span class="af-v">'mcp.db-query-agent.query_database'</span>
+<span class="af-k">tool_group</span> = <span class="af-v">'MCP_SERVER'</span>
+<span class="af-k">intent_code</span> = <span class="af-v">'DB_QUERY_NLP'</span>,  <span class="af-k">state_code</span> = <span class="af-v">'ANALYZE'</span>,  <span class="af-k">enabled</span> = <span class="af-v">true</span>
+<span class="af-c"># without this row, AgentToolRegistry.requireTool() throws even though the planner already offered the tool</span></pre>
+    </div>
+    <div class="af-ctl">
+      <button class="af-pri" id="afPlay">&#9654; Play</button>
+      <button id="afStep">Step &#9656;</button>
+      <button id="afReset">&#8634; Reset</button>
+      <span class="af-n" id="afCount">step 0 / 12</span>
+    </div>
+    <p class="af-hint">&#9432; every step is clickable — panels on the right update to match</p>
+    <div class="af-rail"><div class="af-fill" id="afRail"></div></div>
+    <div class="af-grid">
+      <ol class="af-pipe" id="afPipe"></ol>
+      <div class="af-side">
+        <div class="af-pan af-open" id="afP1">
+          <div class="af-pan-h" role="button" tabindex="0" data-pan="1"><span class="af-cv"></span><span>1 &middot; Planner / MCP wire traffic</span><span class="af-hl" id="afLabel">&mdash;</span></div>
+          <div class="af-pan-wrap"><div class="af-pan-in">
+            <div class="af-tabs" id="afTabs"></div>
+            <div class="af-tabb" id="afTabBody"><p class="af-empty">Press Play, or click any step.</p></div>
+          </div></div>
+        </div>
+        <div class="af-pan af-open" id="afP2">
+          <div class="af-pan-h" role="button" tabindex="0" data-pan="2"><span class="af-cv"></span><span>2 &middot; What's happening</span><span class="af-hl">explain</span></div>
+          <div class="af-pan-wrap"><div class="af-pan-in">
+            <div class="af-tabb" id="afExplain"><p class="af-empty">Click a step to see why it matters.</p></div>
+          </div></div>
+        </div>
+        <div class="af-pan" id="afP3">
+          <div class="af-pan-h" role="button" tabindex="0" data-pan="3"><span class="af-cv"></span><span>3 &middot; ConvEngine source</span><span class="af-hl">verbatim</span></div>
+          <div class="af-pan-wrap"><div class="af-pan-in">
+            <div class="af-tabb" id="afCode"><p class="af-empty">The actual source behind each step appears here.</p></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+    <div class="af-final" id="afFinal">
+      <div class="af-final-w">
+        <div class="af-final-h">&#10003; Converged &mdash; final answer</div>
+        <div class="af-final-b">
+          <p class="af-ans" id="afAns"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box verify">
+    <div class="bt">try it for real</div>
+    <p>1) Register the server: <code>POST /api/v1/mcp/servers</code> with <code>{"id":"db-query-agent","transport":"STDIO","command":"python","args":["-m","db_query_agent"]}</code>.
+    2) Confirm the tool name: <code>GET /api/v1/mcp/servers/db-query-agent/tools</code>.
+    3) Insert the <code>ce_agent_tool</code> row above (swap in the real tool name).
+    4) Ask ConvEngine a question that matches your <code>ce_intent_classifier</code> pattern for <code>DB_QUERY_NLP</code>.</p>
+  </div>
+
+  <footer>
+    <b>ConvEngine</b> · engine/mcp · McpRegistry / McpClient / McpServerToolExecutor · db-query-agent is an
+    illustrative external MCP server, not shipped with ConvEngine.
+  </footer>
+</div>
+
+<script>
+var STEPS = [
+  {
+    t:"User asks a question", tag:["USER","cool"],
+    d:"“How many disconnect requests are still open?” arrives as a normal ConvEngine turn — no special MCP framing on the caller's side.",
+    src:"ConversationController.message() — POST /api/v1/conversation/message",
+    code:"POST /api/v1/conversation/message\n{\n  \"conversationId\": null,\n  \"message\": \"How many disconnect requests are still open?\"\n}",
+    x:"From the caller's point of view this is an ordinary conversation turn. Nothing here mentions MCP, db-query-agent, or SQL — that's all resolved deeper in the pipeline.",
+    usr:'// what the caller actually sent\n{"conversationId":null,"message":"How many disconnect requests are still open?"}',
+    label:"turn received"
+  },
+  {
+    t:"Intent classification", tag:["CLASSIFY","f"],
+    d:"IntentResolutionStep calls CompositeIntentResolver, which always tries the deterministic ClassifierIntentResolver first — an LLM only gets involved if that comes back empty.",
+    src:"intent/ClassifierIntentResolver.java — resolve() + matches()",
+    code:"// every enabled ce_intent_classifier row is checked against the message\nfor (CeIntentClassifier ic : classifiers) {\n    if (matches(ic.getRuleType(), ic.getPattern(), userText)) {\n        matchedIntents.add(ic.getIntentCode());\n    }\n}\n\nprivate boolean matches(String type, String pattern, String text) {\n    return switch (type.trim().toUpperCase()) {\n        case \"REGEX\"       -> Pattern.compile(pattern, CASE_INSENSITIVE).matcher(text).find();\n        case \"CONTAINS\"    -> text.toLowerCase().contains(pattern.toLowerCase());\n        case \"STARTS_WITH\" -> text.toLowerCase().startsWith(pattern.toLowerCase());\n        default -> false;\n    };\n}\n\n// exactly 1 match -> resolved, state comes from that row.\n// 2+ matches       -> INTENT_CLASSIFIER_COLLISION audit, returns null,\n//                      CompositeIntentResolver falls through to AgentIntentResolver.\n// 0 matches         -> INTENT_CLASSIFIER_NO_MATCH audit, same fallback.",
+    x:"Three rule_type values are supported: REGEX (compiled case-insensitive, .find() not .matches()), CONTAINS, and STARTS_WITH. If more than one ce_intent_classifier row matches, that's a collision — ClassifierIntentResolver returns null on purpose rather than guessing, and CompositeIntentResolver hands the turn to the LLM-based AgentIntentResolver instead (confidence-scored, with its own collision-gap threshold). This example's pattern matches exactly once, so the deterministic path wins — no LLM call happens for classification at all.",
+    tools:'// every ce_intent_classifier row checked this turn\n[\n  {"classifierId":41,"intentCode":"DB_QUERY_NLP","ruleType":"REGEX","pattern":"(?i)\\\\b(how many|show me|list|count|records?|open)\\\\b"}\n]',
+    resp:'{"matchedIntents":["DB_QUERY_NLP"],"source":"CLASSIFIER","resolvedState":"UNKNOWN"}',
+    label:"→ DB_QUERY_NLP / UNKNOWN"
+  },
+  {
+    t:"Rule bootstraps the state", tag:["RULE","f"],
+    d:"A POST_AGENT_INTENT rule moves the conversation from UNKNOWN into ANALYZE, where the planner and its tools are scoped.",
+    src:"ce_rule + RulesStep",
+    code:"-- ce_rule row\nphase='POST_AGENT_INTENT', intent_code='DB_QUERY_NLP', state_code='UNKNOWN',\nrule_type='REGEX', match_pattern='.*', action='SET_STATE', action_value='ANALYZE'",
+    x:"Every state transition in ConvEngine is a declared rule row, not a code branch — this is what makes the flow auditable.",
+    label:"UNKNOWN → ANALYZE"
+  },
+  {
+    t:"Planner builds its prompt", tag:["PLAN","cool"],
+    d:"AgentPlanner.plan() merges the ce_agent_tool rows scoped to (DB_QUERY_NLP, ANALYZE) with McpRegistry.discoveredTools() — the MCP tool needs zero ce_agent_tool row to appear here.",
+    src:"engine/agent/AgentPlanner.java — plan()",
+    code:"List<ToolView> toolViews = new ArrayList<>(plannerTools.stream()\n    .map(t -> new ToolView(t.getToolCode(), t.getToolGroup(), t.getDescription())).toList());\n\nif (mcpRegistry != null) {\n    for (McpDiscoveredTool dt : mcpRegistry.discoveredTools()) {\n        toolViews.add(new ToolView(dt.toolCode(), AgentConstants.TOOL_GROUP_MCP_SERVER, dt.description()));\n    }\n}",
+    x:"discoveredTools() is live — it reflects whatever db-query-agent's own tools/list manifest says right now, not a cached config row.",
+    sys:"You are a planning agent for natural-language database queries.\nYou have exactly one tool: mcp.db-query-agent.query_database — it takes the user's question and runs it against the database, returning rows/results.\nCall it once with the user's standalone question as the argument. Never invent data.\nReturn JSON only.",
+    tools:'[\n  {"tool_code":"mcp.db-query-agent.query_database","tool_group":"MCP_SERVER","description":"Tool \'query_database\' on MCP server \'db-query-agent\'"}\n]',
+    label:"1 tool offered"
+  },
+  {
+    t:"LLM decides: CALL_TOOL", tag:["LLM","ok"],
+    d:"The planner LLM returns strict JSON choosing the MCP tool and passing the user's question straight through as its argument.",
+    src:"AgentPlanner.plan() — LLM response",
+    code:"{\n  \"action\": \"CALL_TOOL\",\n  \"tool_code\": \"mcp.db-query-agent.query_database\",\n  \"args\": { \"question\": \"How many disconnect requests are still open?\" }\n}",
+    x:"tool_code exactly matches the synthesized mcp.<serverId>.<toolName> format — this string is the only thing that has to line up across the LLM's choice, the ce_agent_tool row, and the live MCP manifest.",
+    resp:'{\n  "action": "CALL_TOOL",\n  "tool_code": "mcp.db-query-agent.query_database",\n  "args": {"question": "How many disconnect requests are still open?"}\n}',
+    label:"CALL_TOOL"
+  },
+  {
+    t:"ce_agent_tool row is required", tag:["GUARD","pink"],
+    d:"AgentToolStep looks up the tool_code via AgentToolRegistry.requireTool() — this is where a missing DB row would throw, even though the LLM already picked a real, live tool.",
+    src:"engine/agent/AgentToolRegistry.java — requireTool()",
+    code:"public CeAgentTool requireTool(String toolCode, String intentCode, String stateCode) {\n    return staticCacheService.findMcpTool(toolCode, intentCode, stateCode)\n        .orElseThrow(() -> new IllegalStateException(\n            \"Missing enabled Agent tool for current intent/state: \" + toolCode));\n}",
+    x:"Discovery (seeing the tool) and authorization (being allowed to call it for this intent/state) are deliberately two separate gates — this is the gotcha from the README.",
+    label:"row found ✓"
+  },
+  {
+    t:"McpServerToolExecutor routes it", tag:["EXEC","f"],
+    d:"Tool group MCP_SERVER hands off to McpServerToolExecutor, which parses the synthesized tool_code back into a server id + tool name.",
+    src:"engine/agent/executor/McpServerToolExecutor.java — execute()",
+    code:"String serverId = McpDiscoveredTool.extractServerId(toolCode);   // \"db-query-agent\"\nString toolName = McpDiscoveredTool.extractToolName(toolCode);   // \"query_database\"\n\nJsonNode result = mcpRegistry.callTool(serverId, toolName, argsNode);\nreturn mapper.writeValueAsString(result);",
+    x:"This class is the only bridge between ConvEngine's internal Agent tool executor pattern and the real MCP client — everything past this point speaks actual JSON-RPC.",
+    label:"→ McpRegistry.callTool()"
+  },
+  {
+    t:"McpRegistry finds/starts the client", tag:["MCP","cool"],
+    d:"The stdio subprocess for db-query-agent is spawned on first use (or reused if already alive), then McpClient sends a JSON-RPC 2.0 tools/call.",
+    src:"engine/mcp/McpRegistry.java — client() / McpClient.callTool()",
+    code:"McpClient c = clients.computeIfAbsent(id, key -> {\n    McpServerConfig cfg = configs.get(key);\n    McpTransport transport = buildTransport(cfg);     // StdioMcpTransport: python -m db_query_agent\n    McpClient client = new McpClient(transport, mapper);\n    client.initialize();                              // JSON-RPC handshake\n    return client;\n});\nreturn client.callTool(toolName, arguments);",
+    x:"The subprocess is reused across calls — it isn't re-spawned per request, and McpRegistry auto-respawns it if the process dies mid-session.",
+    label:"stdio: python -m db_query_agent"
+  },
+  {
+    t:"JSON-RPC over stdin/stdout", tag:["WIRE","pink"],
+    d:"The actual line-delimited JSON-RPC request that goes to the Python process's stdin, and the response read back from stdout.",
+    src:"engine/mcp/StdioMcpTransport.java + McpClient.java",
+    code:"# ConvEngine → db-query-agent (stdin, one line)\n{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\n 4 \"params\":{\"name\":\"query_database\",\n            \"arguments\":{\"question\":\"How many disconnect requests are still open?\"}}}",
+    x:"This is the real Model Context Protocol — the same wire format any MCP-compliant client or server speaks, not something ConvEngine-specific.",
+    usr:'{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query_database","arguments":{"question":"How many disconnect requests are still open?"}}}',
+    resp:'{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"{\\"open_count\\": 42, \\"as_of\\": \\"2026-07-28T00:41:00Z\\"}"}]}}',
+    label:"stdout: result"
+  },
+  {
+    t:"Result becomes an observation", tag:["OBSERVE","f"],
+    d:"The tool's JSON result is recorded as an AgentObservation and fed back into the next planner call — the loop continues.",
+    src:"engine/steps/AgentToolStep.java",
+    code:"observations.add(new AgentObservation(toolCode, rowsJson));\nverbosePublisher.publish(session, \"AgentToolStep\", \"AGENT_TOOL_RESULT\", ...);\n// planner is invoked again, now with this observation in agent_observations",
+    x:"Every tool call — internal or MCP — becomes an observation the same way, so the planner's ANSWER step can't tell the difference.",
+    label:"observation recorded"
+  },
+  {
+    t:"LLM answers, state completes", tag:["ANSWER","ok"],
+    d:"With the observation available, the planner returns ANSWER. A POST_AGENT_TOOL rule then moves DB_QUERY_NLP from ANALYZE to COMPLETED.",
+    src:"AgentPlanner.plan() + ce_rule (POST_AGENT_TOOL)",
+    code:"-- ce_rule row\nphase='POST_AGENT_TOOL', intent_code='DB_QUERY_NLP', state_code='ANALYZE',\nrule_type='JSON_PATH',\nmatch_pattern=\"$[?(@.context.mcp.finalAnswer != null)]\",\naction='SET_STATE', action_value='COMPLETED'",
+    resp:'{\n  "action": "ANSWER",\n  "answer": "There are 42 disconnect requests currently open (as of 00:41 UTC)."\n}',
+    x:"Same convergence pattern ConvEngine already uses for internal tool chains — nothing MCP-specific about how the loop ends.",
+    label:"ANALYZE → COMPLETED"
+  },
+  {
+    t:"Response rendered to the user", tag:["DONE","ok"],
+    d:"ce_response (DB_QUERY_NLP, COMPLETED) formats the final answer and it's returned to the caller.",
+    src:"ce_response (DB row) + ResponseStep",
+    code:"-- ce_response row\nintent_code='DB_QUERY_NLP', state_code='COMPLETED', output_format='TEXT',\nderivation_hint='Use context.mcp.finalAnswer as the final answer. Format tabular results as a Markdown table.'",
+    x:"The whole trip — user question → intent → planner → MCP wire call → observation → answer → response — took one conversation turn.",
+    label:"turn complete"
+  }
+];
+
+(function(){
+  var pipe=document.getElementById("afPipe"); if(!pipe) return;
+  var tabsEl=document.getElementById("afTabs"), bodyEl=document.getElementById("afTabBody"),
+      codeEl=document.getElementById("afCode"), explainEl=document.getElementById("afExplain"),
+      lab=document.getElementById("afLabel"), rail=document.getElementById("afRail"),
+      cnt=document.getElementById("afCount"), fin=document.getElementById("afFinal"),
+      ans=document.getElementById("afAns"), play=document.getElementById("afPlay");
+
+  function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+  var HLSRC=("(#[^\\n]*|//[^\\n]*)"
+   +"|(TQ2[\\s\\S]*?TQ2|TQ1[\\s\\S]*?TQ1|\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*')(\\s*:)?"
+   +"|(@[A-Za-z_][\\w.]*)"
+   +"|\\b(null|true|false|None|True|False)\\b"
+   +"|\\b(public|private|protected|static|final|void|new|return|if|else|for|while|try|catch|finally|throws|class|interface|record|import|package|this|extends|implements|synchronized)\\b"
+   +"|\\b(\\d+(?:\\.\\d+)?)\\b"
+   +"|\\b([A-Za-z_]\\w*)(?=\\()")
+   .replace(/TQ2/g, String.fromCharCode(34,34,34)).replace(/TQ1/g, String.fromCharCode(39,39,39));
+  var HLRE=new RegExp(HLSRC,"g");
+  function hl(src){
+    var out="",last=0,m; HLRE.lastIndex=0;
+    while((m=HLRE.exec(src))){
+      out+=esc(src.slice(last,m.index));
+      if(m[1])      out+='<span class="hc">'+esc(m[1])+'</span>';
+      else if(m[2]) out+='<span class="'+(m[3]?"hk":"hs")+'">'+esc(m[2])+'</span>'+(m[3]?esc(m[3]):"");
+      else if(m[4]) out+='<span class="hd">'+esc(m[4])+'</span>';
+      else if(m[5]) out+='<span class="hd">'+esc(m[5])+'</span>';
+      else if(m[6]) out+='<span class="hk">'+esc(m[6])+'</span>';
+      else if(m[7]) out+='<span class="hn">'+esc(m[7])+'</span>';
+      else          out+='<span class="hf">'+esc(m[8])+'</span>';
+      last=HLRE.lastIndex;
+    }
+    return out+esc(src.slice(last));
+  }
+
+  function jvVal(v,depth){
+    if(v===null)             return '<span class="jv-null">null</span>';
+    if(typeof v==="boolean") return '<span class="jv-bool">'+v+'</span>';
+    if(typeof v==="number")  return '<span class="jv-num">'+v+'</span>';
+    if(typeof v==="string")  return '<span class="jv-s">"'+esc(v)+'"</span>';
+    if(Array.isArray(v))     return jvBlock(v,depth,true);
+    if(typeof v==="object")  return jvBlock(v,depth,false);
+    return esc(String(v));
+  }
+  function jvBlock(v,depth,isArr){
+    var open=isArr?"[":"{", close=isArr?"]":"}";
+    var ks=isArr?null:Object.keys(v), n=isArr?v.length:ks.length;
+    if(!n) return '<span class="jv-p">'+open+close+'</span>';
+    var rows=[];
+    for(var i=0;i<n;i++){
+      var val=isArr?v[i]:v[ks[i]];
+      rows.push('<div class="jv-r">'+
+        (isArr?"":'<span class="jv-k">"'+esc(ks[i])+'"</span><span class="jv-p">: </span>')+
+        jvVal(val,depth+1)+(i<n-1?'<span class="jv-p">,</span>':'')+'</div>');
+    }
+    var sum=isArr?(n+(n===1?" item":" items")):(n+(n===1?" key":" keys"));
+    return '<span class="jv-b'+(depth<2?" open":"")+'">'+
+      '<button class="jv-tg" type="button" aria-label="collapse"></button>'+
+      '<span class="jv-p">'+open+'</span>'+
+      '<span class="jv-sum">'+sum+'</span>'+
+      '<div class="jv-kids">'+rows.join("")+'</div>'+
+      '<span class="jv-p jv-cl">'+close+'</span></span>';
+  }
+  /* prompt renderer: headings, bullets, numbered steps, `code`, **bold**
+     and {{template_vars}} — System/User prompts are not JSON and used to
+     fall through to a flat grey <pre>. NS9 parity. */
+  function pvInline(s){
+    return esc(s)
+      .replace(/`([^`]+)`/g,'<code class="af-ic">$1</code>')
+      .replace(/\{\{([^}]+)\}\}/g,'<span class="pv-var">{{$1}}</span>')
+      .replace(/\*\*([^*]+)\*\*/g,'<span class="pv-b">$1</span>');
+  }
+  function promptView(src){
+    var out=String(src).split("\n").map(function(ln){
+      var ind=(ln.match(/^ */)||[""])[0].length, t=ln.trim();
+      if(!t) return '<div class="pv-l pv-sp"></div>';
+      var cls="pv-l", body=t, pre="", m;
+      if(/^##\s+/.test(t))        { cls+=" pv-h2"; body=t.replace(/^##\s+/,""); }
+      else if(/^#\s+/.test(t))    { cls+=" pv-h1"; body=t.replace(/^#\s+/,""); }
+      else if(/^[-*]\s+/.test(t)) { cls+=" pv-li"; body=t.replace(/^[-*]\s+/,""); }
+      else if((m=t.match(/^(\d+[.)])\s+/))){ cls+=" pv-ol";
+                                     pre='<span class="pv-num">'+esc(m[1])+'</span> ';
+                                     body=t.slice(m[0].length); }
+      else if(ind===0 && /^[A-Z][^.!?]*:$/.test(t) && t.length<48){ cls+=" pv-lbl"; }
+      return '<div class="'+cls+'" style="margin-left:'+(ind*5.4)+'px">'+pre+pvInline(body)+'</div>';
+    }).join("");
+    return '<div class="pv">'+out+'</div>';
+  }
+  function renderPanelValue(src){
+    if(src===null || src===undefined || String(src).trim()==="") {
+      return '<p class="af-empty">(nothing yet)</p>';
+    }
+    var t=String(src).trim();
+    if(t[0]==="{"||t[0]==="["){
+      try{ return '<div class="jv">'+jvVal(JSON.parse(t),0)+"</div>"; }catch(e){}
+    }
+    if(/^\s*\/\//.test(t)){                       // // comment then JSON payload
+      var lines=String(src).split("\n"), c=[];
+      while(lines.length && (/^\s*\/\//.test(lines[0]) || !lines[0].trim())) c.push(lines.shift());
+      var rest=lines.join("\n").trim();
+      if(rest && (rest[0]==="{"||rest[0]==="[")){
+        try{
+          return '<div class="jv-c">'+esc(c.join("\n").trim())+'</div>'+
+                 '<div class="jv">'+jvVal(JSON.parse(rest),0)+"</div>";
+        }catch(e){}
+      }
+    }
+    return promptView(src);                        // colourful, not flat grey
+  }
+  document.addEventListener("click",function(e){
+    var b=e.target.closest&&e.target.closest(".jv-tg"); if(!b) return;
+    b.parentNode.classList.toggle("open");
+  });
+  document.addEventListener("click",function(e){
+    var h=e.target.closest&&e.target.closest(".af-pan-h"); if(!h) return;
+    h.closest(".af-pan").classList.toggle("af-col");
+  });
+
+  var idx=-1, timer=null, activeTab=null;
+
+  var lis=STEPS.map(function(s,i){
+    var li=document.createElement("li");
+    li.className="af-stg"; li.tabIndex=0;
+    li.innerHTML='<div class="af-dot">'+(i+1)+'</div>'+
+      '<div class="af-card"><div class="af-t">'+esc(s.t)+
+      '<span class="af-tag '+s.tag[1]+'">'+esc(s.tag[0])+'</span></div>'+
+      '<div class="af-d">'+esc(s.d)+'</div></div>';
+    li.addEventListener("click",function(){ stop(); go(i); });
+    li.addEventListener("keydown",function(e){ if(e.key==="Enter"||e.key===" "){e.preventDefault();stop();go(i);} });
+    pipe.appendChild(li);
+    return li;
+  });
+
+  function tabsFor(s){
+    // Always all four tabs, ditto NS9 style — empty ones render a
+    // "(nothing yet)" placeholder instead of disappearing, so the tab bar
+    // never jumps around as you step through.
+    return [
+      ["System", s.sys || null],
+      ["User", s.usr || null],
+      ["Tools", s.tools || null],
+      ["Response", s.resp || null]
+    ];
+  }
+
+  function paintTabs(s){
+    var tabs=tabsFor(s);
+    tabsEl.innerHTML="";
+    if(!activeTab || !tabs.some(function(t){return t[0]===activeTab;})) activeTab=tabs[0][0];
+    tabs.forEach(function(t){
+      var b=document.createElement("button");
+      b.className="af-tab"+(t[0]===activeTab?" on":"")+(t[1]?" af-has":"");
+      b.textContent=t[0];
+      b.addEventListener("click",function(){ activeTab=t[0]; paintTabs(s); });
+      tabsEl.appendChild(b);
+    });
+    var cur=tabs.filter(function(t){return t[0]===activeTab;})[0]||tabs[0];
+    bodyEl.innerHTML=renderPanelValue(cur[1]);
+  }
+
+  function render(){
+    lis.forEach(function(li,i){
+      li.classList.toggle("af-seen", i<=idx);
+      li.classList.toggle("af-act", i===idx);
+    });
+    rail.style.width = (idx<0?0:((idx+1)/STEPS.length*100))+"%";
+    cnt.textContent = "step "+(idx+1<0?0:idx+1)+" / "+STEPS.length;
+    if(idx<0){
+      lab.textContent="—"; tabsEl.innerHTML="";
+      bodyEl.innerHTML='<p class="af-empty">Press Play, or click any step.</p>';
+      explainEl.innerHTML='<p class="af-empty">Click a step to see why it matters.</p>';
+      codeEl.innerHTML='<p class="af-empty">The actual source behind each step appears here.</p>';
+      fin.classList.remove("af-on");
+      return;
+    }
+    var s=STEPS[idx];
+    lab.textContent=s.label||"";
+    paintTabs(s);
+    explainEl.innerHTML='<p class="af-why"><b>'+esc(s.t)+'.</b> '+esc(s.x)+'</p>';
+    codeEl.innerHTML='<div class="af-src">'+esc(s.src)+'</div><pre class="af-code">'+hl(s.code)+'</pre>';
+    var answerStep=-1, answerText=null;
+    for(var k=0;k<=idx;k++){
+      if(!STEPS[k].resp) continue;
+      try{
+        var r=JSON.parse(STEPS[k].resp);
+        if(r.answer){ answerStep=k; answerText=r.answer; }
+      }catch(e){}
+    }
+    if(answerStep>=0){
+      ans.textContent=answerText; fin.classList.add("af-on");
+    } else {
+      fin.classList.remove("af-on");
+    }
+    li_scrollIntoView(idx);
+  }
+  function li_scrollIntoView(i){
+    var li=lis[i]; if(!li) return;
+    var r=li.getBoundingClientRect();
+    if(r.top<80 || r.bottom>window.innerHeight-40){
+      li.scrollIntoView({block:"center",behavior:"smooth"});
+    }
+  }
+
+  function go(i){ idx=Math.max(-1,Math.min(STEPS.length-1,i)); activeTab=null; render(); }
+  function adv(){ if(idx>=STEPS.length-1){ stop(); return; } go(idx+1); }
+  function start(){ if(timer) return; play.innerHTML="&#10074;&#10074; Pause"; timer=setInterval(adv,2400); }
+  function stop(){ clearInterval(timer); timer=null; play.innerHTML="&#9654; Play"; }
+  function reset(){ stop(); idx=-1; activeTab=null; render(); }
+
+  play.addEventListener("click",function(){ timer?stop():start(); });
+  document.getElementById("afStep").addEventListener("click",function(){ stop(); adv(); });
+  document.getElementById("afReset").addEventListener("click",reset);
+  reset();
+})();
+</script>

@@ -78,7 +78,7 @@ It is designed for auditable state machines, not free-form assistant behavior. R
   - `postgres.query`
 - **DB tool execution contract**:
   - Java `DbToolHandler` implementations are preferred (`PostgresQueryToolHandler` and semantic handlers).
-  - `ce_mcp_db_tool` remains required only for SQL-template fallback tools (`McpDbExecutor` path).
+  - `ce_agent_db_tool` remains required only for SQL-template fallback tools (`McpDbExecutor` path).
 - **Read-only SQL guardrail hardening**: `McpSqlGuardrail` blocks non-read-only/multi-statement SQL while allowing safe single-statement SELECT/WITH usage.
 - **SQL observability**: dynamic SQL execution emits richer audit/verbose payloads (SQL, params, row_count, rows preview, error metadata).
 - **MCP execution telemetry flags**:
@@ -183,6 +183,82 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - `GET /api/v1/db/inspect-schema`
 - `POST /api/v1/db/agent`
 
+## MCP Client (External Servers)
+
+This is the real Model Context Protocol (MCP) client — it lets ConvEngine connect to external, third-party MCP servers (e.g. a Python or Node process implementing the MCP spec) and pulls their `tools/list` manifest into the planner's available-tool set at runtime. It lives under `engine/mcp` (`McpRegistry`, `McpClient`, `McpTransport` + its three implementations, `McpController`).
+
+This is a different mechanism from the internal Agent tool executor pattern (`ce_agent_tool` rows with `tool_group` values like `HTTP_API` or `DB`, executed by an `AgentToolExecutor` implementation such as `HttpApiToolExecutor`/`DbToolExecutor`). Internal tools are fully config-driven and require no external process. MCP client tools are discovered live from a connected server's own manifest and executed by proxying `tools/call` to that server.
+
+### Server config persistence: always DB-backed
+
+`McpRegistry` persists registered servers to `ce_mcp_server` via `McpServerRepository` — a required dependency, not an optional fallback. There is no local-file persistence (no `~/.convengine/mcp-servers.json`); a per-pod file would be invisible to every other replica in a horizontally-scaled deployment (AKS, k8s, etc.), so it can't be the source of truth.
+
+The `ce_mcp_server` table (bundled in `ddl.sql`/`ddl_postgres.sql`, or as a standalone additive migration for existing databases) must exist for this feature to work — `McpRegistry` fails a given read/write with a clear error if it doesn't, but won't crash the rest of the app on startup. A background refresh (every 30s) reloads configs from the table so a server registered on one replica is picked up by the others within one cycle, without any pod-to-pod communication.
+
+### Transports
+
+`McpServerConfig.transport` selects one of:
+
+| Transport | Fields used | Notes |
+|---|---|---|
+| `STDIO` | `command`, `args`, `env` | Spawns a subprocess and exchanges line-delimited JSON-RPC on stdin/stdout. Good for local servers installed via `npx`/`uvx`/a script. |
+| `HTTP` | `url`, `headers` | JSON-RPC 2.0 over HTTP POST. The server must return a plain JSON body (not an SSE stream). Session affinity is kept via the `Mcp-Session-Id` response header. |
+| `SSE` | `url`, `headers` | Opens `GET .../sse`, reads the server's `endpoint` event for the POST URL, then POSTs JSON-RPC requests and receives responses back over the open SSE stream. |
+
+### REST API
+
+Base path: `/api/v1/mcp`
+
+- `GET /servers` — list configured servers.
+- `POST /servers` — add or update a server. Body is a `McpServerConfig`:
+  ```json
+  {
+    "id": "weather-srv",
+    "name": "Weather MCP",
+    "transport": "STDIO",
+    "command": "uvx",
+    "args": ["weather-mcp-server"],
+    "env": { "API_KEY": "..." }
+  }
+  ```
+  (For `HTTP`/`SSE`, use `"url"` and optionally `"headers"` instead of `command`/`args`/`env`.)
+- `DELETE /servers/{id}` — remove a server (closes its live connection if any).
+- `GET /servers/{id}/tools` — list the server's cached tool manifest. Pass `?refresh=true` to force a fresh `tools/list` call.
+- `POST /servers/{id}/tools/{tool}/call` — invoke a tool directly:
+  ```json
+  { "arguments": { "city": "Seattle" } }
+  ```
+
+All errors come back as HTTP 400 with `{ "error": "..." }`.
+
+### tool_code format and the ce_agent_tool gotcha
+
+Every tool discovered from a connected server is synthesized into a `tool_code` of the form:
+
+```
+mcp.<serverId>.<toolName>
+```
+
+`AgentPlanner` automatically merges `McpRegistry.discoveredTools()` into the tools it shows the LLM — so a newly registered server's tools appear in the planner's prompt with no extra configuration.
+
+**Important:** that automatic discovery only affects what the planner *sees*. To actually *execute* one of these tools, `AgentToolRegistry.requireTool(...)` still requires a matching row in `ce_agent_tool` with `tool_group = 'MCP_SERVER'`, `enabled = true`, and the right `intent_code`/`state_code` — otherwise execution fails with `IllegalStateException` even though the tool was offered to the LLM. Always add the `ce_agent_tool` row when wiring up a new MCP server tool for a given intent/state.
+
+### Minimal end-to-end example
+
+1. Register a server:
+   ```bash
+   curl -X POST http://localhost:8080/api/v1/mcp/servers \
+     -H "Content-Type: application/json" \
+     -d '{"id":"weather-srv","name":"Weather MCP","transport":"STDIO","command":"uvx","args":["weather-mcp-server"]}'
+   ```
+2. The planner now sees `mcp.weather-srv.get_forecast` (or whatever tools the server exposes) in its available-tools list automatically.
+3. Add the enabling row so execution is allowed for a given intent/state:
+   ```sql
+   INSERT INTO ce_agent_tool (tool_code, tool_group, intent_code, state_code, enabled, description)
+   VALUES ('mcp.weather-srv.get_forecast', 'MCP_SERVER', 'WEATHER_LOOKUP', 'ANY', true, 'Get a weather forecast');
+   ```
+4. Done — the planner can now both discover and execute the tool for that intent/state.
+
 ## Runtime Step Pipeline
 
 Step order is DAG-resolved from annotations (`@MustRunAfter`, `@MustRunBefore`, `@RequiresConversationPersisted`) and validated at startup.
@@ -218,9 +294,10 @@ Main runtime stages:
 - `ce_response`
 - `ce_rule`
 - `ce_policy`
-- `ce_mcp_tool`
-- `ce_mcp_planner`
-- `ce_mcp_db_tool`
+- `ce_agent_tool`
+- `ce_agent_planner`
+- `ce_agent_db_tool`
+- `ce_mcp_server`
 - `ce_verbose`
 - `ce_pending_action`
 

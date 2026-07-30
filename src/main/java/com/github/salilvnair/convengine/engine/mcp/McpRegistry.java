@@ -1,17 +1,16 @@
 package com.github.salilvnair.convengine.engine.mcp;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.github.salilvnair.convengine.entity.CeMcpServer;
+import com.github.salilvnair.convengine.repo.McpServerRepository;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -19,48 +18,79 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Owns the lifecycle of MCP connections used by the Builder Studio.
+ * Owns the lifecycle of MCP connections.
+ *
+ * Server configs are always DB-backed ({@code ce_mcp_server}, via
+ * {@link McpServerRepository}) — there is no local-file fallback. This is
+ * deliberate: a file under a pod's home directory (as earlier revisions of
+ * this class used, {@code ~/.convengine/mcp-servers.json}) is invisible to
+ * every other replica in a horizontally-scaled deployment (AKS, k8s, etc.),
+ * so it can't be the source of truth. The {@code ce_mcp_server} table can.
  *
  * Responsibilities:
- *   1. Persist server configs across JVM restarts in
- *      {@code ~/.convengine/mcp-servers.json} (human-editable JSON array).
+ *   1. Load configs from {@code ce_mcp_server} at startup, and write through
+ *      to it on every upsert/remove.
  *   2. Lazily spawn/connect an {@link McpClient} the first time a server is
  *      accessed; cache it so subsequent tool calls reuse the same process /
  *      HTTP session.
  *   3. Cache the latest {@code tools/list} result per server so the UI
  *      dropdown is instant; {@link #refresh(String)} forces a re-query.
- *   4. Close all live connections on shutdown (triggered by
+ *   4. Periodically reload configs from the DB (every {@value
+ *      #DB_REFRESH_INTERVAL_SECONDS}s) so a server registered/edited/removed
+ *      on one replica is picked up by the others within one refresh cycle,
+ *      without any direct pod-to-pod communication.
+ *   5. Close all live connections on shutdown (triggered by
  *      {@link PreDestroy}).
  *
- * Everything here is stored in memory keyed by {@link McpServerConfig}'s id.
- * We intentionally don't use a database — MCP server configs are tiny and
- * rarely change.
+ * Requires the {@code ce_mcp_server} table to exist (see {@code ddl.sql} /
+ * {@code ddl_postgres.sql}, or the standalone additive migration for
+ * existing databases). Startup does not hard-fail if the table is missing —
+ * it logs an error and starts with zero configs so the rest of the app can
+ * still boot — but registering/listing/calling MCP servers won't work until
+ * the table is created.
  */
 @Slf4j
 @Service
 public class McpRegistry {
 
-    private static final Path STORE_PATH =
-            Paths.get(System.getProperty("user.home"), ".convengine", "mcp-servers.json");
+    private static final long DB_REFRESH_INTERVAL_SECONDS = 30;
 
-    /** Persistence mapper — indented for human-readable file. */
+    /** JSON-RPC is single-line newline-delimited — indentation would break
+     *  Python's mcp.server.stdio parser, so this is always a non-indented
+     *  copy regardless of how the Spring-managed mapper is configured. */
     private final ObjectMapper mapper;
-    /** Transport mapper — no indentation, JSON-RPC is single-line newline-delimited. */
-    private final ObjectMapper transportMapper;
+    private final McpServerRepository serverRepository;
+
     private final Map<String, McpServerConfig> configs = new ConcurrentHashMap<>();
     private final Map<String, McpClient> clients = new ConcurrentHashMap<>();
     private final Map<String, List<JsonNode>> toolCache = new ConcurrentHashMap<>();
 
-    public McpRegistry(ObjectMapper mapper) {
-        // Reuse the Spring-managed mapper but enable indentation for the
-        // persisted file so users can edit it by hand.
-        this.mapper = mapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
-        // Transport mapper — no pretty-print. stdio transport sends one JSON
-        // object per line; indentation breaks Python's mcp.server.stdio parser.
-        this.transportMapper = mapper.copy().disable(SerializationFeature.INDENT_OUTPUT);
+    private ScheduledExecutorService refreshExecutor;
+
+    public McpRegistry(ObjectMapper mapper, McpServerRepository serverRepository) {
+        this.mapper = mapper.copy().disable(SerializationFeature.INDENT_OUTPUT);
+        this.serverRepository = serverRepository;
         load();
+    }
+
+    /** Starts the periodic DB-refresh loop. Split out from the constructor
+     *  since a background executor has no business running for a plain
+     *  {@code new McpRegistry(...)} that isn't actually a live Spring bean
+     *  (e.g. in tests). */
+    @PostConstruct
+    void init() {
+        refreshExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "mcp-registry-db-refresh");
+            t.setDaemon(true);
+            return t;
+        });
+        refreshExecutor.scheduleWithFixedDelay(this::refreshFromDbQuietly,
+                DB_REFRESH_INTERVAL_SECONDS, DB_REFRESH_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
     // ---- public API used by the controller ----
@@ -74,23 +104,25 @@ public class McpRegistry {
     public Optional<McpServerConfig> get(String id) { return Optional.ofNullable(configs.get(id)); }
 
     /** Create-or-replace. If a client for this id was already running, close it
-     *  so the next tool call picks up the new config. */
+     *  so the next tool call picks up the new config. Writes through to
+     *  {@code ce_mcp_server} — exceptions propagate to the caller (the REST
+     *  controller turns them into a 400 with the error message). */
     public synchronized McpServerConfig upsert(McpServerConfig cfg) {
         if (cfg.getId() == null || cfg.getId().isBlank()) {
             cfg.setId("srv_" + Long.toHexString(System.nanoTime()));
         }
+        serverRepository.save(toEntity(cfg));
         configs.put(cfg.getId(), cfg);
         closeClient(cfg.getId());
         toolCache.remove(cfg.getId());
-        save();
         return cfg;
     }
 
     public synchronized void remove(String id) {
+        serverRepository.deleteById(id);
         configs.remove(id);
         closeClient(id);
         toolCache.remove(id);
-        save();
     }
 
     /** Fetch (and cache) the server's tool manifest. */
@@ -130,7 +162,7 @@ public class McpRegistry {
             if (cfg == null) throw new McpException("unknown MCP server: " + key);
             log.info("Starting MCP server '{}' ({} {})...", cfg.getName(), cfg.getCommand(), cfg.getArgs());
             McpTransport transport = buildTransport(cfg);
-            McpClient c = new McpClient(transport, transportMapper);
+            McpClient c = new McpClient(transport, mapper);
             try {
                 c.initialize();
             } catch (RuntimeException e) {
@@ -150,19 +182,19 @@ public class McpRegistry {
                 if (cfg.getCommand() == null || cfg.getCommand().isBlank()) {
                     throw new McpException("stdio MCP server needs a 'command'");
                 }
-                yield new StdioMcpTransport(cfg.getCommand(), cfg.getArgs(), cfg.getEnv(), transportMapper);
+                yield new StdioMcpTransport(cfg.getCommand(), cfg.getArgs(), cfg.getEnv(), mapper);
             }
             case HTTP -> {
                 if (cfg.getUrl() == null || cfg.getUrl().isBlank()) {
                     throw new McpException("http MCP server needs a 'url'");
                 }
-                yield new HttpMcpTransport(cfg.getUrl(), cfg.getHeaders(), transportMapper);
+                yield new HttpMcpTransport(cfg.getUrl(), cfg.getHeaders(), mapper);
             }
             case SSE -> {
                 if (cfg.getUrl() == null || cfg.getUrl().isBlank()) {
                     throw new McpException("sse MCP server needs a 'url'");
                 }
-                yield new SseMcpTransport(cfg.getUrl(), cfg.getHeaders(), transportMapper);
+                yield new SseMcpTransport(cfg.getUrl(), cfg.getHeaders(), mapper);
             }
         };
     }
@@ -176,6 +208,9 @@ public class McpRegistry {
 
     @PreDestroy
     public synchronized void shutdown() {
+        if (refreshExecutor != null) {
+            refreshExecutor.shutdownNow();
+        }
         clients.values().forEach(c -> { try { c.close(); } catch (Exception ignored) {} });
         clients.clear();
     }
@@ -184,29 +219,76 @@ public class McpRegistry {
 
     private void load() {
         try {
-            if (!Files.exists(STORE_PATH)) return;
-            byte[] bytes = Files.readAllBytes(STORE_PATH);
-            if (bytes.length == 0) return;
-            List<McpServerConfig> list = mapper.readValue(bytes, new TypeReference<List<McpServerConfig>>() {});
+            List<CeMcpServer> rows = serverRepository.findAll();
             Map<String, McpServerConfig> keyed = new LinkedHashMap<>();
-            for (McpServerConfig c : list) if (c.getId() != null) keyed.put(c.getId(), c);
+            for (CeMcpServer row : rows) {
+                McpServerConfig cfg = fromEntity(row);
+                if (cfg.getId() != null) keyed.put(cfg.getId(), cfg);
+            }
+            configs.clear();
             configs.putAll(keyed);
-            log.info("Loaded {} MCP server config(s) from {}", configs.size(), STORE_PATH);
+            log.info("Loaded {} MCP server config(s) from ce_mcp_server", configs.size());
         } catch (Exception e) {
-            log.warn("Failed to load {}: {}", STORE_PATH, e.getMessage());
+            log.error("Could not load ce_mcp_server — MCP server registration/discovery won't work until "
+                    + "this table exists and is reachable (run the ce_mcp_server DDL): {}", e.getMessage());
         }
     }
 
-    private void save() {
+    /** Periodic reconciliation so other replicas' writes become visible here.
+     *  Only touches {@code configs}; closes clients for configs that were
+     *  removed or changed so the next call picks up fresh settings. */
+    private void refreshFromDbQuietly() {
         try {
-            Files.createDirectories(STORE_PATH.getParent());
-            File tmp = new File(STORE_PATH.getParent().toFile(), STORE_PATH.getFileName() + ".tmp");
-            mapper.writeValue(tmp, list());
-            Files.move(tmp.toPath(), STORE_PATH, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            List<CeMcpServer> rows = serverRepository.findAll();
+            Map<String, McpServerConfig> latest = new LinkedHashMap<>();
+            for (CeMcpServer row : rows) {
+                McpServerConfig cfg = fromEntity(row);
+                if (cfg.getId() != null) latest.put(cfg.getId(), cfg);
+            }
+            for (String existingId : new ArrayList<>(configs.keySet())) {
+                McpServerConfig latestCfg = latest.get(existingId);
+                if (latestCfg == null || !latestCfg.equals(configs.get(existingId))) {
+                    closeClient(existingId);
+                    toolCache.remove(existingId);
+                }
+            }
+            configs.keySet().retainAll(latest.keySet());
+            configs.putAll(latest);
         } catch (Exception e) {
-            log.warn("Failed to persist {}: {}", STORE_PATH, e.getMessage());
+            log.debug("MCP DB refresh skipped: {}", e.getMessage());
         }
+    }
+
+    // ---- entity <-> DTO mapping ----
+
+    private static McpServerConfig fromEntity(CeMcpServer row) {
+        McpServerConfig cfg = new McpServerConfig();
+        cfg.setId(row.getId());
+        cfg.setName(row.getName());
+        cfg.setTransport(row.getTransport() == null ? null : McpServerConfig.Transport.valueOf(row.getTransport()));
+        cfg.setCommand(row.getCommand());
+        cfg.setArgs(row.getArgs());
+        cfg.setEnv(row.getEnv());
+        cfg.setUrl(row.getUrl());
+        cfg.setHeaders(row.getHeaders());
+        return cfg;
+    }
+
+    private static CeMcpServer toEntity(McpServerConfig cfg) {
+        CeMcpServer row = new CeMcpServer();
+        row.setId(cfg.getId());
+        row.setName(cfg.getName());
+        row.setTransport(cfg.getTransport() == null ? null : cfg.getTransport().name());
+        row.setCommand(cfg.getCommand());
+        row.setArgs(cfg.getArgs());
+        row.setEnv(cfg.getEnv());
+        row.setUrl(cfg.getUrl());
+        row.setHeaders(cfg.getHeaders());
+        row.setEnabled(true);
+        OffsetDateTime now = OffsetDateTime.now();
+        row.setCreatedAt(now);
+        row.setUpdatedAt(now);
+        return row;
     }
 
     /** Convenience: expose known server ids for ops / health checks. */

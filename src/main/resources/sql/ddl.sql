@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS ce_agent_db_tool CASCADE;
 DROP TABLE IF EXISTS ce_agent_planner CASCADE;
+DROP TABLE IF EXISTS ce_mcp_server CASCADE;
 DROP TABLE IF EXISTS ce_semantic_entity CASCADE;
 DROP TABLE IF EXISTS ce_semantic_relationship CASCADE;
 DROP TABLE IF EXISTS ce_semantic_join_hint CASCADE;
@@ -418,3 +419,27 @@ CREATE TABLE IF NOT EXISTS ce_semantic_value_pattern (
 );
 CREATE INDEX idx_ce_semantic_value_pattern_lookup
     ON public.ce_semantic_value_pattern USING btree (enabled, from_field, to_field, priority);
+
+-- ============================================================================
+-- ce_mcp_server — required, DB-backed persistence for external MCP server
+-- configs (McpRegistry.serverRepository is a required constructor
+-- dependency — there is no local-file fallback), so server registration
+-- works across multiple app replicas (e.g. AKS pods) instead of being
+-- pinned to one pod's local disk.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ce_mcp_server (
+    id text NOT NULL,
+    name text NULL,
+    transport text NOT NULL,
+    command text NULL,
+    args jsonb NULL,
+    env jsonb NULL,
+    url text NULL,
+    headers jsonb NULL,
+    enabled bool DEFAULT true NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL,
+    CONSTRAINT ce_mcp_server_pkey PRIMARY KEY (id),
+    CONSTRAINT ce_mcp_server_transport_check CHECK (transport IN ('STDIO', 'HTTP', 'SSE'))
+);
+CREATE INDEX idx_ce_mcp_server_enabled ON public.ce_mcp_server USING btree (enabled);
