@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.agent.AgentConstants;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineInputParamKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.constants.ConvEngineValue;
@@ -300,7 +301,7 @@ public class SchemaExtractionStep implements EngineStep {
             if (!(root instanceof ObjectNode objectNode)) {
                 return mergedContextJson;
             }
-            objectNode.remove("mcp");
+            objectNode.remove(AgentConstants.CONTEXT_KEY_AGENT);
             return MAPPER.writeValueAsString(objectNode);
         } catch (Exception e) {
             return mergedContextJson;

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.salilvnair.convengine.audit.AuditService;
+import com.github.salilvnair.convengine.engine.agent.AgentConstants;
 import com.github.salilvnair.convengine.cache.StaticConfigurationCacheService;
 import com.github.salilvnair.convengine.config.ConvEngineAgentConfig;
 import com.github.salilvnair.convengine.config.ConvEngineSqlTableResolver;
@@ -765,7 +766,7 @@ public class SemanticInterpretService {
         if (context.isEmpty()) {
             return null;
         }
-        Map<String, Object> mcp = safeMap(context.get("mcp"));
+        Map<String, Object> mcp = safeMap(context.get(AgentConstants.CONTEXT_KEY_AGENT));
         List<Map<String, Object>> observations = safeMapList(mcp.get("observations"));
         if (observations.isEmpty()) {
             return null;

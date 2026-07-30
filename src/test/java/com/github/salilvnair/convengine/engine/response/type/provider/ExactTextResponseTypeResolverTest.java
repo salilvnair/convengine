@@ -83,7 +83,7 @@ class ExactTextResponseTypeResolverTest {
                         .build(),
                 new ObjectMapper()
         );
-        session.setContextJson("{\"mcp\":{\"finalAnswer\":\"Safe fallback final answer\"}}");
+        session.setContextJson("{\"agent\":{\"finalAnswer\":\"Safe fallback final answer\"}}");
         session.setIntent("SEMANTIC_QUERY");
         session.setState("COMPLETED");
         session.setConversation(CeConversation.builder()
@@ -125,7 +125,7 @@ class ExactTextResponseTypeResolverTest {
                         .build(),
                 new ObjectMapper()
         );
-        session.setContextJson("{\"mcp\":{\"finalAnswer\":\"Safe fallback final answer\"}}");
+        session.setContextJson("{\"agent\":{\"finalAnswer\":\"Safe fallback final answer\"}}");
         session.setIntent("SEMANTIC_QUERY");
         session.setState("COMPLETED");
         session.setConversation(CeConversation.builder()

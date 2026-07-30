@@ -2,6 +2,7 @@ package com.github.salilvnair.convengine.engine.response.type.provider;
 
 import com.github.salilvnair.convengine.audit.AuditService;
 import com.github.salilvnair.convengine.audit.ConvEngineAuditStage;
+import com.github.salilvnair.convengine.engine.agent.AgentConstants;
 import com.github.salilvnair.convengine.engine.constants.ConvEnginePayloadKey;
 import com.github.salilvnair.convengine.engine.constants.OutputFormatConstants;
 import com.github.salilvnair.convengine.engine.constants.ResponseTypeConstants;
@@ -88,7 +89,7 @@ public class ExactTextResponseTypeResolver implements ResponseTypeResolver {
     private String fallbackText(EngineSession session, String rawTemplate) {
         Object contextObj = session == null ? null : session.contextDict();
         if (contextObj instanceof Map<?, ?> contextMap) {
-            Object mcpObj = contextMap.get("mcp");
+            Object mcpObj = contextMap.get(AgentConstants.CONTEXT_KEY_AGENT);
             if (mcpObj instanceof Map<?, ?> mcpMap) {
                 Object finalAnswer = mcpMap.get("finalAnswer");
                 if (finalAnswer != null) {
