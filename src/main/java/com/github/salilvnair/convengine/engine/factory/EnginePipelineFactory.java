@@ -157,6 +157,7 @@ public class EnginePipelineFactory {
                     .build();
             session.recordStepEnter(stepName, stepClass, "STEP_ENTER", start,
                     stepMetaMap(session));
+            session.setCurrentStep(typedStepName);
 
             audit.audit(
                     "STEP_ENTER",
@@ -239,6 +240,7 @@ public class EnginePipelineFactory {
                 );
                 throw e;
             } finally {
+                session.setCurrentStep(null);
                 AuditSessionContext.clear();
             }
         }

@@ -11,6 +11,7 @@ import com.github.salilvnair.convengine.engine.history.model.ConversationTurn;
 import com.github.salilvnair.convengine.engine.model.EngineResult;
 import com.github.salilvnair.convengine.engine.model.StepInfo;
 import com.github.salilvnair.convengine.engine.model.StepTiming;
+import com.github.salilvnair.convengine.engine.pipeline.EngineStep;
 import com.github.salilvnair.convengine.entity.CeConversation;
 import com.github.salilvnair.convengine.entity.CeOutputSchema;
 import com.github.salilvnair.convengine.model.JsonPayload;
@@ -48,6 +49,22 @@ public class EngineSession {
 
     private String contextJson;
     private List<ConversationTurn> conversationHistory;
+
+    // Set by EnginePipelineFactory.TimingEngineStep right before each step's
+    // execute() runs, cleared in its finally block -- lets ANY code holding
+    // a reference to this session (an LlmClient implementation, a hook, a
+    // resolver called from within a step) know which step is currently
+    // running, without inspecting stepInfos or sniffing prompt/schema
+    // content. Concretely: an LlmClient whose real answers can only come
+    // from ONE domain (e.g. a bridge to an external RAG service that
+    // doesn't know how to do generic classification) can check
+    // `session.getCurrentStep() == EngineStep.Name.ResponseResolutionStep`
+    // before making an external call, and refuse/fall back cleanly for
+    // every other step (DialogueActStep's dialogue-act classification,
+    // AgentIntentResolver's intent-collision resolution, etc.) that also
+    // happens to call the same LlmClient bean for a completely different
+    // kind of JSON.
+    private EngineStep.Name currentStep;
 
     private CeOutputSchema resolvedSchema;
     private boolean schemaComplete;
