@@ -6,13 +6,13 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 
 ## Version
 
-- Current library version: `2.0.12`
+- Current library version: `2.0.28`
 
 ### Semantic Runtime Simplification (v2.0.12)
 - active semantic chain:
   - `db.semantic.interpret -> db.semantic.query -> postgres.query`
 - active semantic package:
-  - `com.github.salilvnair.convengine.engine.mcp.query.semantic`
+  - `com.github.salilvnair.convengine.engine.agent.query.semantic`
 - semantic model is DB-derived; no YAML file-path runtime config.
 - stale legacy semantic doc/runtime references removed.
 
@@ -78,13 +78,13 @@ It is designed for auditable state machines, not free-form assistant behavior. R
   - `postgres.query`
 - **DB tool execution contract**:
   - Java `DbToolHandler` implementations are preferred (`PostgresQueryToolHandler` and semantic handlers).
-  - `ce_agent_db_tool` remains required only for SQL-template fallback tools (`McpDbExecutor` path).
-- **Read-only SQL guardrail hardening**: `McpSqlGuardrail` blocks non-read-only/multi-statement SQL while allowing safe single-statement SELECT/WITH usage.
+  - `ce_agent_db_tool` remains required only for SQL-template fallback tools (`AgentDbExecutor` path).
+- **Read-only SQL guardrail hardening**: `AgentSqlGuardrail` blocks non-read-only/multi-statement SQL while allowing safe single-statement SELECT/WITH usage.
 - **SQL observability**: dynamic SQL execution emits richer audit/verbose payloads (SQL, params, row_count, rows preview, error metadata).
-- **MCP execution telemetry flags**:
-  - `context.mcp.finalAnswerDetermined`
-  - `context.mcp.toolExecutionAbrupted`
-  - `context.mcp.toolExecutionAbruptionLimit`
+- **Agent execution telemetry flags**:
+  - `context.agent.finalAnswerDetermined`
+  - `context.agent.toolExecutionAbrupted`
+  - `context.agent.toolExecutionAbruptionLimit`
 - **DB schema inspection APIs**:
   - `GET /api/v1/db/inspect-schema`
   - `POST /api/v1/db/agent`
@@ -162,12 +162,12 @@ It is designed for auditable state machines, not free-form assistant behavior. R
 - Schema-driven data collection and slot completion
 - Rule engine with ordered priorities and execution phases
 - Configurable response resolution (`EXACT` and `DERIVED`)
-- MCP tool planning + execution loop
-- Framework DB SQL preflight for MCP DB tools (semantic mapping/join-hint validation, table/column metadata validation, and optional numeric value normalization via `convengine.mcp.db.preflight.*`)
+- Agent tool planning + execution loop
+- Framework DB SQL preflight for Agent DB tools (semantic mapping/join-hint validation, table/column metadata validation, and optional numeric value normalization via `convengine.mcp.db.preflight.*`)
 - Semantic preflight can also pull source metadata from `ce_semantic_source_table` and `ce_semantic_source_column` (configurable) and pass it as LLM repair context.
 - Optional LLM SQL repair loop for failed DB tool queries (`convengine.mcp.db.preflight.sql-auto-repair-enabled`, `convengine.mcp.db.preflight.sql-auto-repair-max-retries`)
-- Preflight now emits dedicated audit stages with `_meta`, SQL before/after, params, and schema/semantic knowledge context (`MCP_DB_PREFLIGHT`, `MCP_DB_PREFLIGHT_REPAIR`)
-- SQL preflight repair prompts can be driven from `ce_config` (`McpDbExecutor` keys `DB_SQL_PREFLIGHT_SYSTEM_PROMPT`, `DB_SQL_PREFLIGHT_USER_PROMPT`, `DB_SQL_PREFLIGHT_SCHEMA_JSON`); see `src/main/resources/sql/db_preflight_sql.sql`.
+- Preflight now emits dedicated audit stages with `_meta`, SQL before/after, params, and schema/semantic knowledge context (`AGENT_DB_PREFLIGHT`, `AGENT_DB_PREFLIGHT_REPAIR`)
+- SQL preflight repair prompts can be driven from `ce_config` (`AgentDbExecutor` / `PostgresQueryToolHandler` keys `DB_SQL_PREFLIGHT_SYSTEM_PROMPT`, `DB_SQL_PREFLIGHT_USER_PROMPT`, `DB_SQL_PREFLIGHT_SCHEMA_JSON`); see `src/main/resources/sql/db_preflight_sql.sql`.
 - Runtime schema/semantic repair data is also passed in LLM `contextJson` (not only user prompt placeholders), matching other framework LLM invocation patterns.
 - Database-driven verbose progress/error messaging (`ce_verbose`)
 - Full audit timeline and trace API
@@ -337,9 +337,9 @@ Main runtime stages:
 ### `ce_verbose`
 
 - `step_match`: `EXACT`, `REGEX`, `JSON_PATH`
-- `determinant`: use emitted runtime determinants such as `STEP_ENTER`, `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, `DIALOGUE_ACT_LLM_ERROR`, `MCP_TOOL_CALL`, `RESOLVE_RESPONSE_LLM_OUTPUT`
+- `determinant`: use emitted runtime determinants such as `STEP_ENTER`, `DIALOGUE_ACT_LLM_INPUT`, `DIALOGUE_ACT_LLM_OUTPUT`, `DIALOGUE_ACT_LLM_ERROR`, `AGENT_TOOL_CALL`, `RESOLVE_RESPONSE_LLM_OUTPUT`
 - SQL observability determinants:
-  - `MCP_DB_SQL_EXECUTION` from `McpDbExecutor`
+  - `AGENT_DB_SQL_EXECUTION` from `AgentDbExecutor`
   - metadata includes `sql`, `params`, `row_count`, and `rows`
 
 ## Flow Configuration (application.yml)
@@ -490,7 +490,7 @@ public interface LlmClient {
 - `RuleActionResolver` (custom rule actions)
 - `CeRuleTask`/`CeTask` task beans for `SET_TASK`
 - `ResponseTransformer` / container interceptors
-- MCP tool executors/adapters by tool group
+- Agent tool executors/adapters by tool group
 
 ## Reset Semantics
 
